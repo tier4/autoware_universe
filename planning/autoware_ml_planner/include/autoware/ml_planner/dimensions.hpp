@@ -81,10 +81,8 @@ inline constexpr std::array<int64_t, 2> TURN_INDICATOR_LOGIT_SHAPE = {1, TURN_IN
 
 inline constexpr std::array<int64_t, 4> INITIAL_NOISE_SHAPE = {
   1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
-// Model inputs. The preprocessing builds the ego states with the steering angle
-// (EGO_HISTORY_DIM columns), but the model does not read it: utils::drop_steering removes it
-// before inference.
-inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, EGO_HISTORY_DIM - 1};
+// Model inputs
+inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, EGO_HISTORY_DIM};
 inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {
   1, MAX_NUM_NEIGHBORS, INPUT_T + 1, POSE_DIM};
 inline constexpr std::array<int64_t, 3> AGENT_SHAPE_SHAPE = {1, MAX_NUM_NEIGHBORS, 2};
