@@ -317,7 +317,9 @@ bool ObstacleStop::apply_cruise(
     margin);
   cruise_report_ = CruiseReport{*target, v_cruise};
 
-  const detail::VelocityLimitConstraints constraints{0.0, cruise.max_deceleration, cruise.max_jerk};
+
+  const detail::VelocityLimitConstraints constraints{
+    cruise.max_acceleration, cruise.max_deceleration, cruise.max_jerk};
   const auto result = detail::apply_velocity_limits(
     traj_points, constraints,
     [v_cruise](const geometry_msgs::msg::Point &) { return std::optional<double>{v_cruise}; },
