@@ -324,6 +324,35 @@ trajectory_mppi_optimizer:
     description: Obstacle safety margin in meters
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  use_vegetation_pointcloud:
+    type: bool
+    default_value: false
+    description: Include VEGETATION points from the obstacle pointcloud in MPPI avoidance
+    read_only: false
+  vegetation_collision_margin:
+    type: double
+    default_value: 0.2
+    description: Hard clearance from the ego footprint to vegetation points in meters
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  vegetation_safe_margin:
+    type: double
+    default_value: 0.4
+    description: Additional soft clearance outside the vegetation collision margin in meters
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  vegetation_min_height_m:
+    type: double
+    default_value: 0.2
+    description: Minimum vegetation point height above ego position in meters
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
+  vegetation_height_buffer_m:
+    type: double
+    default_value: 0.2
+    description: Height added above ego vehicle height when filtering vegetation points in meters
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   road_border_safe_margin:
     type: double
     default_value: 0.2
@@ -395,6 +424,12 @@ trajectory_mppi_optimizer:
     description: Minimum input arc length for optimization
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  validation_interpolation_substeps:
+    type: int
+    default_value: 1
+    description: Subdivisions between optimized post-step poses for final validation; 1 disables interpolation, moving objects are interpolated at the same times
+    validation: { bounds<>: [1, 100] }
+    read_only: false
   steering_hold_reference_length_threshold_m:
     type: double
     default_value: 0.5
@@ -436,11 +471,6 @@ trajectory_mppi_optimizer:
     default_value: 0.5
     description: Absolute velocity where restart steering protection is fully released
     validation: { gt_eq<>: [0.0] }
-    read_only: false
-  use_temporal_mpt_as_nominal:
-    type: bool
-    default_value: false
-    description: Seed the nominal control with temporal MPT
     read_only: false
   use_last_control_as_nominal:
     type: bool
@@ -517,29 +547,6 @@ trajectory_mppi_optimizer:
     default_value: 0.08
     description: Absolute ego velocity at which warm-start reuse leaves the stopped state
     validation: { gt_eq<>: [0.0] }
-    read_only: false
-  enable_curvature_adaptive_steering_filter:
-    type: bool
-    default_value: true
-    description: Apply the plugin output steering EMA that filters straight-line noise and responds faster in turns
-    read_only: false
-  steering_filter_alpha_straight:
-    type: double
-    default_value: 0.1
-    description: Steering EMA alpha at zero preceding filtered steering; lower values suppress more straight-line noise
-    validation: { bounds<>: [0.0, 1.0] }
-    read_only: false
-  steering_filter_alpha_turn:
-    type: double
-    default_value: 0.5
-    description: Steering EMA alpha at and above the turn-angle threshold; keep below 1 to smooth turns and reversals
-    validation: { bounds<>: [0.0, 1.0] }
-    read_only: false
-  steering_filter_turn_angle_rad:
-    type: double
-    default_value: 0.1
-    description: Absolute preceding filtered steering in radians at which the EMA reaches its turn alpha
-    validation: { gt<>: [0.0] }
     read_only: false
   enable_debug_trajectory_log:
     type: bool

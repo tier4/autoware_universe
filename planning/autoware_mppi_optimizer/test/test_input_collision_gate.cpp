@@ -69,6 +69,16 @@ TEST(InputCollisionGate, DetectsRoadBorderBetweenTrajectoryPoints)
   EXPECT_FALSE(collision.static_object);
 }
 
+TEST(InputCollisionGate, DetectsVegetationBetweenTrajectoryPoints)
+{
+  const auto trajectory = make_trajectory({0.0, 3.0});
+  const auto collision = checkInputTrajectoryCollisions(
+    trajectory, TrackedObjects{}, {}, make_vehicle(), 0.0F, 0.0F, {false, true}, {{1.5F, 0.0F}},
+    0.2F);
+  EXPECT_TRUE(collision.vegetation);
+  EXPECT_TRUE(collision.triggered());
+}
+
 TEST(InputCollisionGate, DetectsCentimeterScaleBorderAtLargeMapCoordinates)
 {
   constexpr double map_x = 88800.12345;

@@ -28,6 +28,7 @@
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point.hpp>
+#include <std_msgs/msg/header.hpp>
 
 #include <array>
 #include <cstddef>
@@ -35,6 +36,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -50,6 +52,66 @@ using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 
 namespace aw_trajectory = autoware::experimental::trajectory;
+
+using ObjectId = std::array<uint8_t, 16>;
+
+enum class SelectionStatus {
+  ready,
+  stale_objects,
+  future_objects,
+  out_of_order_objects,
+  invalid_reference,
+  frame_mismatch,
+  invalid_route_bounds,
+  invalid_objects
+};
+enum class ObjectDisposition { ignored, avoidance, yield, driving_along, unknown };
+const char * to_string(SelectionStatus status);
+const char * to_string(ObjectDisposition disposition);
+
+struct ObjectSelectionDecision
+{
+  ObjectId object_id{};
+  ObjectDisposition disposition{ObjectDisposition::unknown};
+  std::string reason;
+  double measurement_age_s{0.0};
+  double interest_probability{0.0};
+  double stationary_probability{0.0};
+  double deviation_probability{0.0};
+  std::optional<double> lane_center_offset_m;
+  std::optional<double> trajectory_distance_m;
+};
+
+struct SelectionGeometryParams
+{
+  SelectionGeometryParams() = default;
+  SelectionGeometryParams(
+    std::optional<double> envelope_radius, double extension_s = 0.0,
+    std::vector<ObjectId> predicted_ids = {})
+  : trajectory_envelope_radius_m(envelope_radius),
+    prediction_extension_s(extension_s),
+    predicted_path_target_ids(std::move(predicted_ids))
+  {
+  }
+
+  /// Conservative radius about base_link, including the collision gate's vehicle and margins.
+  /// When supplied, this envelope replaces endpoint/corridor pruning.
+  std::optional<double> trajectory_envelope_radius_m;
+  double prediction_extension_s{0.0};
+  /// IDs whose supplied prediction reaches the reference. This only overrides envelope pruning;
+  /// classification, parked-vehicle policy, and temporal tracking still apply.
+  std::vector<ObjectId> predicted_path_target_ids;
+};
+
+template <typename ObjectsT>
+struct ObjectSelectionResult
+{
+  SelectionStatus status{SelectionStatus::ready};
+  ObjectsT avoidance_targets;
+  ObjectsT driving_along_vehicles;
+  ObjectsT yield_targets;
+  std::vector<ObjectSelectionDecision> decisions;
+};
 
 /** Ordered ego/object lanelet IDs used to memoize routing queries within a frame. */
 using LaneletPairKey = std::pair<lanelet::Id, lanelet::Id>;
@@ -67,7 +129,7 @@ struct LaneletPairHash
 template <typename ObjectT>
 struct FrameEvaluationContext
 {
-  const rclcpp::Time current_time;
+  rclcpp::Time current_time;
   std::optional<aw_trajectory::Trajectory<TrajectoryPoint>> built_trajectory;
   /// Arc-length bases and their positions, computed once and shared by all object evaluations.
   std::vector<double> trajectory_bases;
@@ -78,6 +140,7 @@ struct FrameEvaluationContext
   std::vector<lanelet::ConstLanelet> ego_lanelets;
   /// Results of bidirectional, no-lane-change routing checks for this frame.
   mutable std::unordered_map<LaneletPairKey, bool, LaneletPairHash> routability_cache;
+  double prediction_horizon_s{0.0};
 };
 
 /** Maps an object element type to its container message type. */
@@ -114,7 +177,8 @@ public:
   [[nodiscard]] bool is_initialized() const { return is_initialized_; }
   [[nodiscard]] bool is_stale(const rclcpp::Time & current_time) const
   {
-    return current_time - last_update_time_ > rclcpp::Duration::from_seconds(1.0);
+    return current_time - last_update_time_ >
+           rclcpp::Duration::from_seconds(FilterManagerParams::stale_threshold_seconds);
   }
   void observe_and_update(
     const rclcpp::Time & current_time, const ObjectT & object, const Trajectory & trajectory);
@@ -205,6 +269,7 @@ public:
     const std::vector<lanelet::ConstLanelet> & ego_lanelets);
   void observe_and_update_all(
     const FrameEvaluationContext<ObjectT> & context, const ObjectT & object);
+  void evaluate_geometry(const FrameEvaluationContext<ObjectT> & context, const ObjectT & object);
   [[nodiscard]] double get_is_target_probability() const { return target_filter_->get_posterior(); }
   [[nodiscard]] double get_is_stationary_probability() const
   {
@@ -233,8 +298,13 @@ public:
   }
 
 private:
-  uint8_t avoidance_state_change_count_{0};
-  uint8_t moving_vehicle_state_change_count_{0};
+  std::size_t avoidance_state_change_count_{0};
+  std::size_t moving_vehicle_state_change_count_{0};
+  std::optional<rclcpp::Time> avoidance_pending_since_;
+  std::optional<rclcpp::Time> moving_pending_since_;
+  std::optional<rclcpp::Time> last_moving_observation_;
+  std::optional<double> lane_center_offset_m_;
+  bool parked_candidate_now_{false};
 
   std::unique_ptr<TargetFilter<ObjectT>> target_filter_;
   std::unique_ptr<StationaryFilter<ObjectT>> stationary_filter_;
@@ -255,8 +325,6 @@ private:
 
   friend class ObjectSelectorBase<ObjectT>;
 };
-
-using ObjectId = std::array<uint8_t, 16>;
 
 struct ObjectIdHash
 {
@@ -281,26 +349,37 @@ class ObjectSelectorBase
 public:
   using Objects = typename ObjectContainerTraits<ObjectT>::Objects;
 
-  /** @brief Update per-object Bayesian filters and prune stale entries. */
+  /** Update history once per objects.header.stamp and rebuild the evaluation context.
+   * Pass the full perception message so range filtering does not erase motion history.
+   */
   void update_objects(
     const rclcpp::Time & current_time, const Objects & objects, const Trajectory & trajectory,
     const ExtendedRouteHandler & extended_route_handler);
 
   /**
    * @brief Select avoidance targets from objects using updated filter state.
-   * @details Call update_objects() first in the same cycle. Runs avoidance-target tracking,
-   *          then removes non-targets and objects outside longitudinal and lateral distance bounds.
+   * @details Call update_objects() first with the same reference and measurement.
+   * Getters never update probabilities or advance hysteresis.
    */
   [[nodiscard]] Objects get_avoidance_targets(
-    const Objects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds);
+    const Objects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds) const;
 
-  [[nodiscard]] Objects get_driving_along_vehicles(const Objects & objects);
+  [[nodiscard]] Objects get_driving_along_vehicles(const Objects & objects) const;
+
+  [[nodiscard]] ObjectSelectionResult<Objects> evaluate(
+    const Objects & objects, const RouteBounds & route_bounds,
+    const SelectionGeometryParams & geometry = {}) const;
+
+  [[nodiscard]] SelectionStatus status() const { return status_; }
 
 private:
-  void track_avoidance_targets();
-  void track_driving_along_vehicles();
-
   AvoidanceTargetDetectorMap<ObjectT> object_filters_;
+  std::optional<FrameEvaluationContext<ObjectT>> context_;
+  std::optional<rclcpp::Time> last_measurement_time_;
+  std::optional<rclcpp::Time> last_evaluation_time_;
+  std_msgs::msg::Header measurement_header_;
+  SelectionStatus status_{SelectionStatus::invalid_reference};
+  double measurement_age_s_{0.0};
 };
 
 /** Concrete detector/selector types for predicted and tracked objects. */
@@ -341,10 +420,10 @@ template <typename ObjectT>
   const Trajectory & trajectory, const ObjectT & object);
 
 /**
- * @brief Check whether an object should be filtered out as on-trajectory corridor alignment.
+ * @brief Diagnose alignment with the candidate trajectory (not an avoidance-policy veto).
  * @param trajectory Reference trajectory.
  * @param object Object.
- * @return True if the object aligns with the trajectory corridor and should be filtered out.
+ * @return True if the object aligns with the trajectory corridor.
  */
 template <typename ObjectT>
 [[nodiscard]] bool should_filter_out_on_trajectory_object(
@@ -353,8 +432,8 @@ template <typename ObjectT>
 /**
  * @brief Check whether an object should be filtered out by longitudinal distance from trajectory.
  * @details Removes objects whose entire footprint lies before the trajectory start or after the
- *          trajectory end, with tolerance. Uses signed longitudinal deviation from start/end poses
- *          so points beyond the polyline end are detected correctly.
+ *          trajectory end, with tolerance. Uses planar nearest-segment projection with terminal
+ *          extrapolation, preserving footprints that intersect a returning part of the reference.
  */
 template <typename ObjectT>
 [[nodiscard]] bool should_filter_out_by_longitudinal_distance(

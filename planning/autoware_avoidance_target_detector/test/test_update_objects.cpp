@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -58,10 +59,8 @@ constexpr double k_disconnected_right_y_m = 2.5;
 constexpr lanelet::Id k_main_lanelet_id_base = 1000000000;
 constexpr lanelet::Id k_disconnected_lanelet_id_base = 2000000000;
 
-/// Lateral offset that puts the whole test object clear of the trajectory corridor.
-/// The deviation filter measures |d| from the rear edge, so the near-side corner of the 1.8 m wide
-/// bounding box (y - 0.9) must exceed OnTrajectoryDValidationParams::magnitude_threshold_m.
-constexpr double k_deviated_object_y_m = 3.0;
+/// Outside the centre of both the main lane (y=0) and adjacent lane (y=3.5).
+constexpr double k_deviated_object_y_m = 5.0;
 
 rclcpp::Time make_time(const int32_t seconds, const uint32_t nanoseconds = 0)
 {
@@ -162,7 +161,7 @@ typename ObjectContainerTraits<ObjectT>::Objects make_objects(
 {
   typename ObjectContainerTraits<ObjectT>::Objects objects;
   objects.header.frame_id = "map";
-  objects.header.stamp.sec = 42;
+  objects.header.stamp.sec = 0;
   objects.objects = input_objects;
   return objects;
 }
@@ -327,7 +326,7 @@ TYPED_TEST(UpdateObjectsTest, EmptyInputProducesEmptyOutputs)
   EXPECT_TRUE(selector.get_driving_along_vehicles(objects).objects.empty());
 }
 
-TYPED_TEST(UpdateObjectsTest, StationaryDeviatedObjectIsImmediatelyAvoidanceTarget)
+TYPED_TEST(UpdateObjectsTest, ParkedObjectIsImmediatelyAvoidanceTarget)
 {
   typename TestFixture::Selector selector;
   const auto objects =
@@ -341,7 +340,7 @@ TYPED_TEST(UpdateObjectsTest, StationaryDeviatedObjectIsImmediatelyAvoidanceTarg
   EXPECT_TRUE(selector.get_driving_along_vehicles(objects).objects.empty());
 }
 
-TYPED_TEST(UpdateObjectsTest, StationaryAlignedObjectIsNotAvoidanceTarget)
+TYPED_TEST(UpdateObjectsTest, StationaryTrafficLaneObjectIsNotAvoidanceTarget)
 {
   typename TestFixture::Selector selector;
   const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 0.0)});
@@ -410,112 +409,78 @@ TYPED_TEST(UpdateObjectsTest, MixedObjectsPreserveHeaderAndSurvivingOrder)
   EXPECT_EQ(objects.objects.size(), 4U);
 }
 
-TYPED_TEST(UpdateObjectsTest, EmptyAndSinglePointTrajectoriesUseCurrentFallbackBehavior)
+TYPED_TEST(UpdateObjectsTest, InvalidReferencesHaveExplicitStatusAndNoTargets)
 {
-  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 0.0)});
-
-  typename TestFixture::Selector empty_trajectory_selector;
-  empty_trajectory_selector.update_objects(make_time(0), objects, Trajectory{}, route_handler());
-  EXPECT_EQ(
-    object_ids(empty_trajectory_selector.get_avoidance_targets(
-      objects, Trajectory{}, this->empty_route_bounds_)),
-    std::vector<uint8_t>({1}));
-
-  const auto single_point_trajectory = make_single_point_trajectory(15.0);
-  typename TestFixture::Selector single_point_selector;
-  single_point_selector.update_objects(
-    make_time(0), objects, single_point_trajectory, route_handler());
-  EXPECT_EQ(
-    object_ids(single_point_selector.get_avoidance_targets(
-      objects, single_point_trajectory, this->empty_route_bounds_)),
-    std::vector<uint8_t>({1}));
+  for (const auto & trajectory : {Trajectory{}, make_single_point_trajectory(15.0)}) {
+    typename TestFixture::Selector selector;
+    const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 5.0)});
+    selector.update_objects(make_time(0), objects, trajectory, route_handler());
+    const auto result = selector.evaluate(objects, {});
+    // An empty frame is invalid as well as an empty reference.
+    EXPECT_NE(result.status, SelectionStatus::ready);
+    EXPECT_TRUE(result.avoidance_targets.objects.empty());
+    EXPECT_TRUE(result.driving_along_vehicles.objects.empty());
+    ASSERT_EQ(result.decisions.size(), 1U);
+    EXPECT_EQ(result.decisions.front().disposition, ObjectDisposition::unknown);
+  }
 }
 
-TYPED_TEST(UpdateObjectsTest, SinglePointTrajectorySupportsIdenticalPolygonEndpoints)
+TYPED_TEST(UpdateObjectsTest, CachedMeasurementExpiresWithoutRenewingItsAge)
 {
   typename TestFixture::Selector selector;
-  const auto trajectory = make_single_point_trajectory(15.0);
-  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 2.6, 2.0)});
-
-  selector.update_objects(make_time(0), objects, trajectory, route_handler());
-
-  EXPECT_EQ(object_ids(selector.get_driving_along_vehicles(objects)), std::vector<uint8_t>({1}));
-}
-
-TYPED_TEST(UpdateObjectsTest, StaleThresholdComparisonIsStrict)
-{
-  typename TestFixture::Selector selector;
-  const auto objects =
-    make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, k_deviated_object_y_m)});
-  const typename TestFixture::Objects empty_objects;
-
+  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 5.0)});
   selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
-  ASSERT_EQ(
-    selector.get_avoidance_targets(objects, this->trajectory_, this->empty_route_bounds_)
-      .objects.size(),
-    1U);
-
-  selector.update_objects(make_time(1), empty_objects, this->trajectory_, route_handler());
-  EXPECT_EQ(
-    selector.get_avoidance_targets(objects, this->trajectory_, this->empty_route_bounds_)
-      .objects.size(),
-    1U);
-
-  selector.update_objects(make_time(1, 1), empty_objects, this->trajectory_, route_handler());
-  EXPECT_TRUE(selector.get_avoidance_targets(objects, this->trajectory_, this->empty_route_bounds_)
-                .objects.empty());
+  const auto initial = selector.evaluate(objects, {});
+  ASSERT_EQ(initial.avoidance_targets.objects.size(), 1U);
+  selector.update_objects(make_time(1), objects, this->trajectory_, route_handler());
+  const auto at_threshold = selector.evaluate(objects, {});
+  EXPECT_EQ(at_threshold.status, SelectionStatus::ready);
+  ASSERT_EQ(at_threshold.decisions.size(), 1U);
+  EXPECT_DOUBLE_EQ(
+    at_threshold.decisions.front().stationary_probability,
+    initial.decisions.front().stationary_probability);
+  selector.update_objects(make_time(1, 1), objects, this->trajectory_, route_handler());
+  EXPECT_EQ(selector.status(), SelectionStatus::stale_objects);
+  EXPECT_TRUE(selector.evaluate(objects, {}).avoidance_targets.objects.empty());
 }
 
-TYPED_TEST(UpdateObjectsTest, AvoidanceHysteresisCountAccumulatesDuringTimeLockout)
+TYPED_TEST(UpdateObjectsTest, GettersAreIdempotentAndDoNotAdvanceConfirmation)
 {
   typename TestFixture::Selector selector;
-  const auto deviated_objects =
-    make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, k_deviated_object_y_m)});
-  const auto aligned_objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 0.0)});
-
-  selector.update_objects(make_time(0), deviated_objects, this->trajectory_, route_handler());
-  ASSERT_EQ(
-    selector.get_avoidance_targets(deviated_objects, this->trajectory_, this->empty_route_bounds_)
-      .objects.size(),
-    1U);
-
-  selector.update_objects(
-    make_time(0, 100000000), aligned_objects, this->trajectory_, route_handler());
-  // Repeated getter calls intentionally advance the state-change counter without advancing time.
-  for (std::size_t i = 0; i < FilterManagerParams::count_threshold; ++i) {
-    EXPECT_EQ(
-      selector.get_avoidance_targets(aligned_objects, this->trajectory_, this->empty_route_bounds_)
-        .objects.size(),
-      1U);
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 0.0)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  mutable_pose(objects.objects.front()).position.y = 5.0;
+  objects.header.stamp = make_time(0, 100000000);
+  selector.update_objects(make_time(0, 100000000), objects, this->trajectory_, route_handler());
+  for (int i = 0; i < 20; ++i) {
+    EXPECT_TRUE(selector.get_avoidance_targets(objects, this->trajectory_, {}).objects.empty());
   }
-
-  selector.update_objects(
-    make_time(0, 500000000), aligned_objects, this->trajectory_, route_handler());
-  EXPECT_TRUE(
-    selector.get_avoidance_targets(aligned_objects, this->trajectory_, this->empty_route_bounds_)
-      .objects.empty());
+  // Only distinct observations, continuously qualifying for 0.5 seconds, confirm the change.
+  for (int tick = 2; tick <= 6; ++tick) {
+    objects.header.stamp = make_time(0, tick * 100000000);
+    selector.update_objects(
+      make_time(0, tick * 100000000), objects, this->trajectory_, route_handler());
+  }
+  EXPECT_EQ(selector.evaluate(objects, {}).avoidance_targets.objects.size(), 1U);
 }
 
-TYPED_TEST(UpdateObjectsTest, DrivingAlongHysteresisCountAccumulatesDuringTimeLockout)
+TYPED_TEST(UpdateObjectsTest, StoppedVehicleLeavesDrivingAlongSet)
 {
   typename TestFixture::Selector selector;
-  const auto disconnected_objects =
-    make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 2.6, 2.0)});
-  const auto connected_objects =
-    make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 0.0, 2.0)});
-
-  selector.update_objects(make_time(0), disconnected_objects, this->trajectory_, route_handler());
-  ASSERT_EQ(selector.get_driving_along_vehicles(disconnected_objects).objects.size(), 1U);
-
-  selector.update_objects(
-    make_time(0, 100000000), connected_objects, this->trajectory_, route_handler());
-  // Repeated getter calls intentionally advance the state-change counter without advancing time.
-  for (std::size_t i = 0; i < FilterManagerParams::count_threshold; ++i) {
-    EXPECT_EQ(selector.get_driving_along_vehicles(connected_objects).objects.size(), 1U);
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 2.6, 2.0)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  ASSERT_EQ(selector.get_driving_along_vehicles(objects).objects.size(), 1U);
+  mutable_pose(objects.objects.front()).position.y = 0.0;
+  mutable_twist(objects.objects.front()).linear.x = 0.0;
+  for (int tick = 1; tick <= 200; ++tick) {
+    const auto time = make_time(tick / 10, (tick % 10) * 100000000);
+    objects.header.stamp = time;
+    selector.update_objects(time, objects, this->trajectory_, route_handler());
   }
-
-  selector.update_objects(make_time(5), connected_objects, this->trajectory_, route_handler());
-  EXPECT_TRUE(selector.get_driving_along_vehicles(connected_objects).objects.empty());
+  const auto result = selector.evaluate(objects, {});
+  EXPECT_TRUE(result.driving_along_vehicles.objects.empty());
+  EXPECT_TRUE(result.avoidance_targets.objects.empty());
+  EXPECT_EQ(result.yield_targets.objects.size(), 1U);
 }
 
 TYPED_TEST(UpdateObjectsTest, FirstObservationBypassesAllTransitionMatrices)
@@ -608,7 +573,7 @@ TYPED_TEST(UpdateObjectsTest, LongitudinalFilterPrunesStateQualifiedTarget)
 {
   typename TestFixture::Selector selector;
   const auto objects =
-    make_objects<TypeParam>({make_object<TypeParam>(1, -10.0, k_deviated_object_y_m)});
+    make_objects<TypeParam>({make_object<TypeParam>(1, -5.0, k_deviated_object_y_m)});
 
   selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
 
@@ -620,13 +585,9 @@ TYPED_TEST(UpdateObjectsTest, BoundingBoxRearEdgeUsesCornersInsteadOfCenter)
 {
   // The center sits 2.0 m from the trajectory, beyond magnitude_threshold_m (1.5 m), but the rear
   // edge of the 1.8 m wide bounding box reaches to 1.1 m, so the object counts as on-trajectory.
-  typename TestFixture::Selector selector;
   const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 2.0)});
 
-  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
-
-  EXPECT_TRUE(selector.get_avoidance_targets(objects, this->trajectory_, this->empty_route_bounds_)
-                .objects.empty());
+  EXPECT_TRUE(should_filter_out_on_trajectory_object(this->trajectory_, objects.objects.front()));
 }
 
 TYPED_TEST(UpdateObjectsTest, CylinderRearEdgeUsesDiameterSquare)
@@ -634,41 +595,345 @@ TYPED_TEST(UpdateObjectsTest, CylinderRearEdgeUsesDiameterSquare)
   // The 4.0 m diameter cylinder is bounded by a 4.0 x 4.0 square, so its rear edge spans
   // y = 0.5 to 4.5 and reaches within magnitude_threshold_m of the trajectory. Neither the object
   // center (2.5 m out) nor a zero-width box would come close enough.
-  typename TestFixture::Selector selector;
   const auto objects =
     make_objects<TypeParam>({make_cylinder_object<TypeParam>(1, 15.0, 2.5, 4.0)});
 
-  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
-
-  EXPECT_TRUE(selector.get_avoidance_targets(objects, this->trajectory_, this->empty_route_bounds_)
-                .objects.empty());
+  EXPECT_TRUE(should_filter_out_on_trajectory_object(this->trajectory_, objects.objects.front()));
 }
 
 TYPED_TEST(UpdateObjectsTest, PolygonWithValidDimensionsPrefersBoundingBox)
 {
-  // The 0.2 m footprint alone would put the rear edge 1.8 m out and keep the object a target, but
-  // the populated dimensions define a 1.8 m wide box whose rear edge reaches 1.1 m, so it is not.
-  typename TestFixture::Selector selector;
+  // The small footprint alone puts the rear edge 1.8 m out; the populated dimensions define
+  // a 1.8 m wide box whose rear edge reaches 1.1 m and satisfies the alignment diagnostic.
   const auto objects = make_objects<TypeParam>({make_polygon_object<TypeParam>(1, 15.0, 2.0, 0.2)});
 
-  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
-
-  EXPECT_TRUE(selector.get_avoidance_targets(objects, this->trajectory_, this->empty_route_bounds_)
-                .objects.empty());
+  EXPECT_TRUE(should_filter_out_on_trajectory_object(this->trajectory_, objects.objects.front()));
 }
 
 TYPED_TEST(UpdateObjectsTest, BoundingBoxRearEdgeFollowsObjectOrientation)
 {
   // Yawed 90 degrees, the 4.0 m long box points across the trajectory: its rear edge swings from
   // y = 2.0 down onto the centerline, which the center-only fallback would never detect.
-  typename TestFixture::Selector selector;
   const auto objects = make_objects<TypeParam>(
     {make_object<TypeParam>(1, 15.0, 2.0, 0.0, ObjectClassification::CAR, 1.0F, M_PI_2)});
 
-  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  EXPECT_TRUE(should_filter_out_on_trajectory_object(this->trajectory_, objects.objects.front()));
+}
 
-  EXPECT_TRUE(selector.get_avoidance_targets(objects, this->trajectory_, this->empty_route_bounds_)
-                .objects.empty());
+TYPED_TEST(UpdateObjectsTest, ParkedEligibilityDoesNotDependOnReferenceAlignment)
+{
+  typename TestFixture::Selector selector;
+  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, -2.5)});
+  auto reference = this->trajectory_;
+  for (auto & point : reference.points) point.pose.position.y = -2.5;
+  selector.update_objects(make_time(0), objects, reference, route_handler());
+  const auto result = selector.evaluate(objects, {}, SelectionGeometryParams{6.9});
+  ASSERT_EQ(result.avoidance_targets.objects.size(), 1U);
+  EXPECT_EQ(result.decisions.front().reason, "parked_off_lane_center");
+  EXPECT_DOUBLE_EQ(result.decisions.front().deviation_probability, 0.05);
+}
+
+TYPED_TEST(UpdateObjectsTest, VehiclesAtTrafficLaneCentersAreYieldTargets)
+{
+  typename TestFixture::Selector selector;
+  const auto objects = make_objects<TypeParam>(
+    {make_object<TypeParam>(1, 15.0, 0.0), make_object<TypeParam>(2, 15.0, 3.5)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  const auto result = selector.evaluate(objects, {});
+  EXPECT_TRUE(result.avoidance_targets.objects.empty());
+  EXPECT_EQ(result.yield_targets.objects.size(), 2U);
+}
+
+TYPED_TEST(UpdateObjectsTest, EndpointEnvelopeRetainsPotentialFrontFootprintCollision)
+{
+  typename TestFixture::Selector selector;
+  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 33.0, -2.5)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  EXPECT_TRUE(selector.evaluate(objects, {}).avoidance_targets.objects.empty());
+  const auto result = selector.evaluate(objects, {}, SelectionGeometryParams{6.9});
+  EXPECT_EQ(result.avoidance_targets.objects.size(), 1U);
+}
+
+TYPED_TEST(UpdateObjectsTest, BeyondEndpointUsesUnclampedCoordinate)
+{
+  const auto beyond = make_object<TypeParam>(1, 50.0, 0.0);
+  const auto within = make_object<TypeParam>(2, 15.0, 0.0);
+  EXPECT_TRUE(is_object_beyond_trajectory_end(this->trajectory_, beyond));
+  EXPECT_FALSE(is_object_beyond_trajectory_end(this->trajectory_, within));
+}
+
+RouteBounds make_review_bounds()
+{
+  auto bound = [](const double y) {
+    lanelet::LineString2d line(lanelet::utils::getId());
+    for (double x : {0.0, 30.0}) {
+      line.push_back(lanelet::Point2d(lanelet::utils::getId(), {x, y, 0.0}));
+    }
+    return line;
+  };
+  return {bound(2.0), bound(-2.0)};
+}
+
+TYPED_TEST(UpdateObjectsTest, FootprintSpanningCorridorIsRetained)
+{
+  auto object = make_object<TypeParam>(1, 15.0, 0.0, 0.0, ObjectClassification::CAR, 1.0F, M_PI_2);
+  object.shape.dimensions.x = 6.0;
+  EXPECT_FALSE(
+    should_filter_out_by_lateral_distance(make_review_bounds(), this->trajectory_, object));
+  mutable_pose(object).position.y = 10.0;
+  EXPECT_TRUE(
+    should_filter_out_by_lateral_distance(make_review_bounds(), this->trajectory_, object));
+}
+
+TYPED_TEST(UpdateObjectsTest, HairpinInteriorIsNotRejectedByStartTangent)
+{
+  auto trajectory = this->trajectory_;
+  trajectory.points.clear();
+  auto add = [&](double x, double y, double yaw) {
+    TrajectoryPoint point;
+    point.pose.position.x = x;
+    point.pose.position.y = y;
+    point.pose.orientation.z = std::sin(yaw / 2.0);
+    point.pose.orientation.w = std::cos(yaw / 2.0);
+    trajectory.points.push_back(point);
+  };
+  for (int x = 0; x < 10; ++x) add(x, 0, 0);
+  for (int y = 0; y < 10; ++y) add(10, y, M_PI_2);
+  for (int x = 10; x >= -10; --x) add(x, 10, M_PI);
+  const auto object = make_object<TypeParam>(1, -5.0, 10.0);
+  EXPECT_FALSE(should_filter_out_by_longitudinal_distance(trajectory, object));
+}
+
+TYPED_TEST(UpdateObjectsTest, GeometryIsIndependentOfAbsoluteAltitude)
+{
+  auto reference = this->trajectory_;
+  auto object = make_object<TypeParam>(1, 23.0, 3.5);
+  for (auto & point : reference.points) point.pose.position.z = 0.1 * point.pose.position.x;
+  mutable_pose(object).position.z = 2.3;
+  auto bounds = make_review_bounds();
+  bounds.first.clear();
+  for (const auto & [x, y] :
+       std::vector<std::pair<double, double>>{{0.5, 1.0}, {10.0, 1.0}, {20.0, 5.0}, {29.5, 5.0}}) {
+    bounds.first.push_back(lanelet::Point2d(lanelet::utils::getId(), {x, y, 0.0}));
+  }
+  const bool lateral = should_filter_out_by_lateral_distance(bounds, reference, object);
+  EXPECT_FALSE(lateral);
+  const bool longitudinal = should_filter_out_by_longitudinal_distance(reference, object);
+  const bool aligned = should_filter_out_on_trajectory_object(reference, object);
+  for (auto & point : reference.points) point.pose.position.z += 100.0;
+  mutable_pose(object).position.z += 100.0;
+  EXPECT_EQ(lateral, should_filter_out_by_lateral_distance(bounds, reference, object));
+  EXPECT_EQ(longitudinal, should_filter_out_by_longitudinal_distance(reference, object));
+  EXPECT_EQ(aligned, should_filter_out_on_trajectory_object(reference, object));
+}
+
+TYPED_TEST(UpdateObjectsTest, RearEdgeOrderingDoesNotDependOnHeadingSign)
+{
+  const auto forward = make_object<TypeParam>(1, 15.0, 2.0);
+  const auto reverse =
+    make_object<TypeParam>(1, 15.0, 2.0, 0.0, ObjectClassification::CAR, 1.0F, M_PI);
+  EXPECT_EQ(
+    should_filter_out_on_trajectory_object(this->trajectory_, forward),
+    should_filter_out_on_trajectory_object(this->trajectory_, reverse));
+}
+
+TYPED_TEST(UpdateObjectsTest, AlignmentUsesSpatialRatherThanInputSampleSpacing)
+{
+  auto arc = [](const int count) {
+    Trajectory trajectory;
+    trajectory.header.frame_id = "map";
+    for (int i = 0; i < count; ++i) {
+      const double theta = -0.2 + 0.4 * i / (count - 1);
+      TrajectoryPoint point;
+      point.pose.position.x = 5.0 * std::sin(theta);
+      point.pose.position.y = 5.0 * (1.0 - std::cos(theta));
+      point.pose.orientation.z = std::sin(theta / 2.0);
+      point.pose.orientation.w = std::cos(theta / 2.0);
+      trajectory.points.push_back(point);
+    }
+    return trajectory;
+  };
+  const auto object = make_object<TypeParam>(1, 6.0, 1.0);
+  EXPECT_EQ(
+    should_filter_out_on_trajectory_object(arc(4), object),
+    should_filter_out_on_trajectory_object(arc(41), object));
+}
+
+TYPED_TEST(UpdateObjectsTest, NegativeClassificationEvidenceUpdatesExistingTrack)
+{
+  typename TestFixture::Selector selector;
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 5.0)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  ASSERT_EQ(selector.evaluate(objects, {}).avoidance_targets.objects.size(), 1U);
+  objects.objects.front().classification.front().label = ObjectClassification::PEDESTRIAN;
+  for (int tick = 1; tick <= 9; ++tick) {
+    objects.header.stamp = make_time(0, tick * 100000000);
+    selector.update_objects(
+      make_time(0, tick * 100000000), objects, this->trajectory_, route_handler());
+  }
+  const auto result = selector.evaluate(objects, {});
+  EXPECT_TRUE(result.avoidance_targets.objects.empty());
+  ASSERT_EQ(result.decisions.size(), 1U);
+  EXPECT_LT(result.decisions.front().interest_probability, 0.5);
+}
+
+TYPED_TEST(UpdateObjectsTest, OutOfOrderAndFutureMeasurementsAreExplicitlyRejected)
+{
+  typename TestFixture::Selector selector;
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 5.0)});
+  objects.header.stamp = make_time(1);
+  selector.update_objects(make_time(1), objects, this->trajectory_, route_handler());
+  objects.header.stamp = make_time(0, 900000000);
+  selector.update_objects(make_time(1, 100000000), objects, this->trajectory_, route_handler());
+  EXPECT_EQ(selector.status(), SelectionStatus::out_of_order_objects);
+  objects.header.stamp = make_time(3);
+  selector.update_objects(make_time(1, 200000000), objects, this->trajectory_, route_handler());
+  EXPECT_EQ(selector.status(), SelectionStatus::future_objects);
+}
+
+TYPED_TEST(UpdateObjectsTest, ClockResetDiscardsPreviousHistory)
+{
+  typename TestFixture::Selector selector;
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 0.0, 2.0)});
+  objects.header.stamp = make_time(10);
+  selector.update_objects(make_time(10), objects, this->trajectory_, route_handler());
+  objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, -2.5)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  EXPECT_EQ(selector.evaluate(objects, {}).avoidance_targets.objects.size(), 1U);
+}
+
+TYPED_TEST(UpdateObjectsTest, InvalidObjectsAndFramesAreNotReportedAsEmptySafeScenes)
+{
+  typename TestFixture::Selector selector;
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 5.0)});
+  objects.objects.front().shape.dimensions.x = std::numeric_limits<double>::quiet_NaN();
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  EXPECT_EQ(selector.evaluate(objects, {}).status, SelectionStatus::invalid_objects);
+  objects.header.frame_id = "base_link";
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  EXPECT_EQ(selector.status(), SelectionStatus::frame_mismatch);
+}
+
+TYPED_TEST(UpdateObjectsTest, DrivingAlongExitIsBoundedWhileObjectKeepsMoving)
+{
+  typename TestFixture::Selector selector;
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, 2.6, 2.0)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  ASSERT_EQ(selector.get_driving_along_vehicles(objects).objects.size(), 1U);
+  mutable_pose(objects.objects.front()).position.y = 10.0;
+  for (int tick = 1; tick <= 51; ++tick) {
+    const auto time = make_time(tick / 10, (tick % 10) * 100000000);
+    objects.header.stamp = time;
+    selector.update_objects(time, objects, this->trajectory_, route_handler());
+    if (tick == 50) {
+      EXPECT_EQ(selector.get_driving_along_vehicles(objects).objects.size(), 1U);
+    }
+  }
+  EXPECT_TRUE(selector.get_driving_along_vehicles(objects).objects.empty());
+}
+
+TYPED_TEST(UpdateObjectsTest, RecentlyMovingVehicleMustWaitBeforeBecomingParked)
+{
+  typename TestFixture::Selector selector;
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, -2.5, 2.0)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  mutable_twist(objects.objects.front()).linear.x = 0.0;
+  for (int tick = 1; tick <= 55; ++tick) {
+    const auto time = make_time(tick / 10, (tick % 10) * 100000000);
+    objects.header.stamp = time;
+    selector.update_objects(time, objects, this->trajectory_, route_handler());
+    if (tick < 55) {
+      EXPECT_TRUE(selector.evaluate(objects, {}).avoidance_targets.objects.empty());
+    }
+  }
+  EXPECT_EQ(selector.evaluate(objects, {}).avoidance_targets.objects.size(), 1U);
+}
+
+TYPED_TEST(UpdateObjectsTest, ReappearingUuidDoesNotReviveExpiredMotionHistory)
+{
+  typename TestFixture::Selector selector;
+  auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, -2.5, 2.0)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  mutable_twist(objects.objects.front()).linear.x = 0.0;
+  objects.header.stamp = make_time(2);
+  selector.update_objects(make_time(2), objects, this->trajectory_, route_handler());
+  EXPECT_EQ(selector.evaluate(objects, {}).avoidance_targets.objects.size(), 1U);
+}
+
+TYPED_TEST(UpdateObjectsTest, UnrelatedCrossingLaneDoesNotHideParkedVehicle)
+{
+  auto handler = make_route_handler();
+  auto bound = [](const double x) {
+    return lanelet::LineString3d{
+      lanelet::utils::getId(),
+      {lanelet::Point3d{lanelet::utils::getId(), x, 2.0, 0.0},
+       lanelet::Point3d{lanelet::utils::getId(), x, 8.0, 0.0}}};
+  };
+  lanelet::Lanelet crossing{lanelet::utils::getId(), bound(14.0), bound(16.0)};
+  crossing.setAttribute(lanelet::AttributeName::Subtype, lanelet::AttributeValueString::Road);
+  handler->getRouteMap()->add(crossing);
+  typename TestFixture::Selector selector;
+  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, -2.5)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, *handler);
+  const auto result = selector.evaluate(objects, {});
+  ASSERT_EQ(result.avoidance_targets.objects.size(), 1U);
+  ASSERT_TRUE(result.decisions.front().lane_center_offset_m);
+  EXPECT_DOUBLE_EQ(*result.decisions.front().lane_center_offset_m, 2.5);
+}
+
+TYPED_TEST(UpdateObjectsTest, EnvelopePreservesObjectsOutsideRouteAndFutureCreepingConflicts)
+{
+  typename TestFixture::Selector selector;
+  const auto objects = make_objects<TypeParam>(
+    {make_object<TypeParam>(1, 5.0, -8.0, 0.2, ObjectClassification::CAR, 1.0F, M_PI_2)});
+  const auto trajectory = make_timed_filter_trajectory();
+  selector.update_objects(make_time(0), objects, trajectory, route_handler());
+  EXPECT_TRUE(selector.evaluate(objects, make_review_bounds()).avoidance_targets.objects.empty());
+  EXPECT_TRUE(selector.evaluate(objects, make_review_bounds(), SelectionGeometryParams{2.0})
+                .avoidance_targets.objects.empty());
+  EXPECT_EQ(
+    selector.evaluate(objects, make_review_bounds(), SelectionGeometryParams{2.0, 20.0})
+      .avoidance_targets.objects.size(),
+    1U);
+}
+
+TYPED_TEST(UpdateObjectsTest, SuppliedPathAdmissionSurvivesEnvelopeWithoutChangingOwnership)
+{
+  typename TestFixture::Selector selector;
+  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 5.0, -8.0)});
+  const auto trajectory = make_timed_filter_trajectory();
+  selector.update_objects(make_time(0), objects, trajectory, route_handler());
+
+  SelectionGeometryParams geometry{2.0};
+  EXPECT_TRUE(selector.evaluate(objects, {}, geometry).avoidance_targets.objects.empty());
+  geometry.predicted_path_target_ids.push_back(objects.objects.front().object_id.uuid);
+  const auto selected = selector.evaluate(objects, {}, geometry);
+  ASSERT_EQ(selected.avoidance_targets.objects.size(), 1U);
+  EXPECT_EQ(selected.decisions.front().disposition, ObjectDisposition::avoidance);
+
+  // A prediction cannot promote a lane-centred vehicle into the parked-vehicle class.
+  auto lane_objects = make_objects<TypeParam>({make_object<TypeParam>(2, 5.0, 0.0)});
+  lane_objects.header.stamp = make_time(1);
+  selector.update_objects(make_time(1), lane_objects, trajectory, route_handler());
+  geometry.predicted_path_target_ids = {lane_objects.objects.front().object_id.uuid};
+  const auto lane_result = selector.evaluate(lane_objects, {}, geometry);
+  EXPECT_TRUE(lane_result.avoidance_targets.objects.empty());
+  ASSERT_EQ(lane_result.decisions.size(), 1U);
+  EXPECT_EQ(lane_result.decisions.front().disposition, ObjectDisposition::yield);
+}
+
+TYPED_TEST(UpdateObjectsTest, InvalidNonemptyRouteBoundsHaveExplicitStatus)
+{
+  typename TestFixture::Selector selector;
+  const auto objects = make_objects<TypeParam>({make_object<TypeParam>(1, 15.0, -2.5)});
+  selector.update_objects(make_time(0), objects, this->trajectory_, route_handler());
+  auto bounds = make_review_bounds();
+  bounds.second.clear();
+  EXPECT_EQ(selector.evaluate(objects, bounds).status, SelectionStatus::invalid_route_bounds);
+  // MPPI's envelope deliberately replaces route-bound pruning.
+  EXPECT_EQ(
+    selector.evaluate(objects, bounds, SelectionGeometryParams{6.9}).status,
+    SelectionStatus::ready);
 }
 
 }  // namespace

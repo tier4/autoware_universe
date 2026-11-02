@@ -192,7 +192,6 @@ protected:
     options.enable_iteration_rollout_debug = false;
     options.force_cold_start_each_step = false;
     options.use_last_control_as_nominal = false;
-    options.use_temporal_mpt_as_nominal = false;
     options.skip_if_invalid = false;
     interface_->setRuntimeOptions(options);
   }

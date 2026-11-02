@@ -40,6 +40,8 @@ struct FirstOrderDubinsMppiRuntimeOptions
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{true};
+  /** 1 checks post-step poses only; >1 also interpolates ego and obstacles between them. */
+  int validation_interpolation_substeps{1};
   /** Skip optimization for stopping trajectories shorter than this arc length in meters. */
   float min_optimization_length{0.0F};
   /** Hold the last accepted steering command while the reference is no longer than this. */
@@ -49,8 +51,7 @@ struct FirstOrderDubinsMppiRuntimeOptions
    * meters from its first path projection. Zero disables minimum-progress validation.
    */
   float min_trajectory_progress_m{0.0F};
-  /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle).
-   *  Ignored when use_temporal_mpt_as_nominal is true (t-MPT uses its own shifted solution). */
+  /** Warm-start u_nom from shifted previous optimized controls (else reseed from DP each cycle). */
   bool use_last_control_as_nominal{true};
   /**
    * Maximum difference between nominal steer u[0] and the predicted steering when it reaches the
@@ -75,12 +76,6 @@ struct FirstOrderDubinsMppiRuntimeOptions
   float last_control_warm_start_stop_enter_velocity_mps{0.03F};
   /** Leave the stopped state at or above this absolute velocity. */
   float last_control_warm_start_stop_exit_velocity_mps{0.08F};
-  /**
-   * When true (and not forced nominal), seed u_nom from acados temporal MPT
-   * instead of the geometric diffusion seed. Falls back to diffusion seed on solve failure.
-   * t-MPT warm-starts from its own previous x/u shifted one stage, not from MPPI u_opt.
-   */
-  bool use_temporal_mpt_as_nominal{false};
   /** Prevent MPPI rollouts from integrating longitudinal velocity below zero. */
   bool prevent_reverse_velocity{true};
   /**
