@@ -453,7 +453,7 @@ trajectory_modifier_params:
         read_only: false
       reuse_previous_profile:
         type: bool
-        default_value: true
+        default_value: false
         description: Start the cruise profile from the previous plan at the current time instead of the measured ego state, while the ego tracks that plan. Reset thresholds come from velocity_limits.fixed_profile.
         read_only: false
 
