@@ -45,9 +45,10 @@ protected:
   {
     int device_count = 0;
     const cudaError_t error = cudaGetDeviceCount(&device_count);
-    if (error != cudaSuccess || device_count == 0) {
+    if (error == cudaErrorNoDevice || (error == cudaSuccess && device_count == 0)) {
       GTEST_SKIP() << "A CUDA device is required by the MPPI cost object";
     }
+    ASSERT_EQ(error, cudaSuccess) << cudaGetErrorString(error);
     cost_ = std::make_unique<TestCost>();
     cost_->GPUSetup();
   }
@@ -111,6 +112,52 @@ protected:
 };
 
 // Exact eligibility must agree with final validation while keeping the smooth cost.
+TEST(InterpolatedValidation, FindsRoadCrossingBetweenClearEndpointsOnlyWhenEnabled)
+{
+  TestCost cost;
+  TestCostParams params;
+  params.boundary_threshold = 100.0F;
+  params.ego_length = params.ego_width = 0.2F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.road_border_collision_margin = 0.0F;
+  cost.setParams(params);
+  cost.setRoadBorderSegments({{0.0, -2.0, 0.0, 2.0}});
+  std::vector<detail::OptimizedState> states(2);
+  states[0].x = -1.0F;
+  states[1].x = 1.0F;
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(cost, states).isValid());
+  const auto result = detail::validateOptimizedTrajectory(cost, states, 0.0F, 10);
+  EXPECT_TRUE(
+    hasInvalidityReason(result.reasons, FirstOrderDubinsMppiInvalidityReason::road_border));
+  ASSERT_TRUE(result.first_invalid_index);
+  EXPECT_EQ(*result.first_invalid_index, 1U);
+}
+
+TEST(InterpolatedValidation, MovingObjectsUseTheSameFractionalTimeAsEgo)
+{
+  TestCost cost;
+  TestCostParams params;
+  params.boundary_threshold = 100.0F;
+  params.ego_length = params.ego_width = 0.2F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.obstacle_collision_margin = 0.0F;
+  cost.setParams(params);
+  std::array<float, kTestHorizon> x{}, y{}, yaw{};
+  y.fill(2.0F);
+  y.front() = -2.0F;
+  const float half = 0.1F;
+  cost.setOrientedBoxObstacleTrajectories(
+    x.data(), y.data(), yaw.data(), &half, &half, 1, kTestHorizon);
+  std::vector<detail::OptimizedState> states(2);
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(cost, states).isValid());
+  const auto result = detail::validateOptimizedTrajectory(cost, states, 0.0F, 10);
+  EXPECT_TRUE(hasInvalidityReason(result.reasons, FirstOrderDubinsMppiInvalidityReason::obstacle));
+  cost.setDynamicObstacleHorizon(0.1F, 0.1F);
+  EXPECT_TRUE(detail::validateOptimizedTrajectory(cost, states, 0.0F, 10).isValid());
+  cost.setDynamicObstacleHorizon(0.15F, 0.1F);
+  EXPECT_FALSE(detail::validateOptimizedTrajectory(cost, states, 0.0F, 10).isValid());
+}
+
 TEST(ExactCollisionEligibility, ConservativeCircleContactKeepsSeparatedRectangleEligible)
 {
   auto cost = std::make_unique<TestCost>();

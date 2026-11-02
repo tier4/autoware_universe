@@ -29,6 +29,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 struct DistanceMapTextureTestAccess
@@ -185,8 +186,35 @@ __global__ void sampleStaticTextureKernel(
   if (index == 0) {
     const float texture_x = (world_x - grid.origin_x) / grid.resolution;
     const float texture_y = (world_y - grid.origin_y) / grid.resolution;
-    output[0] = tex2D<float2>(texture, texture_x, texture_y);
+    const auto channels = tex2D<float4>(texture, texture_x, texture_y);
+    output[0] = make_float2(channels.x, channels.y);
   }
+}
+
+__global__ void sampleVegetationTextureKernel(
+  const cudaTextureObject_t texture, const DistanceMapTextureGrid grid, const float world_x,
+  const float world_y, float * output)
+{
+  const float texture_x = (world_x - grid.origin_x) / grid.resolution;
+  const float texture_y = (world_y - grid.origin_y) / grid.resolution;
+  output[0] = tex2D<float4>(texture, texture_x, texture_y).z;
+}
+
+__global__ void sampleVegetationCollisionKernel(
+  const TestCost * cost, const float x, const float y, bool * output)
+{
+  output[0] = cost->egoIntersectsVegetation(x, y, 0.0F);
+}
+
+__global__ void sampleVegetationRolloutSafetyKernel(
+  const TestCost * cost, const float x, const float y, bool * output)
+{
+  float drivable_cost = 0.0F;
+  float obstacle_cost = 0.0F;
+  float road_cost = 0.0F;
+  bool unsafe = false;
+  cost->computeGradualCrashCosts(x, y, 0.0F, 0, drivable_cost, obstacle_cost, road_cost, &unsafe);
+  output[0] = unsafe;
 }
 
 __global__ void sampleObstacleTextureKernel(
@@ -352,6 +380,44 @@ float2 sampleStaticTexture(
   return result;
 }
 
+float sampleVegetationTexture(
+  const TestCost & cost, const float world_x, const float world_y, const cudaStream_t stream)
+{
+  DeviceBuffer<float> output(1);
+  sampleVegetationTextureKernel<<<1, 1, 0, stream>>>(
+    cost.texture_state_.static_distance_texture_, cost.texture_state_.static_distance_map_grid_,
+    world_x, world_y, output.get());
+  CUDA_CHECK(cudaGetLastError());
+  float result = 0.0F;
+  output.copyToHost(&result, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  return result;
+}
+
+bool sampleVegetationCollision(
+  const TestCost & cost, const float x, const float y, const cudaStream_t stream)
+{
+  DeviceBuffer<bool> output(1);
+  sampleVegetationCollisionKernel<<<1, 1, 0, stream>>>(cost.cost_d_, x, y, output.get());
+  CUDA_CHECK(cudaGetLastError());
+  bool result = false;
+  output.copyToHost(&result, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  return result;
+}
+
+bool sampleVegetationRolloutSafety(
+  const TestCost & cost, const float x, const float y, const cudaStream_t stream)
+{
+  DeviceBuffer<bool> output(1);
+  sampleVegetationRolloutSafetyKernel<<<1, 1, 0, stream>>>(cost.cost_d_, x, y, output.get());
+  CUDA_CHECK(cudaGetLastError());
+  bool result = false;
+  output.copyToHost(&result, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  return result;
+}
+
 float sampleObstacleTexture(
   const TestCost & cost, const float world_x, const float world_y, const int timestep,
   const cudaStream_t stream)
@@ -407,18 +473,18 @@ float sampleCostDistance(
   return result;
 }
 
-std::vector<float2> copyStaticMap(const TestCost & cost, const cudaStream_t stream)
+std::vector<float4> copyStaticMap(const TestCost & cost, const cudaStream_t stream)
 {
   const DistanceMapTextureGrid & grid = cost.texture_state_.static_distance_map_grid_;
   const std::size_t count = static_cast<std::size_t>(grid.width) * grid.height;
-  PinnedBuffer<float2> host(count);
+  PinnedBuffer<float4> host(count);
   CUDA_CHECK(cudaMemcpy2DFromArrayAsync(
-    host.get(), static_cast<std::size_t>(grid.width) * sizeof(float2),
+    host.get(), static_cast<std::size_t>(grid.width) * sizeof(float4),
     DistanceMapTextureTestAccess::staticArray(cost), 0, 0,
-    static_cast<std::size_t>(grid.width) * sizeof(float2), grid.height, cudaMemcpyDeviceToHost,
+    static_cast<std::size_t>(grid.width) * sizeof(float4), grid.height, cudaMemcpyDeviceToHost,
     stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
-  return std::vector<float2>(host.get(), host.get() + count);
+  return std::vector<float4>(host.get(), host.get() + count);
 }
 
 void fillReference(TestCost & cost, const float offset_x = 0.0F, const float offset_y = 0.0F)
@@ -528,9 +594,10 @@ protected:
   {
     int device_count = 0;
     const cudaError_t error = cudaGetDeviceCount(&device_count);
-    if (error != cudaSuccess || device_count == 0) {
+    if (error == cudaErrorNoDevice || (error == cudaSuccess && device_count == 0)) {
       GTEST_SKIP() << "A CUDA device is required: " << cudaGetErrorString(error);
     }
+    ASSERT_EQ(error, cudaSuccess) << cudaGetErrorString(error);
     stream_ = std::make_unique<CudaStream>();
     cost_ = std::make_unique<TestCost>(stream_->get());
     cost_->GPUSetup();
@@ -615,10 +682,65 @@ TEST_F(DistanceMapGpuTest, EmptyStaticEnvironmentFillsBothChannelsWithEmptyDista
 {
   cost_->clearRoadBorders();
   cost_->clearDrivableAreaSegments();
-  const std::vector<float2> map = copyStaticMap(*cost_, stream());
-  EXPECT_TRUE(std::all_of(map.begin(), map.end(), [](const float2 value) {
+  const std::vector<float4> map = copyStaticMap(*cost_, stream());
+  EXPECT_TRUE(std::all_of(map.begin(), map.end(), [](const float4 value) {
     return value.x == kEmptyDistance && value.y == kEmptyDistance;
   }));
+}
+
+TEST_F(DistanceMapGpuTest, VegetationUsesThirdStaticChannelAndClearsBetweenCycles)
+{
+  const auto road_before = sampleStaticTexture(*cost_, 5.0F, 0.0F, stream());
+  cost_->setVegetationPoints({{5.0F, 0.0F}, {5.0F, 2.0F}});
+  ASSERT_TRUE(cost_->texture_state_.vegetation_texture_valid_);
+  EXPECT_LT(sampleVegetationTexture(*cost_, 5.0F, 0.0F, stream()), 0.22F);
+  EXPECT_NEAR(sampleVegetationTexture(*cost_, 5.0F, 1.0F, stream()), 1.0F, 0.22F);
+  cost_->beginDataUpdate();
+  cost_->setRoadBorderSegments({Segment{-20.0F, 10.0F, 20.0F, 10.0F}});
+  cost_->setDrivableAreaSegments({Segment{-20.0F, -10.0F, 20.0F, -10.0F}});
+  cost_->commitDataUpdate();
+  EXPECT_LT(sampleVegetationTexture(*cost_, 5.0F, 0.0F, stream()), 0.22F);
+  const auto road_after = sampleStaticTexture(*cost_, 5.0F, 0.0F, stream());
+  EXPECT_NE(road_after.x, road_before.x);
+  EXPECT_NE(road_after.y, road_before.y);
+  auto params = cost_->getParams();
+  params.ego_length = 1.0F;
+  params.ego_width = 1.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.vegetation_collision_margin = 0.2F;
+  cost_->setParams(params);
+  EXPECT_TRUE(cost_->egoIntersectsVegetation(5.0F, 0.0F, 0.0F));
+  EXPECT_FALSE(cost_->egoIntersectsVegetation(5.0F, 4.0F, 0.0F));
+  EXPECT_TRUE(sampleVegetationCollision(*cost_, 5.0F, 0.0F, stream()));
+  EXPECT_FALSE(sampleVegetationCollision(*cost_, 5.0F, 4.0F, stream()));
+  cost_->setVegetationPoints({});
+  EXPECT_FALSE(cost_->texture_state_.vegetation_texture_valid_);
+  EXPECT_FALSE(cost_->egoIntersectsVegetation(5.0F, 0.0F, 0.0F));
+  EXPECT_FALSE(sampleVegetationCollision(*cost_, 5.0F, 0.0F, stream()));
+}
+
+TEST_F(DistanceMapGpuTest, VegetationRolloutSafetyMatchesExactFootprintNearClearance)
+{
+  auto params = cost_->getParams();
+  params.ego_length = 1.0F;
+  params.ego_width = 1.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.vegetation_collision_margin = 0.2F;
+  cost_->setParams(params);
+  cost_->setVegetationPoints({{5.0, 0.0}});
+
+  for (const auto & [x, y, expected] : std::array<std::tuple<float, float, bool>, 4>{
+         {{5.0F, 0.69F, true}, {5.0F, 0.8F, false}, {5.8F, 0.8F, false}, {500.0F, 0.0F, false}}}) {
+    EXPECT_EQ(cost_->egoIntersectsVegetation(x, y, 0.0F), expected);
+    EXPECT_EQ(sampleVegetationCollision(*cost_, x, y, stream()), expected);
+    EXPECT_EQ(sampleVegetationRolloutSafety(*cost_, x, y, stream()), expected);
+  }
+
+  cost_->setVegetationPoints({{8.0, 0.0}, {5.0, 0.0}});
+  EXPECT_TRUE(sampleVegetationCollision(*cost_, 8.0F, 0.0F, stream()));
+  cost_->setVegetationPoints({{8.0, 0.0}});
+  EXPECT_FALSE(sampleVegetationCollision(*cost_, 5.0F, 0.0F, stream()));
+  EXPECT_TRUE(sampleVegetationRolloutSafety(*cost_, 8.0F, 0.0F, stream()));
 }
 
 TEST_F(DistanceMapGpuTest, SingleSegmentProducesExpectedDistances)
@@ -925,9 +1047,10 @@ TEST(DistanceMapResourceTest, DestructorReleasesDistanceMapAllocations)
 {
   int device_count = 0;
   const cudaError_t device_error = cudaGetDeviceCount(&device_count);
-  if (device_error != cudaSuccess || device_count == 0) {
+  if (device_error == cudaErrorNoDevice || (device_error == cudaSuccess && device_count == 0)) {
     GTEST_SKIP() << "A CUDA device is required: " << cudaGetErrorString(device_error);
   }
+  ASSERT_EQ(device_error, cudaSuccess) << cudaGetErrorString(device_error);
   CudaStream stream;
   const auto allocate_and_release = [&stream]() {
     TestCost cost(stream.get());

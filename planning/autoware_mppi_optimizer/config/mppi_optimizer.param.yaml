@@ -4,7 +4,7 @@
       enabled: true
       shadow_mode: false
       output_acceleration_state: false
-      output_steering_state: true
+      output_steering_state: false
       # Conditional mode is opt-in; either enabled collision condition activates MPPI.
       optimize_only_on_input_collision: false
       trigger_on_road_border_collision: true
@@ -83,6 +83,11 @@
       obstacle_collision_margin: 0.2
       road_border_collision_margin: 0.2
       obstacle_safe_margin: 0.3
+      use_vegetation_pointcloud: false
+      vegetation_collision_margin: 0.2
+      vegetation_safe_margin: 0.3
+      vegetation_min_height_m: 0.2
+      vegetation_height_buffer_m: 0.2
       road_border_safe_margin: 0.3
       # Hard output validation remains the final collision gate. A 50k soft target strongly
       # separates unsafe rollouts without compressing all normal costs against a 100k outlier.
@@ -106,6 +111,7 @@
       ignore_drivable_area: true
       force_cold_start_each_step: false
       skip_if_invalid: true
+      validation_interpolation_substeps: 1  # >1 adds time-aligned intermediate validation samples
       min_optimization_length: 10.0
       # Hold the last accepted steering command when the remaining reference is very short.
       steering_hold_reference_length_threshold_m: 0.5
@@ -117,8 +123,6 @@
       restart_steer_command_acceleration_lim: 0.5
       restart_velocity_threshold_mps: 0.5
 
-      # Cold-seed u_nom from acados temporal MPT.
-      use_temporal_mpt_as_nominal: false
       use_last_control_as_nominal: true
       use_mpc_predicted_trajectory_as_nominal_steering: false
       mpc_predicted_trajectory_max_age_s: 0.5
@@ -132,12 +136,6 @@
       last_control_warm_start_max_reference_velocity_error_mps: 2.0
       last_control_warm_start_stop_enter_velocity_mps: 0.03
       last_control_warm_start_stop_exit_velocity_mps: 0.08
-
-      # Adapt from preceding filtered steering; retain smoothing in turns and reversals.
-      enable_curvature_adaptive_steering_filter: true
-      steering_filter_alpha_straight: 0.3
-      steering_filter_alpha_turn: 0.5
-      steering_filter_turn_angle_rad: 0.02
 
       # Expensive per-iteration sampled rollout markers.
       enable_iteration_rollout_debug: false

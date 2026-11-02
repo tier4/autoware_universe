@@ -30,7 +30,6 @@
  *     --out-dir "$HOME/.cache/autoware/mppi_open_loop_line_sim" --plot
  */
 
-#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
@@ -66,14 +65,10 @@
 namespace
 {
 
-using autoware::mppi_optimizer::CurvatureAdaptiveSteeringFilter;
-using autoware::mppi_optimizer::CurvatureAdaptiveSteeringFilterParams;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiControl;
-using autoware::mppi_optimizer::FirstOrderDubinsMppiControlSequencePostprocessor;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiCostParams;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiOptimizationResult;
-using autoware::mppi_optimizer::FirstOrderDubinsMppiPostprocessingContext;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiRuntimeOptions;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiVehicleParams;
 using autoware::mppi_optimizer::quaternionFromYaw;
@@ -99,12 +94,6 @@ struct SimPlantState
   std::vector<float> steer_cmd_buffer;
 };
 
-struct SteeringFilterConfig
-{
-  bool enabled{true};
-  CurvatureAdaptiveSteeringFilterParams params{};
-};
-
 void printUsage(const char * argv0)
 {
   std::cerr
@@ -119,7 +108,6 @@ void printUsage(const char * argv0)
        "  --goal-x M           Goal x on the line [m] (default speed * duration)\n"
        "  --y-offset M         Initial lateral offset [m] (default 0.5)\n"
        "  --yaw-offset-deg DEG Initial heading error [deg] (default 0)\n"
-       "  --no-temporal-mpt    Seed u_nom from the geometric reference, not t-MPT\n"
        "  --no-delay           Zero acc/steer dead time in the MPPI plant\n"
        "  --plot               Run the matplotlib plotter after the sim\n"
        "  --help\n";
@@ -160,7 +148,7 @@ std::optional<bool> parseBool(const std::string & value)
 
 void loadParamsYaml(
   const std::string & path, FirstOrderDubinsMppiCostParams & cost,
-  FirstOrderDubinsMppiRuntimeOptions & runtime, SteeringFilterConfig & steering_filter)
+  FirstOrderDubinsMppiRuntimeOptions & runtime)
 {
   std::ifstream in(path);
   if (!in) {
@@ -254,30 +242,13 @@ void loadParamsYaml(
     }
 
     if (const auto flag = parseBool(value)) {
-      if (key == "use_temporal_mpt_as_nominal") {
-        runtime.use_temporal_mpt_as_nominal = *flag;
-      } else if (key == "use_last_control_as_nominal") {
+      if (key == "use_last_control_as_nominal") {
         runtime.use_last_control_as_nominal = *flag;
       } else if (key == "enable_input_delay_compensation") {
         runtime.enable_input_delay_compensation = *flag;
       } else if (key == "prevent_reverse_velocity") {
         runtime.prevent_reverse_velocity = *flag;
-      } else if (key == "enable_curvature_adaptive_steering_filter") {
-        steering_filter.enabled = *flag;
       }
-      continue;
-    }
-
-    if (key == "steering_filter_alpha_straight") {
-      steering_filter.params.alpha_straight = std::stof(value);
-      continue;
-    }
-    if (key == "steering_filter_alpha_turn") {
-      steering_filter.params.alpha_turn = std::stof(value);
-      continue;
-    }
-    if (key == "steering_filter_turn_angle_rad") {
-      steering_filter.params.turn_angle_rad = std::stof(value);
       continue;
     }
 
@@ -604,7 +575,6 @@ int run(int argc, char ** argv)
   bool goal_x_set = false;
   float y_offset = 0.5F;
   float yaw_offset_rad = 0.0F;
-  bool no_temporal_mpt = false;
   bool no_delay = false;
   bool plot = false;
 
@@ -636,8 +606,6 @@ int run(int argc, char ** argv)
     } else if (arg == "--yaw-offset-deg") {
       yaw_offset_rad =
         std::stof(require_value("--yaw-offset-deg")) * static_cast<float>(M_PI) / 180.0F;
-    } else if (arg == "--no-temporal-mpt") {
-      no_temporal_mpt = true;
     } else if (arg == "--no-delay") {
       no_delay = true;
     } else if (arg == "--plot") {
@@ -660,21 +628,19 @@ int run(int argc, char ** argv)
 
   FirstOrderDubinsMppiCostParams cost_params;
   FirstOrderDubinsMppiRuntimeOptions runtime;
-  SteeringFilterConfig steering_filter_config;
   runtime.ignore_obstacles = true;
   runtime.ignore_road_borders = true;
   runtime.ignore_drivable_area = true;
   runtime.force_cold_start_each_step = false;
   runtime.skip_if_invalid = false;
   runtime.min_optimization_length = 0.0F;
-  runtime.use_temporal_mpt_as_nominal = true;
   runtime.use_last_control_as_nominal = true;
   runtime.prevent_reverse_velocity = true;
   runtime.enable_input_delay_compensation = false;
   runtime.enable_debug_trajectory_log = false;
 
   if (!params_yaml.empty()) {
-    loadParamsYaml(params_yaml, cost_params, runtime, steering_filter_config);
+    loadParamsYaml(params_yaml, cost_params, runtime);
     std::cerr << "Loaded params from " << params_yaml << "\n";
   } else {
     std::cerr << "WARNING: no params yaml found; using compiled cost defaults\n";
@@ -684,9 +650,6 @@ int run(int argc, char ** argv)
   runtime.ignore_road_borders = true;
   runtime.ignore_drivable_area = true;
   runtime.enable_debug_trajectory_log = false;
-  if (no_temporal_mpt) {
-    runtime.use_temporal_mpt_as_nominal = false;
-  }
   if (no_delay) {
     runtime.enable_input_delay_compensation = false;
   }
@@ -721,7 +684,6 @@ int run(int argc, char ** argv)
   mppi.setVehicleParams(vehicle);
   mppi.setCostParams(cost_params);
   mppi.setRuntimeOptions(runtime);
-  CurvatureAdaptiveSteeringFilter steering_filter(steering_filter_config.params);
 
   SimPlantState plant;
   plant.x = 0.0F;
@@ -744,14 +706,7 @@ int run(int argc, char ** argv)
   const Trajectory fixed_reference = makeFixedStraightLinePath(goal_x, speed, ref_ds, steps);
   std::cerr << "Straight-line plant sim: steps=" << steps << " dt=" << kDt << " v=" << speed
             << " goal_x=" << goal_x << " y0=" << y_offset
-            << " t-MPT=" << (runtime.use_temporal_mpt_as_nominal ? "on" : "off")
-            << " delay=" << (runtime.enable_input_delay_compensation ? "on" : "off")
-            << " steering_filter=" << (steering_filter_config.enabled ? "on" : "off") << "\n";
-  if (runtime.use_temporal_mpt_as_nominal && runtime.enable_input_delay_compensation) {
-    std::cerr << "NOTE: t-MPT OCP has no delay FIFOs; MPPI shifts its nominal by acc/steer delay "
-                 "steps before seeding u_nom.\n";
-  }
-
+            << " delay=" << (runtime.enable_input_delay_compensation ? "on" : "off") << "\n";
   autoware_perception_msgs::msg::TrackedObjects objects;
   autoware::mppi_optimizer::FirstOrderDubinsMppiKinematicLimits limits;
   const std::size_t reference_points = static_cast<std::size_t>(kHorizon);
@@ -762,48 +717,9 @@ int run(int argc, char ** argv)
     const float s_ego = egoArcLengthOnPath(plant);
     const auto reference =
       sliceReferenceHorizonFromArcLength(fixed_reference, s_ego, ref_ds, reference_points, speed);
-    auto candidate_steering_filter = steering_filter;
-    FirstOrderDubinsMppiControlSequencePostprocessor control_postprocessor;
-    if (steering_filter_config.enabled) {
-      control_postprocessor = [&candidate_steering_filter, measured_steering = plant.steering](
-                                std::vector<FirstOrderDubinsMppiControl> & controls,
-                                const FirstOrderDubinsMppiPostprocessingContext & context) {
-        std::vector<float> steering_commands;
-        steering_commands.reserve(controls.size());
-        for (const auto & control : controls) {
-          steering_commands.push_back(control.steer_cmd);
-        }
-        if (context.short_reference_steering_hold_active && !steering_commands.empty()) {
-          std::fill(
-            steering_commands.begin(), steering_commands.end(),
-            context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, context.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else if (context.standstill_steering_hold_active && !steering_commands.empty()) {
-          steering_commands.front() = context.standstill_steering_hold_command_rad;
-          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, context.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else {
-          candidate_steering_filter.filter(
-            steering_commands, measured_steering, context.preserve_first_steering_command);
-        }
-        for (std::size_t index = 0; index < controls.size(); ++index) {
-          controls[index].steer_cmd = steering_commands[index];
-        }
-      };
-    }
     const auto result = mppi.optimizeTrajectory(
       reference, makeOdometry(plant, sim_t), makeAccel(plant), makeSteering(plant), objects, {}, {},
-      limits, control_postprocessor);
-    if (!result.debug.was_rejected && result.optimized_point_count > 0U) {
-      steering_filter = candidate_steering_filter;
-    } else {
-      steering_filter.reset();
-    }
+      limits);
     if (step == 0) {
       if (!autoware::mppi_optimizer::writeMppiDebugOptimalHorizonCsv(
             horizon_csv, result.debug.optimal_horizon, kDt)) {

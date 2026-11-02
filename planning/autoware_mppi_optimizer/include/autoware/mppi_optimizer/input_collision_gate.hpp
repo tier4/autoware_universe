@@ -36,8 +36,9 @@ struct InputCollisionResult
 {
   bool road_border{false};
   bool static_object{false};
+  bool vegetation{false};
 
-  [[nodiscard]] bool triggered() const { return road_border || static_object; }
+  [[nodiscard]] bool triggered() const { return road_border || static_object || vegetation; }
 };
 
 /**
@@ -49,7 +50,8 @@ struct InputCollisionResult
   const autoware_planning_msgs::msg::Trajectory & trajectory,
   const autoware_perception_msgs::msg::TrackedObjects & static_objects,
   const std::vector<Segment> & road_borders, const FirstOrderDubinsMppiVehicleParams & vehicle,
-  float obstacle_margin, float road_border_margin, InputCollisionConditions conditions);
+  float obstacle_margin, float road_border_margin, InputCollisionConditions conditions,
+  const std::vector<VegetationPoint> & vegetation_points = {}, float vegetation_margin = 0.0F);
 
 }  // namespace autoware::mppi_optimizer
 

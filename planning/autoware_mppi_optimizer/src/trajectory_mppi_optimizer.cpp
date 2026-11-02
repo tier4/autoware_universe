@@ -14,25 +14,30 @@
 
 #include "autoware/mppi_optimizer/trajectory_mppi_optimizer.hpp"
 
-#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_kinematic_limits_conversion.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 #include "autoware/mppi_optimizer/input_collision_gate.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
+#include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
 
+#include <autoware/point_types/types.hpp>
 #include <autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <pluginlib/class_list_macros.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_field.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include <tf2/utils.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <limits>
 #include <memory>
@@ -48,7 +53,90 @@ namespace
 {
 
 using autoware::trajectory_modifier::plugin::ProcessingResult;
+using autoware_planning_msgs::msg::Trajectory;
 using autoware_utils_geometry::Segment2d;
+
+double squared_distance_to_reference(
+  const double x, const double y, const autoware_planning_msgs::msg::Trajectory & trajectory,
+  const std::size_t count)
+{
+  double nearest = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < count; ++i) {
+    const auto & a = trajectory.points[i].pose.position;
+    const auto & b = trajectory.points[std::min(i + 1, count - 1)].pose.position;
+    const double dx = b.x - a.x;
+    const double dy = b.y - a.y;
+    const double length_squared = dx * dx + dy * dy;
+    const double ratio =
+      length_squared > 0.0
+        ? std::clamp(((x - a.x) * dx + (y - a.y) * dy) / length_squared, 0.0, 1.0)
+        : 0.0;
+    const double error_x = x - a.x - ratio * dx;
+    const double error_y = y - a.y - ratio * dy;
+    nearest = std::min(nearest, error_x * error_x + error_y * error_y);
+  }
+  return nearest;
+}
+
+bool has_point_field(
+  const sensor_msgs::msg::PointCloud2 & cloud, const std::string & name, const std::uint8_t type,
+  const std::uint32_t size)
+{
+  return std::any_of(cloud.fields.begin(), cloud.fields.end(), [&](const auto & field) {
+    return field.name == name && field.datatype == type && field.count == 1U &&
+           field.offset <= cloud.point_step && size <= cloud.point_step - field.offset;
+  });
+}
+
+std::vector<VegetationPoint> select_vegetation_points(
+  const sensor_msgs::msg::PointCloud2 & cloud, const Trajectory & trajectory,
+  const Eigen::Affine3d & cloud_to_trajectory, const double minimum_z, const double maximum_z,
+  const double corridor_radius)
+{
+  std::vector<VegetationPoint> result;
+  if (trajectory.points.empty() || cloud.data.empty()) return result;
+  const std::size_t trajectory_count = trajectory.points.size();
+  double minimum_x = std::numeric_limits<double>::infinity();
+  double maximum_x = -minimum_x;
+  double minimum_y = minimum_x;
+  double maximum_y = -minimum_x;
+  for (std::size_t i = 0; i < trajectory_count; ++i) {
+    const auto & point = trajectory.points[i];
+    minimum_x = std::min(minimum_x, point.pose.position.x);
+    maximum_x = std::max(maximum_x, point.pose.position.x);
+    minimum_y = std::min(minimum_y, point.pose.position.y);
+    maximum_y = std::max(maximum_y, point.pose.position.y);
+  }
+  const double radius_squared = corridor_radius * corridor_radius;
+  sensor_msgs::PointCloud2ConstIterator<float> x(cloud, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> y(cloud, "y");
+  sensor_msgs::PointCloud2ConstIterator<float> z(cloud, "z");
+  sensor_msgs::PointCloud2ConstIterator<std::uint8_t> class_id(cloud, "class_id");
+  const auto vegetation_class =
+    static_cast<std::uint8_t>(autoware::point_types::PointCloudClassification::VEGETATION);
+  result.reserve(
+    std::min<std::size_t>(static_cast<std::size_t>(cloud.width) * cloud.height, 4096U));
+  for (; x != x.end(); ++x, ++y, ++z, ++class_id) {
+    if (
+      *class_id != vegetation_class || !std::isfinite(*x) || !std::isfinite(*y) ||
+      !std::isfinite(*z)) {
+      continue;
+    }
+    const Eigen::Vector3d point = cloud_to_trajectory * Eigen::Vector3d(*x, *y, *z);
+    if (
+      point.z() < minimum_z || point.z() > maximum_z || point.x() < minimum_x - corridor_radius ||
+      point.x() > maximum_x + corridor_radius || point.y() < minimum_y - corridor_radius ||
+      point.y() > maximum_y + corridor_radius) {
+      continue;
+    }
+    if (
+      squared_distance_to_reference(point.x(), point.y(), trajectory, trajectory_count) <=
+      radius_squared) {
+      result.push_back({point.x(), point.y()});
+    }
+  }
+  return result;
+}
 
 void validate_cost_parameter_combinations(const trajectory_mppi_optimizer::Params & params)
 {
@@ -67,6 +155,18 @@ void validate_cost_parameter_combinations(const trajectory_mppi_optimizer::Param
     throw std::invalid_argument(
       "mppi_optimizer.road_border_safe_margin must be greater than or equal to "
       "mppi_optimizer.road_border_collision_margin");
+  }
+  if (params.vegetation_safe_margin < params.vegetation_collision_margin) {
+    throw std::invalid_argument(
+      "mppi_optimizer.vegetation_safe_margin must be greater than or equal to "
+      "mppi_optimizer.vegetation_collision_margin");
+  }
+  if (
+    !std::isfinite(params.vegetation_min_height_m) ||
+    !std::isfinite(params.vegetation_height_buffer_m) || params.vegetation_min_height_m < 0.0 ||
+    params.vegetation_height_buffer_m < 0.0) {
+    throw std::invalid_argument(
+      "MPPI vegetation height parameters must be finite and non-negative");
   }
 }
 
@@ -123,6 +223,8 @@ FirstOrderDubinsMppiCostParams make_cost_params(const trajectory_mppi_optimizer:
   output.obstacle_collision_margin = static_cast<float>(params.obstacle_collision_margin);
   output.road_border_collision_margin = static_cast<float>(params.road_border_collision_margin);
   output.obstacle_safe_margin = static_cast<float>(params.obstacle_safe_margin);
+  output.vegetation_collision_margin = static_cast<float>(params.vegetation_collision_margin);
+  output.vegetation_safe_margin = static_cast<float>(params.vegetation_safe_margin);
   output.road_border_safe_margin = static_cast<float>(params.road_border_safe_margin);
   output.drivable_area_safe_margin = static_cast<float>(params.drivable_area_safe_margin);
   output.drivable_area_barrier_weight = static_cast<float>(params.drivable_area_barrier_weight);
@@ -145,6 +247,8 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.ignore_drivable_area = params.ignore_drivable_area;
   output.force_cold_start_each_step = params.force_cold_start_each_step;
   output.skip_if_invalid = params.skip_if_invalid;
+  output.validation_interpolation_substeps =
+    static_cast<int>(params.validation_interpolation_substeps);
   output.min_optimization_length = static_cast<float>(params.min_optimization_length);
   output.steering_hold_reference_length_threshold_m =
     static_cast<float>(params.steering_hold_reference_length_threshold_m);
@@ -170,19 +274,9 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
     static_cast<float>(params.last_control_warm_start_stop_enter_velocity_mps);
   output.last_control_warm_start_stop_exit_velocity_mps =
     static_cast<float>(params.last_control_warm_start_stop_exit_velocity_mps);
-  output.use_temporal_mpt_as_nominal = params.use_temporal_mpt_as_nominal;
   output.prevent_reverse_velocity = params.prevent_reverse_velocity;
   output.enable_input_delay_compensation = params.enable_input_delay_compensation;
   return output;
-}
-
-CurvatureAdaptiveSteeringFilterParams make_steering_filter_params(
-  const trajectory_mppi_optimizer::Params & params)
-{
-  return {
-    static_cast<float>(params.steering_filter_alpha_straight),
-    static_cast<float>(params.steering_filter_alpha_turn),
-    static_cast<float>(params.steering_filter_turn_angle_rad)};
 }
 
 void hold_steering_from(Trajectory & trajectory, const std::size_t first_index, const float command)
@@ -246,8 +340,8 @@ float input_activation_margin(
 
 bool is_input_collision_triggered(
   const Trajectory & input, const TrackedObjects & static_objects,
-  const std::vector<Segment> & road_borders, const std::string & map_frame,
-  const FirstOrderDubinsMppiVehicleParams & vehicle,
+  const std::vector<Segment> & road_borders, const std::vector<VegetationPoint> & vegetation_points,
+  const std::string & map_frame, const FirstOrderDubinsMppiVehicleParams & vehicle,
   const trajectory_mppi_optimizer::Params & params)
 {
   if (!params.trigger_on_road_border_collision && !params.trigger_on_static_object_collision) {
@@ -276,7 +370,11 @@ bool is_input_collision_triggered(
     input_activation_margin(
       params.road_border_collision_margin, params.road_border_safe_margin,
       params.use_soft_margins_for_input_collision),
-    {params.trigger_on_road_border_collision, params.trigger_on_static_object_collision});
+    {params.trigger_on_road_border_collision, params.trigger_on_static_object_collision},
+    vegetation_points,
+    input_activation_margin(
+      params.vegetation_collision_margin, params.vegetation_safe_margin,
+      params.use_soft_margins_for_input_collision));
   return collision.triggered();
 }
 
@@ -385,7 +483,6 @@ void TrajectoryMppiOptimizer::on_initialize(
   params_ = param_listener_->get_params();
   validateFirstOrderDubinsMppiCostParams(make_cost_params(params_));
   map_velocity_limit_overrides_ = make_velocity_limit_overrides(params_);
-  steering_filter_.setParams(make_steering_filter_params(params_));
   declare_first_order_dubins_mppi_vehicle_dynamics_params(*node);
 
   velocity_limit_sub_ =
@@ -423,14 +520,18 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   TrajectoryPoints & trajectory_points,
   autoware::trajectory_modifier::TrajectoryModifierData & data)
 {
+  // Secondary candidates must not consume parameter updates or mutate primary-cycle history.
+  if (data.candidate_index != 0U) {
+    return ProcessingResult::Unchanged;
+  }
   autoware_utils_debug::ScopedTimeTrack st(__func__, *get_time_keeper());
 
+  selection_result_.reset();
   auto updated_params = params_;
   if (param_listener_->try_update_params(updated_params)) {
     try {
       validateFirstOrderDubinsMppiCostParams(make_cost_params(updated_params));
       auto map_overrides = make_velocity_limit_overrides(updated_params);
-      steering_filter_.setParams(make_steering_filter_params(updated_params));
       map_velocity_limit_overrides_ = std::move(map_overrides);
     } catch (const std::exception & error) {
       constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
@@ -443,10 +544,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     params_ = std::move(updated_params);
     reset_optimizer();
   }
-  if (data.candidate_index != 0U) {
-    return ProcessingResult::Unchanged;
-  }
-
   pending_debug_.reset();
   pending_markers_.markers.clear();
   debug_pending_ = false;
@@ -479,16 +576,109 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     Trajectory input;
     input.header = data.candidate_header;
     input.points = trajectory_points;
+    if (!detail::hasMppiTimeStep(input)) {
+      RCLCPP_WARN_THROTTLE(
+        get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+        "MPPI requires input trajectory timestamps spaced by 0.1 s; input times are preserved");
+    }
+
+    std::vector<VegetationPoint> vegetation_points;
+    if (
+      params_.use_vegetation_pointcloud && !params_.ignore_obstacles && data.obstacle_pointcloud) {
+      const auto & cloud = *data.obstacle_pointcloud;
+      constexpr auto float32 = sensor_msgs::msg::PointField::FLOAT32;
+      constexpr auto uint8 = sensor_msgs::msg::PointField::UINT8;
+      const bool contiguous =
+        cloud.point_step > 0U &&
+        static_cast<std::size_t>(cloud.row_step) ==
+          static_cast<std::size_t>(cloud.width) * cloud.point_step &&
+        cloud.data.size() == static_cast<std::size_t>(cloud.row_step) * cloud.height;
+      if (
+        !contiguous || cloud.is_bigendian || !has_point_field(cloud, "x", float32, 4U) ||
+        !has_point_field(cloud, "y", float32, 4U) || !has_point_field(cloud, "z", float32, 4U) ||
+        !has_point_field(cloud, "class_id", uint8, 1U)) {
+        RCLCPP_WARN_THROTTLE(
+          get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+          "MPPI vegetation pointcloud has an unsupported layout or missing class_id field");
+      } else {
+        try {
+          Eigen::Affine3d cloud_to_trajectory = Eigen::Affine3d::Identity();
+          if (cloud.header.frame_id != input.header.frame_id) {
+            const auto transform = context_->tf_buffer.lookupTransform(
+              input.header.frame_id, cloud.header.frame_id, rclcpp::Time{cloud.header.stamp},
+              rclcpp::Duration::from_seconds(0.1));
+            cloud_to_trajectory = tf2::transformToEigen(transform.transform);
+          }
+          const double ego_z = data.current_odometry->pose.pose.position.z;
+          vegetation_points = select_vegetation_points(
+            cloud, input, cloud_to_trajectory, ego_z + params_.vegetation_min_height_m,
+            ego_z + context_->vehicle_info.vehicle_height_m + params_.vegetation_height_buffer_m,
+            vegetation_filter_margin_m_);
+        } catch (const std::exception & error) {
+          RCLCPP_WARN_THROTTLE(
+            get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+            "MPPI vegetation pointcloud unavailable: %s", error.what());
+        }
+      }
+    }
+
+    object_selector_.update_objects(
+      get_node_ptr()->now(), *data.tracked_objects, input, *extended_route_handler_);
+    // A zero-extent reference cannot form selector geometry, but still needs the interface's
+    // measured/latched steering hold. Do not enter the collision gate or GPU optimizer.
+    using autoware::avoidance_target_detector::SelectionStatus;
+    if (
+      detail::hasZeroPlanarExtent(input) &&
+      object_selector_.status() == SelectionStatus::invalid_reference) {
+      selection_result_ = object_selector_.evaluate(*data.tracked_objects, {}, {});
+      ensure_optimizer();
+      const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration =
+        data.current_acceleration ? std::make_optional(*data.current_acceleration) : std::nullopt;
+      const std::optional<autoware_vehicle_msgs::msg::SteeringReport> steering =
+        data.current_steering ? std::make_optional(*data.current_steering) : std::nullopt;
+      const auto result = optimizer_->optimizeTrajectory(
+        input, *data.current_odometry, acceleration, steering, TrackedObjects{}, {}, {});
+      const bool apply_steering_hold = !params_.shadow_mode &&
+                                       result.debug.short_reference_steering_hold_active &&
+                                       !result.trajectory.points.empty();
+      const auto skipped = skip_optimization(
+        diagnostic_msgs::msg::DiagnosticStatus::OK, "MPPI skipped: no planar reference extent",
+        input.header);
+      if (apply_steering_hold) trajectory_points = result.trajectory.points;
+      return apply_steering_hold ? ProcessingResult::Modified : skipped;
+    }
+    const auto & route_bounds = extended_route_handler_->get_extended_route_bounds();
+    autoware::avoidance_target_detector::SelectionGeometryParams selection_geometry{
+      object_filter_margin_m_, object_filter_prediction_extension_s_};
+    if (object_selector_.status() != SelectionStatus::ready) {
+      selection_result_ =
+        object_selector_.evaluate(*data.tracked_objects, route_bounds, selection_geometry);
+      return skip_optimization(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        std::string{"MPPI selector unavailable: "} +
+          autoware::avoidance_target_detector::to_string(selection_result_->status),
+        input.header);
+    }
 
     const bool was_previous_mppi_trajectory_applied = previous_mppi_trajectory_applied_;
-    const auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
+    auto objects_in_range = autoware::avoidance_target_detector::filter_objects_in_range(
       *data.tracked_objects, input, object_filter_margin_m_, object_filter_prediction_extension_s_);
-    object_selector_.update_objects(
-      get_node_ptr()->now(), objects_in_range, input, *extended_route_handler_);
-    auto avoidance_targets = object_selector_.get_avoidance_targets(
-      objects_in_range, input, extended_route_handler_->get_extended_route_bounds());
-    const auto driving_along_targets =
-      object_selector_.get_driving_along_vehicles(objects_in_range);
+    if (data.predicted_objects && !params_.ignore_obstacles) {
+      includePredictedPathTargets(
+        objects_in_range, *data.tracked_objects, *data.predicted_objects, input,
+        object_filter_margin_m_, &selection_geometry.predicted_path_target_ids);
+    }
+    selection_result_ =
+      object_selector_.evaluate(objects_in_range, route_bounds, selection_geometry);
+    if (selection_result_->status != SelectionStatus::ready) {
+      return skip_optimization(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        std::string{"MPPI selector unavailable: "} +
+          autoware::avoidance_target_detector::to_string(selection_result_->status),
+        input.header);
+    }
+    const auto & avoidance_targets = selection_result_->avoidance_targets;
+    const auto & driving_along_targets = selection_result_->driving_along_vehicles;
 
     auto all_targets = avoidance_targets;
     all_targets.objects.insert(
@@ -514,15 +704,20 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       extended_route_handler_->get_road_borders_around_trajectory(input, boundary_query_margin);
     const auto mppi_road_borders = to_mppi_segments(road_borders);
 
-    if (params_.optimize_only_on_input_collision) {
+    const bool reference_eligible =
+      detail::isOptimizationRequired(input, params_.min_optimization_length);
+    if (!reference_eligible || !params_.optimize_only_on_input_collision) {
+      input_collision_activation_hold_.reset();
+    }
+    if (params_.optimize_only_on_input_collision && reference_eligible) {
       if (input.points.size() < 2U) {
         constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         return skip_optimization(
           level, "MPPI input trajectory has fewer than 2 points", input.header);
       }
       const bool collision_triggered = is_input_collision_triggered(
-        input, avoidance_targets, mppi_road_borders, data.lanelet_map_bin->header.frame_id,
-        *vehicle_params_, params_);
+        input, avoidance_targets, mppi_road_borders, vegetation_points,
+        data.lanelet_map_bin->header.frame_id, *vehicle_params_, params_);
       input_collision_activation_source_ = input_collision_activation_hold_.update(
         collision_triggered, get_node_ptr()->now().seconds(),
         params_.min_input_collision_activation_duration_s);
@@ -578,44 +773,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       }
     }
 
-    CurvatureAdaptiveSteeringFilter candidate_steering_filter = steering_filter_;
-    FirstOrderDubinsMppiControlSequencePostprocessor control_postprocessor;
-    const bool filter_candidate =
-      params_.enable_curvature_adaptive_steering_filter && !params_.shadow_mode;
-    if (filter_candidate) {
-      const float measured_steering = steering ? steering->steering_tire_angle : 0.0F;
-      control_postprocessor = [&candidate_steering_filter, measured_steering](
-                                std::vector<FirstOrderDubinsMppiControl> & controls,
-                                const FirstOrderDubinsMppiPostprocessingContext & context) {
-        std::vector<float> steering_commands;
-        steering_commands.reserve(controls.size());
-        for (const auto & control : controls) {
-          steering_commands.push_back(control.steer_cmd);
-        }
-        if (context.short_reference_steering_hold_active && !steering_commands.empty()) {
-          std::fill(
-            steering_commands.begin(), steering_commands.end(),
-            context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, context.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else if (context.standstill_steering_hold_active && !steering_commands.empty()) {
-          steering_commands.front() = context.standstill_steering_hold_command_rad;
-          candidate_steering_filter.seed(context.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, context.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else {
-          candidate_steering_filter.filter(
-            steering_commands, measured_steering, context.preserve_first_steering_command);
-        }
-        for (std::size_t index = 0; index < controls.size(); ++index) {
-          controls[index].steer_cmd = steering_commands[index];
-        }
-      };
-    }
-
     PreferredLaneCenterlineInput preferred_lane_centerline;
     if (params_.preferred_lane_center_coeff > 0.0) {
       if (
@@ -646,9 +803,10 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       params_.output_acceleration_state, params_.output_steering_state};
     auto result = optimizer_->optimizeTrajectory(
       input, *data.current_odometry, acceleration, steering, all_targets, mppi_road_borders,
-      to_mppi_segments(drivable_area), kinematic_limits, control_postprocessor,
+      to_mppi_segments(drivable_area), kinematic_limits, {},
       /*defer_commit=*/true, mpc_predicted_trajectory, preferred_lane_centerline,
-      /*force_optimization=*/params_.optimize_only_on_input_collision, output_options);
+      /*force_optimization=*/false, output_options, vegetation_points,
+      data.predicted_objects ? *data.predicted_objects : PredictedObjects{});
 
     result.debug.previous_mppi_trajectory_applied = was_previous_mppi_trajectory_applied;
     if (mpc_predicted_trajectory) {
@@ -673,47 +831,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     const bool steering_hold_only_applied =
       !params_.shadow_mode && result.debug.short_reference_steering_hold_active &&
       !result.trajectory.points.empty() && !application.output_applied;
-    if (filter_candidate && application.output_applied) {
-      if (application.fallback_applied) {
-        // The interface replaced the optimized result with its longitudinally limited reference.
-        // Filter the fallback that is actually published from the pre-cycle filter state.
-        candidate_steering_filter = steering_filter_;
-        const std::size_t optimized_count =
-          std::min(result.trajectory.points.size(), result.optimized_point_count);
-        std::vector<float> steering_commands;
-        steering_commands.reserve(optimized_count);
-        for (std::size_t index = 0; index < optimized_count; ++index) {
-          steering_commands.push_back(result.trajectory.points[index].front_wheel_angle_rad);
-        }
-        if (result.debug.short_reference_steering_hold_active && !steering_commands.empty()) {
-          std::fill(
-            steering_commands.begin(), steering_commands.end(),
-            result.debug.standstill_steering_hold_command_rad);
-          candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, result.debug.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else if (result.debug.standstill_steering_hold_active && !steering_commands.empty()) {
-          steering_commands.front() = result.debug.standstill_steering_hold_command_rad;
-          candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
-          candidate_steering_filter.filter(
-            steering_commands, result.debug.standstill_steering_hold_command_rad,
-            /*preserve_first_command=*/true);
-        } else {
-          candidate_steering_filter.filter(
-            steering_commands, steering ? steering->steering_tire_angle : 0.0F);
-        }
-        for (std::size_t index = 0; index < optimized_count; ++index) {
-          result.trajectory.points[index].front_wheel_angle_rad = steering_commands[index];
-          result.debug.optimized_trajectory.points[index].front_wheel_angle_rad =
-            steering_commands[index];
-        }
-      }
-    }
-    if (filter_candidate && steering_hold_only_applied) {
-      candidate_steering_filter = steering_filter_;
-      candidate_steering_filter.seed(result.debug.standstill_steering_hold_command_rad);
-    }
     const bool optimized_steering_state_available = output_options.steering_state &&
                                                     result.optimized_point_count > 0U &&
                                                     !result.debug.was_rejected;
@@ -776,19 +893,11 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     } else {
       optimizer_->discardPendingTrajectory();
     }
-    if (filter_candidate && (application.output_applied || steering_hold_only_applied)) {
-      steering_filter_ = std::move(candidate_steering_filter);
-    } else {
-      // Rejected/unfiltered fallbacks and skipped optimization do not execute the candidate's
-      // first command. Re-seed from measured steering when filtered output resumes.
-      steering_filter_.reset();
-    }
     previous_mppi_trajectory_applied_ = application.optimized_trajectory_applied;
     return application.output_applied || steering_hold_only_applied ? ProcessingResult::Modified
                                                                     : ProcessingResult::Unchanged;
   } catch (const std::exception & error) {
     if (optimizer_) optimizer_->invalidateNominalWarmStart();
-    steering_filter_.reset();
     input_collision_activation_hold_.reset();
     input_collision_activation_source_ = InputCollisionActivationSource::none;
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
@@ -808,7 +917,6 @@ void TrajectoryMppiOptimizer::reset_optimizer()
   optimizer_.reset();
   cost_params_.reset();
   vehicle_params_.reset();
-  steering_filter_.reset();
   input_collision_activation_hold_.reset();
   input_collision_activation_source_ = InputCollisionActivationSource::none;
   object_selector_ = autoware::avoidance_target_detector::TrackedObjectSelector{};
@@ -818,7 +926,6 @@ ProcessingResult TrajectoryMppiOptimizer::skip_optimization(
   const std::uint8_t level, const std::string & message, const std_msgs::msg::Header & header)
 {
   if (optimizer_) optimizer_->invalidateNominalWarmStart();
-  steering_filter_.reset();
   input_collision_activation_hold_.reset();
   input_collision_activation_source_ = InputCollisionActivationSource::none;
   publish_enabled(false);
@@ -915,6 +1022,10 @@ void TrajectoryMppiOptimizer::prepare_scene_parameters()
   const double barrier_envelope_radius =
     std::hypot(max_longitudinal_offset, max_lateral_offset) + cost_params.obstacle_safe_margin;
   object_filter_margin_m_ = std::max(collision_envelope_radius, barrier_envelope_radius);
+  vegetation_filter_margin_m_ = std::hypot(max_longitudinal_offset, max_lateral_offset) +
+                                static_cast<double>(cost_params.vegetation_collision_margin) +
+                                static_cast<double>(cost_params.vegetation_safe_margin) +
+                                params_.boundary_threshold + 0.5;
   if (
     params_.optimize_only_on_input_collision && params_.trigger_on_static_object_collision &&
     params_.use_soft_margins_for_input_collision) {
@@ -989,12 +1100,54 @@ void TrajectoryMppiOptimizer::publish_debug_data(const std::string &) const
   debug_pending_ = false;
 }
 
+void TrajectoryMppiOptimizer::append_selector_diagnostics()
+{
+  using autoware::avoidance_target_detector::to_string;
+  cost_diagnostics_->add_key_value(
+    "selector/status",
+    std::string{selection_result_ ? to_string(selection_result_->status) : "not_evaluated"});
+  if (!selection_result_) return;
+  cost_diagnostics_->add_key_value(
+    "selector/avoidance_count", selection_result_->avoidance_targets.objects.size());
+  cost_diagnostics_->add_key_value(
+    "selector/driving_along_count", selection_result_->driving_along_vehicles.objects.size());
+  cost_diagnostics_->add_key_value(
+    "selector/yield_count", selection_result_->yield_targets.objects.size());
+  constexpr char hex[] = "0123456789abcdef";
+  for (const auto & decision : selection_result_->decisions) {
+    std::string id;
+    id.reserve(32);
+    for (const auto byte : decision.object_id) {
+      id.push_back(hex[byte >> 4U]);
+      id.push_back(hex[byte & 0x0fU]);
+    }
+    const auto key = "selector/objects/" + id + "/";
+    cost_diagnostics_->add_key_value(
+      key + "disposition", std::string{to_string(decision.disposition)});
+    cost_diagnostics_->add_key_value(key + "reason", decision.reason);
+    cost_diagnostics_->add_key_value(key + "measurement_age_s", decision.measurement_age_s);
+    cost_diagnostics_->add_key_value(key + "interest_probability", decision.interest_probability);
+    cost_diagnostics_->add_key_value(
+      key + "stationary_probability", decision.stationary_probability);
+    cost_diagnostics_->add_key_value(key + "deviation_probability", decision.deviation_probability);
+    if (decision.lane_center_offset_m) {
+      cost_diagnostics_->add_key_value(
+        key + "lane_center_offset_m", *decision.lane_center_offset_m);
+    }
+    if (decision.trajectory_distance_m) {
+      cost_diagnostics_->add_key_value(
+        key + "trajectory_distance_m", *decision.trajectory_distance_m);
+    }
+  }
+}
+
 void TrajectoryMppiOptimizer::publish_cost_diagnostics(
   const FirstOrderDubinsMppiDebug & debug, const MppiApplicationStatus & application,
   const rclcpp::Time & stamp)
 {
   using diagnostic_msgs::msg::DiagnosticStatus;
   cost_diagnostics_->clear();
+  append_selector_diagnostics();
   if (params_.optimize_only_on_input_collision) {
     cost_diagnostics_->add_key_value(
       "input_collision/activation_source",
@@ -1182,6 +1335,7 @@ void TrajectoryMppiOptimizer::publish_status_diagnostic(
   const std::uint8_t level, const std::string & message, const rclcpp::Time & stamp)
 {
   cost_diagnostics_->clear();
+  append_selector_diagnostics();
   if (params_.optimize_only_on_input_collision) {
     cost_diagnostics_->add_key_value(
       "input_collision/activation_source",

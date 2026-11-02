@@ -506,7 +506,6 @@ void MppiPlanner::ensure_initialized(
   // instead keeps the sampling around a sequence whose head has no deceleration, and with the
   // horizon receding the braking is deferred every cycle until the goal is overshot
   options.use_last_control_as_nominal = false;
-  options.use_temporal_mpt_as_nominal = p.nominal_seed == "temporal_mpt";
   options.enable_input_delay_compensation = p.vehicle.enable_input_delay_compensation;
 
   optimizer.setVehicleParams(vehicle);

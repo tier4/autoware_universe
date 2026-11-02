@@ -19,6 +19,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
@@ -37,9 +38,17 @@
 namespace autoware::mppi_optimizer
 {
 
+using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
+
+/** Trajectory-frame obstacle point retained after semantic, height, and trajectory filtering. */
+struct VegetationPoint
+{
+  double x{0.0};
+  double y{0.0};
+};
 
 /** Open-loop plant replay vs measured ego over elapsed wall time since the previous MPPI cycle. */
 struct FirstOrderDubinsMppiPredictionAccuracy
@@ -83,7 +92,6 @@ struct FirstOrderDubinsMppiOutputOptions
 enum class FirstOrderDubinsMppiNominalSeedSource : std::uint8_t {
   diffusion_reference,
   previous_optimized,
-  temporal_mpt,
   forced,
   mpc_predicted_trajectory
 };
@@ -111,8 +119,6 @@ inline const char * to_string(const FirstOrderDubinsMppiNominalSeedSource source
       return "diffusion_reference";
     case FirstOrderDubinsMppiNominalSeedSource::previous_optimized:
       return "previous_optimized";
-    case FirstOrderDubinsMppiNominalSeedSource::temporal_mpt:
-      return "temporal_mpt";
     case FirstOrderDubinsMppiNominalSeedSource::forced:
       return "forced";
     case FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory:
@@ -645,16 +651,16 @@ public:
    * @brief Track a diffusion-planner reference (poses + velocities) with one MPPI step.
    *
    * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v).
-   * When use_temporal_mpt_as_nominal is set, seeds u_nom from acados t-MPT (self warm-start).
-   * Otherwise seeds from the previous optimized controls when use_last_control_as_nominal is set
+   * Seeds from the previous optimized controls when use_last_control_as_nominal is set
    * (else from the reference trajectory). Returns the MPPI-predicted feasible state rollout.
    *
    * @param input Reference trajectory from the diffusion planner (map frame).
    * @param odometry Current ego odometry in the same frame as the trajectory.
    * @param acceleration Optional ego longitudinal acceleration [m/s^2] in base_link.
    * @param steering_status Optional ego tire steering angle [rad] from vehicle status.
-   * @param tracked_objects Perception tracked objects used as dynamic obstacles
-   * (constant-velocity).
+   * @param tracked_objects Selected objects; supplied predictions are associated by UUID.
+   * @param predicted_objects Highest-confidence paths (including ties); missing paths fall back
+   *        to constant longitudinal velocity. No message-age offset is applied.
    * @param road_borders Static road-border segments used by the gradual optimizer cost and hard
    *        output validator.
    * @param drivable_area Static drivable-area boundary segments used as a gradual constraint.
@@ -673,8 +679,7 @@ public:
    * @param preferred_lane_centerline Optional map-frame preferred route centerline segments.
    *        Empty input clears this objective for the call; invalid/oversized input disables it
    *        with a debug status. It never replaces the diffusion-reference corridor.
-   * @param force_optimization Bypass the minimum stopping-reference length after a collision
-   *        trigger. Trajectories with fewer than two points still cannot be optimized.
+   * @param force_optimization Deprecated, ignored. Activation never bypasses reference eligibility.
    * @param output_options Select predicted actuator states instead of issued commands in the
    *        optimized prefix. Velocity is always taken from the predicted state.
    * @throws std::length_error If non-ignored scene geometry exceeds GPU/validator capacity.
@@ -690,7 +695,9 @@ public:
     bool defer_commit = false,
     const std::optional<Trajectory> & mpc_predicted_trajectory = std::nullopt,
     const PreferredLaneCenterlineInput & preferred_lane_centerline = {},
-    bool force_optimization = false, const FirstOrderDubinsMppiOutputOptions & output_options = {});
+    bool force_optimization = false, const FirstOrderDubinsMppiOutputOptions & output_options = {},
+    const std::vector<VegetationPoint> & vegetation_points = {},
+    const PredictedObjects & predicted_objects = PredictedObjects{});
 
   /** Commit the most recent deferred, non-rejected candidate only after accepting its output.
    * This records an assumed first actuator command, not feedback from the downstream controller.

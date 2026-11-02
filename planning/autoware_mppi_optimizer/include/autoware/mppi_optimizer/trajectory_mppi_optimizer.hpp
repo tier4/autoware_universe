@@ -15,7 +15,6 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 
-#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/input_collision_activation_hold.hpp"
 #include "autoware/mppi_optimizer/mppi_application_status.hpp"
@@ -99,6 +98,9 @@ private:
   /** @brief Publishes whether an optimized MPPI trajectory replaced the primary candidate. */
   void publish_enabled(bool applied) const;
 
+  /** @brief Appends selector status and per-object reasons to the current diagnostics. */
+  void append_selector_diagnostics();
+
   /** @brief Publishes the MPPI cost breakdown and result status. */
   void publish_cost_diagnostics(
     const FirstOrderDubinsMppiDebug & debug, const MppiApplicationStatus & application,
@@ -130,16 +132,19 @@ private:
   std::unique_ptr<FirstOrderDubinsMppiInterface> optimizer_;
   std::optional<FirstOrderDubinsMppiCostParams> cost_params_;
   std::optional<FirstOrderDubinsMppiVehicleParams> vehicle_params_;
-  CurvatureAdaptiveSteeringFilter steering_filter_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
+  std::optional<autoware::avoidance_target_detector::ObjectSelectionResult<
+    autoware_perception_msgs::msg::TrackedObjects>>
+    selection_result_;
   autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr current_map_;
   std::optional<unique_identifier_msgs::msg::UUID> current_route_uuid_;
   std::vector<autoware_planning_msgs::msg::LaneletSegment> current_route_segments_;
   PreferredLaneCenterlineSelector preferred_lane_selector_;
   double preferred_lane_max_acceleration_{0.0};
   double object_filter_margin_m_{0.0};
+  double vegetation_filter_margin_m_{0.0};
   double object_filter_prediction_extension_s_{0.0};
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     map_velocity_limit_overrides_;
