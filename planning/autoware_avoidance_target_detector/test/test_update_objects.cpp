@@ -14,8 +14,6 @@
 
 #include "autoware/avoidance_target_detector/object_filtering.hpp"
 
-#include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_planning_msgs/msg/lanelet_primitive.hpp>
@@ -272,14 +270,8 @@ std::shared_ptr<ExtendedRouteHandler> make_route_handler()
     route.segments.push_back(segment);
   }
 
-  LaneletMapBin map_msg;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  lanelet::utils::conversion::toBinMsg(map, &map_msg);
-#pragma GCC diagnostic pop
-  map_msg.header.frame_id = "map";
-
-  auto handler = std::make_shared<ExtendedRouteHandler>(map_msg, route);
+  auto map_context = std::make_shared<ExtendedMapContext>(map);
+  auto handler = std::make_shared<ExtendedRouteHandler>(map_context, route);
   handler->create_map();
   return handler;
 }

@@ -23,9 +23,11 @@
 #include <gtest/gtest.h>
 #include <lanelet2_core/Attribute.h>
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
+#include <lanelet2_core/primitives/RegulatoryElement.h>
 
 #include <array>
 #include <cstddef>
@@ -191,14 +193,14 @@ protected:
     source_map_ = make_map();
     route_ = make_route();
 
-    LaneletMapBin map_msg;
+    map_bin_ = std::make_shared<LaneletMapBin>();
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    lanelet::utils::conversion::toBinMsg(source_map_, &map_msg);
+    lanelet::utils::conversion::toBinMsg(source_map_, map_bin_.get());
 #pragma GCC diagnostic pop
-    map_msg.header.frame_id = "map";
+    map_bin_->header.frame_id = "map";
 
-    handler_ = std::make_shared<ExtendedRouteHandler>(map_msg, route_);
+    handler_ = std::make_shared<ExtendedRouteHandler>(*map_bin_, route_);
     handler_->create_map();
 
     // create_map() intentionally selects only route primitives. Add the disconnected source
@@ -224,9 +226,107 @@ protected:
   }
 
   lanelet::LaneletMapPtr source_map_;
+  std::shared_ptr<LaneletMapBin> map_bin_;
   LaneletRoute route_;
   std::shared_ptr<ExtendedRouteHandler> handler_;
 };
+
+TEST_F(ExtendedRouteHandlerTest, CacheSharesVelocityDataAndUpgradesForMppi)
+{
+  ExtendedRouteCache cache;
+  const auto velocity_handler = cache.get_or_create(source_map_, map_bin_, route_, false);
+  ASSERT_NE(velocity_handler, nullptr);
+  EXPECT_EQ(velocity_handler->getOriginalMap(), source_map_);
+  EXPECT_EQ(
+    velocity_handler->getExtendedRoutingGraph(),
+    cache.get_or_create(source_map_, map_bin_, route_, false)->getExtendedRoutingGraph());
+  EXPECT_EQ(velocity_handler->getRouteMapRoutingGraph(), nullptr);
+  EXPECT_TRUE(velocity_handler->get_original_route_bounds().first.empty());
+
+  const auto limit = velocity_handler->get_velocity_limit(make_point(15.0, -2.0));
+  ASSERT_TRUE(limit);
+  EXPECT_DOUBLE_EQ(*limit, k_low_speed_mps);
+
+  const auto full_handler = cache.get_or_create(source_map_, map_bin_, route_, true);
+  EXPECT_EQ(full_handler, velocity_handler);
+  ASSERT_NE(full_handler->getRouteMapRoutingGraph(), nullptr);
+  const auto & bounds = full_handler->get_extended_route_bounds();
+  ASSERT_FALSE(bounds.first.empty());
+  ASSERT_FALSE(bounds.second.empty());
+  EXPECT_EQ(bounds.first.size(), handler_->get_extended_route_bounds().first.size());
+  EXPECT_EQ(bounds.second.size(), handler_->get_extended_route_bounds().second.size());
+  EXPECT_EQ(cache.get_or_create(source_map_, map_bin_, route_, true), full_handler);
+}
+
+TEST_F(ExtendedRouteHandlerTest, CacheRebuildsChangedRouteWithSameUuid)
+{
+  ExtendedRouteCache cache;
+  const auto first = cache.get_or_create(source_map_, map_bin_, route_, false);
+  auto republished = route_;
+  republished.header.stamp.sec = 1;
+  EXPECT_EQ(cache.get_or_create(source_map_, map_bin_, republished, false), first);
+
+  auto changed = route_;
+  changed.segments.pop_back();
+  const auto second = cache.get_or_create(source_map_, map_bin_, changed, false);
+  ASSERT_NE(second, first);
+  EXPECT_EQ(second->getExtendedRoutingGraph(), first->getExtendedRoutingGraph());
+  EXPECT_FALSE(second->getRouteMap()->laneletLayer.exists(k_main_ids[2]));
+  EXPECT_TRUE(first->getRouteMap()->laneletLayer.exists(k_main_ids[2]));
+}
+
+TEST_F(ExtendedRouteHandlerTest, CacheRebuildsWhenMapChanges)
+{
+  ExtendedRouteCache cache;
+  const auto first = cache.get_or_create(source_map_, map_bin_, route_, false);
+
+  auto next_map = make_map();
+  next_map->laneletLayer.get(k_main_ids[0]).setAttribute("speed_limit", "36");
+  auto next_bin = std::make_shared<LaneletMapBin>();
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  lanelet::utils::conversion::toBinMsg(next_map, next_bin.get());
+#pragma GCC diagnostic pop
+  const auto second = cache.get_or_create(next_map, next_bin, route_, false);
+  ASSERT_NE(second, first);
+  EXPECT_NE(second->getExtendedRoutingGraph(), first->getExtendedRoutingGraph());
+  const auto limit = second->get_velocity_limit(make_point(5.0, 0.0));
+  ASSERT_TRUE(limit);
+  EXPECT_DOUBLE_EQ(*limit, 10.0);
+}
+
+TEST_F(ExtendedRouteHandlerTest, CacheAcceptsBinaryMapWhenDecodedMapIsUnavailable)
+{
+  ExtendedRouteCache cache;
+  const auto fast_handler = cache.get_or_create(nullptr, map_bin_, route_, false);
+  ASSERT_NE(fast_handler, nullptr);
+  ASSERT_NE(fast_handler->getOriginalMap(), nullptr);
+  const auto limit = fast_handler->get_velocity_limit(make_point(5.0, 0.0));
+  ASSERT_TRUE(limit);
+  EXPECT_DOUBLE_EQ(*limit, k_road_speed_mps);
+  EXPECT_EQ(cache.get_or_create(nullptr, map_bin_, route_, false), fast_handler);
+  const auto original_handler = fast_handler->getOriginalRouteHandler();
+  ASSERT_NE(original_handler, nullptr);
+  EXPECT_EQ(original_handler->getRouteUuid(), route_.uuid);
+  EXPECT_EQ(fast_handler->getOriginalRouteHandler(), original_handler);
+}
+
+TEST_F(ExtendedRouteHandlerTest, RouteSnapshotKeepsSourceRegulatoryElements)
+{
+  auto lanelet = source_map_->laneletLayer.get(k_main_ids[0]);
+  lanelet::LineString3d light_shape{
+    lanelet::utils::getId(), {lanelet::Point3d(lanelet::utils::getId(), 5.0, 3.0, 2.0)}};
+  lanelet.addRegulatoryElement(
+    lanelet::TrafficLight::make(lanelet::utils::getId(), {}, {light_shape}));
+  ASSERT_EQ(lanelet.regulatoryElements().size(), 1U);
+
+  auto map_context = std::make_shared<ExtendedMapContext>(source_map_);
+  ExtendedRouteHandler fast_handler(map_context, route_);
+  fast_handler.create_map();
+  EXPECT_EQ(source_map_->laneletLayer.get(k_main_ids[0]).regulatoryElements().size(), 1U);
+  EXPECT_TRUE(
+    fast_handler.getRouteMap()->laneletLayer.get(k_main_ids[0]).regulatoryElements().empty());
+}
 
 TEST_F(ExtendedRouteHandlerTest, FindSegmentIndexForLanelet_ValidPrimitives)
 {

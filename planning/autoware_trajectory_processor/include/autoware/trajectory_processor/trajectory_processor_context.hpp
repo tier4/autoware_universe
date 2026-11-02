@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_PROCESSOR_CONTEXT_HPP_
 #define AUTOWARE__TRAJECTORY_PROCESSOR__TRAJECTORY_PROCESSOR_CONTEXT_HPP_
 
+#include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware/agnocast_wrapper/polling_subscriber.hpp>
 #include <autoware/agnocast_wrapper/tf2.hpp>
@@ -132,6 +133,9 @@ struct TrajectoryProcessorContext
       node, "~/input/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local())}
   {
   }
+
+  /// Shared map and route preparation for the map-limit plugin and MPPI.
+  autoware::avoidance_target_detector::ExtendedRouteCache extended_route_cache;
 
   /// @brief Drain the external velocity limit and clear command subscriptions into the shared
   /// state. The agnocast-compatible polling subscribers carry no DDS source timestamp, so when a
