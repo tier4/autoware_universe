@@ -328,7 +328,9 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenMapIsUnavailable)
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
-  validator.validate(res, trajectory, odometry, acceleration, nullptr, vehicle_info_, markers);
+  HazardWarningSources hazard_sources;
+  validator.validate(
+    res, trajectory, odometry, acceleration, nullptr, vehicle_info_, markers, hazard_sources);
 
   EXPECT_TRUE(res.will_cross_uncrossable_bound);
 }
@@ -343,8 +345,10 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryTooShort)
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
+  HazardWarningSources hazard_sources;
   validator.validate(
-    res, trajectory, odometry, acceleration, make_road_border_map(), vehicle_info_, markers);
+    res, trajectory, odometry, acceleration, make_road_border_map(), vehicle_info_, markers,
+    hazard_sources);
 
   EXPECT_TRUE(res.will_cross_uncrossable_bound);
 }
@@ -358,9 +362,10 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryParallelToBoun
   visualization_msgs::msg::MarkerArray markers;
 
   ControlValidatorStatus res;
+  HazardWarningSources hazard_sources;
   validator.validate(
     res, trajectory, make_odometry(trajectory, 10.0, 0.0), acceleration, map, vehicle_info_,
-    markers);
+    markers, hazard_sources);
 
   EXPECT_TRUE(res.will_cross_uncrossable_bound);
 }
@@ -372,24 +377,94 @@ TEST_F(UncrossableBoundDepartureValidatorTest, InvalidWhenTrajectoryDepartsBound
   geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
   visualization_msgs::msg::MarkerArray markers;
   ControlValidatorStatus res;
+  HazardWarningSources hazard_sources;
 
   // Start safe, then steer toward the boundary and keep violating past the ON-time buffer so the
   // hysteresis promotes the departure to CRITICAL.
   const auto safe_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
   validator.validate(
     res, safe_trajectory, make_odometry(safe_trajectory, 10.0, 0.0), acceleration, map,
-    vehicle_info_, markers);
+    vehicle_info_, markers, hazard_sources);
   EXPECT_TRUE(res.will_cross_uncrossable_bound);
 
   const auto danger_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.2);
   for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
     validator.validate(
       res, danger_trajectory, make_odometry(danger_trajectory, 10.0, time_s), acceleration, map,
-      vehicle_info_, markers);
+      vehicle_info_, markers, hazard_sources);
   }
 
   EXPECT_FALSE(res.will_cross_uncrossable_bound);
   EXPECT_FALSE(markers.markers.empty());
+}
+
+TEST_F(UncrossableBoundDepartureValidatorTest, WarningDeparturePositionsAreHandedOverInBaseLink)
+{
+  UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
+  const auto map = make_road_border_map();
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+  visualization_msgs::msg::MarkerArray markers;
+  ControlValidatorStatus res;
+
+  const auto safe_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.0);
+  HazardWarningSources safe_sources;
+  validator.validate(
+    res, safe_trajectory, make_odometry(safe_trajectory, 10.0, 0.0), acceleration, map,
+    vehicle_info_, markers, safe_sources);
+  ASSERT_TRUE(safe_sources.departure.has_value());
+  EXPECT_TRUE(safe_sources.departure->empty());
+  EXPECT_FALSE(safe_sources.collision.has_value());
+
+  const double yaw = 0.2;
+  const auto danger_trajectory = make_trajectory(0.0, -2.5, 10.0, yaw);
+  HazardWarningSources sources;
+  for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
+    sources = HazardWarningSources{};
+    validator.validate(
+      res, danger_trajectory, make_odometry(danger_trajectory, 10.0, time_s), acceleration, map,
+      vehicle_info_, markers, sources);
+  }
+
+  ASSERT_TRUE(sources.departure.has_value());
+  ASSERT_FALSE(sources.departure->empty());
+  const auto & ego = danger_trajectory.points.front().pose.position;
+  for (const auto & source : *sources.departure) {
+    EXPECT_EQ(
+      source.risk_level, params_.uncrossable_bound_departure_validator.departure_risk_level);
+    ASSERT_EQ(source.shape.outer().size(), 1U);
+    const auto & p = source.shape.outer().front();
+    EXPECT_NEAR(ego.y + std::sin(yaw) * p.x() + std::cos(yaw) * p.y(), 2.0, 1e-6);
+  }
+}
+
+TEST_F(
+  UncrossableBoundDepartureValidatorTest, DepartureOnlyWithinTheWarningGateRaisesOnlyTheWarning)
+{
+  UncrossableBoundDepartureValidator validator(node_->get_logger(), params_);
+  const auto map = make_road_border_map();
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration;
+  visualization_msgs::msg::MarkerArray markers;
+
+  const double velocity = 2.0;
+  auto trajectory = make_trajectory(0.0, -2.5, velocity, 0.2);
+  for (size_t i = 0; i < trajectory.points.size(); ++i) {
+    trajectory.points[i].time_from_start =
+      rclcpp::Duration::from_seconds(static_cast<double>(i) * 5.0 / velocity);
+  }
+
+  ControlValidatorStatus res;
+  HazardWarningSources sources;
+  for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
+    res = ControlValidatorStatus{};
+    sources = HazardWarningSources{};
+    validator.validate(
+      res, trajectory, make_odometry(trajectory, velocity, time_s), acceleration, map,
+      vehicle_info_, markers, sources);
+  }
+
+  EXPECT_FALSE(res.will_cross_uncrossable_bound);
+  ASSERT_TRUE(sources.departure.has_value());
+  EXPECT_FALSE(sources.departure->empty());
 }
 
 class VelocityValidatorTest

@@ -16,6 +16,8 @@
     <remap from="~/input/lanelet2_map" to="/map/vector_map"/>
     <remap from="~/input/reference_trajectory" to="$(var input_reference_trajectory)"/>
     <remap from="~/input/predicted_trajectory" to="$(var input_predicted_trajectory)"/>
+    <remap from="~/input/objects" to="/perception/object_recognition/objects"/>
+    <remap from="~/input/pointcloud" to="/perception/obstacle_segmentation/pointcloud"/>
     <remap from="~/output/validation_status" to="~/validation_status"/>
   </node>
 </launch>

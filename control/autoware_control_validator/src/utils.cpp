@@ -185,4 +185,20 @@ double calc_max_lateral_distance(
   return max_dist;
 }
 
+autoware_utils_geometry::Polygon2d transform_polygon_to_base_link(
+  const autoware_utils_geometry::Polygon2d & polygon_map, const Pose & ego_pose)
+{
+  const auto yaw = tf2::getYaw(ego_pose.orientation);
+  const double cos_yaw = std::cos(yaw);
+  const double sin_yaw = std::sin(yaw);
+  autoware_utils_geometry::Polygon2d polygon_base;
+  polygon_base.outer().reserve(polygon_map.outer().size());
+  for (const auto & pt : polygon_map.outer()) {
+    const double dx = pt.x() - ego_pose.position.x;
+    const double dy = pt.y() - ego_pose.position.y;
+    polygon_base.outer().emplace_back(cos_yaw * dx + sin_yaw * dy, -sin_yaw * dx + cos_yaw * dy);
+  }
+  return polygon_base;
+}
+
 }  // namespace autoware::control_validator
