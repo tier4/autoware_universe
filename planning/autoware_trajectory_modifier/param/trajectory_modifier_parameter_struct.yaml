@@ -290,13 +290,14 @@ trajectory_modifier_params:
           bounds<>: [0.0, 10.0]
         read_only: false
       lateral_margin: &base_lateral_margin
-        base: &default_margin {
-          type: double,
-          default_value: 0.1,
-          description: Per-class lateral margin on top of ego width,
-          validation: { bounds<>: [0.0, 10.0] },
-          read_only: false,
-        }
+        base:
+          &default_margin {
+            type: double,
+            default_value: 0.1,
+            description: Per-class lateral margin on top of ego width,
+            validation: { bounds<>: [0.0, 10.0] },
+            read_only: false,
+          }
         car: *default_margin
         truck: *default_margin
         bus: *default_margin
@@ -400,6 +401,48 @@ trajectory_modifier_params:
         description: lookahead horizon for RSS calculation [s]
         validation:
           bounds<>: [0.0, 10.0]
+        read_only: false
+
+    cruise:
+      enable:
+        type: bool
+        default_value: false
+        description: Limit the ego velocity to keep an RSS safe distance from the nearest forward moving object
+        read_only: false
+      min_distance:
+        type: double
+        default_value: 7.0
+        description: Minimum distance to keep from the cruise target, raised to at least stop_margin [m]
+        validation:
+          bounds<>: [0.0, 100.0]
+        read_only: false
+      time_headway:
+        type: double
+        default_value: 1.0
+        description: Time gap to keep from the cruise target; the kept distance is max(min_distance, time_headway * target velocity) [s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
+      ego_decel:
+        type: double
+        default_value: 1.0
+        description: Ego deceleration assumed when computing the cruise velocity, lowered to at most rss_params.ego_decel [m/s^2]
+        validation:
+          bounds<>: [0.1, 10.0]
+        read_only: false
+      max_deceleration:
+        type: double
+        default_value: 1.0
+        description: Maximum deceleration of the cruise velocity profile [m/s^2]
+        validation:
+          bounds<>: [0.1, 10.0]
+        read_only: false
+      max_jerk:
+        type: double
+        default_value: 1.0
+        description: Maximum jerk of the cruise velocity profile [m/s^3]
+        validation:
+          bounds<>: [0.1, 10.0]
         read_only: false
 
   surround_obstacle_stop:

@@ -20,6 +20,7 @@
 #include "safety_planner.hpp"
 #include "type_alias.hpp"
 
+#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_safety_planner/safety_planner_parameters.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
@@ -146,6 +147,11 @@ private:
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_normal_constraints_marker_;
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_cautious_constraints_marker_;
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_candidate_trajectories_;
+
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    normal_planning_factor_interface_;
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    cautious_planning_factor_interface_;
 
   //! Both sides go out in one CandidateTrajectories, each under its own generator_id
   void publish_trajectories(const SafetyPlannerResult & result) const;

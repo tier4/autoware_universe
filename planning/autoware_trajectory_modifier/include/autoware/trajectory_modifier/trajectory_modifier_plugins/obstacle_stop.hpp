@@ -24,6 +24,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +45,7 @@ using autoware_utils_geometry::Polygon2d;
 using sensor_msgs::msg::PointCloud2;
 using utils::obstacle_stop::CollisionPoint;
 using utils::obstacle_stop::DebugData;
+using utils::obstacle_stop::ObjectRssState;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
@@ -71,6 +73,7 @@ private:
   ModifierParams::StoppingConstraints stopping_params_;
 
   std::optional<CollisionPoint> nearest_collision_point_;
+  std::vector<ObjectRssState> object_rss_states_;
 
   DebugData debug_data_;
 
@@ -80,7 +83,17 @@ private:
 
   std::unique_ptr<utils::obstacle_stop::ObstacleTracker> obstacle_tracker_;
 
+  struct CruiseReport
+  {
+    ObjectRssState target;
+    double cruise_velocity{0.0};
+
+    [[nodiscard]] double gap() const { return target.gap; }
+    [[nodiscard]] double target_velocity() const { return target.lon_vel; }
+  };
+
   SafetyFactorArray safety_factors_;
+  std::optional<CruiseReport> cruise_report_;
 
   std::unordered_map<utils::obstacle_stop::ObjectType, double> object_decel_map_;
   utils::obstacle_stop::LateralMarginMap lateral_margin_map_;
@@ -89,11 +102,21 @@ private:
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_filtered_pointcloud_;
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
-  void check_obstacles(const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
-  std::optional<CollisionPoint> check_predicted_objects(
+  void verify_params();
+
+  void reset_cycle();
+  void build_trajectory_shape(
     const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  void detect_objects(const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  std::optional<CollisionPoint> evaluate_object_collision(const TrajectoryPoints & traj_points);
   std::optional<CollisionPoint> check_pointcloud(
     const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  void check_obstacles(
+    const std::optional<CollisionPoint> & collision_point_objects,
+    const std::optional<CollisionPoint> & collision_point_pcd);
+  bool apply_cruise(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  void add_cruise_planning_factor(
+    const CruiseReport & report, const geometry_msgs::msg::Pose & ego_pose);
 
   bool set_stop_point(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 

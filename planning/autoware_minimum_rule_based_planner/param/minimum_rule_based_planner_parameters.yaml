@@ -425,13 +425,14 @@ minimum_rule_based_planner:
         validation:
           bounds<>: [0.0, 10.0]
       lateral_margin: &base_lateral_margin
-        base: &default_margin {
-          type: double,
-          default_value: 0.1,
-          description: Per-class lateral margin on top of ego width,
-          validation: { bounds<>: [0.0, 10.0] },
-          read_only: false,
-        }
+        base:
+          &default_margin {
+            type: double,
+            default_value: 0.1,
+            description: Per-class lateral margin on top of ego width,
+            validation: { bounds<>: [0.0, 10.0] },
+            read_only: false,
+          }
         car: *default_margin
         truck: *default_margin
         bus: *default_margin

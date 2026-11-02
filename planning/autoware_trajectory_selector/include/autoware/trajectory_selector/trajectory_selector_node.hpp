@@ -59,6 +59,9 @@ using trajectory_ranker::RankerInputTrajectory;
 using trajectory_ranker::TrajectorySource;
 using trajectory_validator::ValidationReports;
 
+/** @brief Input that triggers the selector processing cycle. */
+enum class TriggerMode { MAIN, BACKUP };
+
 /**
  * @brief Concatenates candidate trajectories from multiple planners, validates them, ranks them,
  * and publishes the selected planning outputs.
@@ -96,14 +99,18 @@ private:
    * concatenation.
    * @param msg Incoming candidate trajectories message.
    * @warning must be in the same callback group as the timer callback as they both call
-   * on_anchor_trajectories
+   * process_trajectories
    */
   void on_anchor_trajectories(const CandidateTrajectories::ConstSharedPtr msg);
   /**
-   * @brief Forwards incoming candidate trajectories to the concatenator.
+   * @brief Forwards incoming candidate trajectories to the concatenator and triggers the
+   * concatenation in backup trigger mode.
    * @param msg Incoming candidate trajectories message.
    */
   void on_trajectories(const CandidateTrajectories::ConstSharedPtr msg);
+
+  /** @brief Switches to backup trigger mode and processes the buffered trajectories. */
+  void on_fallback_timer();
 
   /**
    * @brief Concatenates buffered trajectories, validates them, ranks them, and publishes the
@@ -133,6 +140,7 @@ private:
   std::unique_ptr<trajectory_ranker::TrajectoryRankerWrapper> ranker_ptr_;
   std::unique_ptr<trajectory_adapter::TrajectoryAdapterWrapper> adapter_ptr_;
   rclcpp::TimerBase::SharedPtr timer_;
+  TriggerMode trigger_mode_{TriggerMode::MAIN};
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   LaneletRoute::ConstSharedPtr route_ptr_;
   std::shared_ptr<route_handler::RouteHandler> route_handler_ptr_;

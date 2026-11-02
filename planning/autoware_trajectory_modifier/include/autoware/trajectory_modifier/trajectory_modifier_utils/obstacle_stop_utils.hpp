@@ -125,7 +125,8 @@ inline static const std::unordered_map<PointCloudClassification, ObjectType>
 
 using ObjectDecelMap = std::unordered_map<ObjectType, double>;
 
-struct LateralMargin {
+struct LateralMargin
+{
   double normal{0.0};
   double low_velocity{0.0};
 };
@@ -216,7 +217,7 @@ struct EgoFootprint
   geometry_msgs::msg::Pose pose;
   size_t traj_index{0};    ///< nearest original trajectory index
   double arc_length{0.0};  ///< arc length from trajectory start to this pose (baselink)
-  double lon_vel{0.0};    ///< target longitudinal velocity along trajectory at this pose
+  double lon_vel{0.0};     ///< target longitudinal velocity along trajectory at this pose
 };
 
 using FootprintNode = std::pair<autoware_utils_geometry::Box2d, size_t>;
@@ -249,6 +250,19 @@ struct TargetObject
   explicit TargetObject(const PredictedObject & object) : object(object) {}
 };
 using TargetObjects = std::vector<TargetObject>;
+
+/// Current (t = 0) longitudinal state of a target object relative to the ego path.
+struct ObjectRssState
+{
+  size_t index{0};  ///< index into the evaluated TargetObjects
+  ObjectType type{ObjectType::UNKNOWN};
+  geometry_msgs::msg::Point nearest_point;  ///< object polygon vertex nearest along the path
+  double arc_length{0.0};         ///< arc length from trajectory start to nearest_point [m]
+  double gap{0.0};                ///< distance from ego front to nearest_point, >= 0 [m]
+  double lon_vel{0.0};            ///< object velocity projected on the path direction [m/s]
+  double stopping_distance{0.0};  ///< object braking distance, 0 if not moving forward [m]
+  bool is_dynamic{false};         ///< |lon_vel| > stopped velocity threshold
+};
 
 struct DebugData
 {
@@ -293,7 +307,8 @@ using QueryResult = std::pair<size_t, Polygon2d>;
  * nearest hit pose frame, or nullopt if none contain the point.
  */
 std::optional<QueryResult> query_overlapping_footprint(
-  const TrajectoryShape & shape, const Point2d & point, const LateralMargin lat_margin, const double traj_low_velocity_th);
+  const TrajectoryShape & shape, const Point2d & point, const LateralMargin lat_margin,
+  const double traj_low_velocity_th);
 
 /**
  * @brief Find the nearest ego footprint that intersects the given object polygon.
@@ -304,7 +319,8 @@ std::optional<QueryResult> query_overlapping_footprint(
  * nearest hit pose frame, or nullopt if none intersect.
  */
 std::optional<QueryResult> query_overlapping_footprint(
-  const TrajectoryShape & shape, const Polygon2d & polygon, const LateralMargin lat_margin, const double traj_low_velocity_th);
+  const TrajectoryShape & shape, const Polygon2d & polygon, const LateralMargin lat_margin,
+  const double traj_low_velocity_th);
 
 /**
  * @brief Find the closest point-cloud obstacle that overlaps an ego footprint.
@@ -322,6 +338,86 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
   const TrajectoryShape & trajectory_shape, const PointCloud::Ptr & pointcloud,
   const LateralMarginMap & lateral_margin_map, const double traj_low_velocity_th,
   std::vector<geometry_msgs::msg::Point> & target_pcd_points);
+
+/**
+ * @brief Predict the object state at time `t` relative to the trajectory.
+ * @details The object pose is taken from its most confident predicted path (falling back to
+ * constant-acceleration extrapolation), and its velocity is projected on the direction of the
+ * nearest trajectory segment.
+ * @param trajectory_points Reference path, at least 2 points.
+ * @param object Predicted object.
+ * @param t Time from now [s].
+ * @return Arc length (clamped to >= 0) and position of the object vertex nearest along the path,
+ * and the object longitudinal velocity along the path.
+ */
+ObjectState get_object_state_at_time(
+  const TrajectoryPoints & trajectory_points, const PredictedObject & object, const double t);
+
+/**
+ * @brief Braking distance of an object moving along the ego path.
+ * @param type Object type used to look up the braking deceleration.
+ * @param lon_vel Object longitudinal velocity along the ego path [m/s].
+ * @param object_decel_map Braking magnitude [m/s^2] per object type.
+ * @param stopped_vel_th Objects with `lon_vel` below this [m/s] have zero braking distance.
+ * @return Braking distance [m], 0 if the object is not moving forward or its type has no
+ * deceleration.
+ */
+double get_object_stopping_distance(
+  const ObjectType type, const double lon_vel, const ObjectDecelMap & object_decel_map,
+  const double stopped_vel_th);
+
+/**
+ * @brief Evaluate the current (t = 0) longitudinal state of each target object.
+ * @details The gap is measured from the ego front, located with the ego arc length and front
+ * offset of `trajectory_shape`, to the object vertex nearest along `trajectory_points`.
+ * @param target_objects Predicted objects to evaluate (already filtered).
+ * @param trajectory_points Reference path used to build `trajectory_shape`.
+ * @param trajectory_shape Ego footprint index from build_trajectory_footprint_index().
+ * @param object_decel_map Braking magnitude [m/s^2] per object type.
+ * @param stopped_vel_th Objects with |lon. velocity| below this [m/s] are considered static.
+ * @return One state per target object, in the same order; empty if inputs are invalid.
+ */
+std::vector<ObjectRssState> evaluate_object_states(
+  const TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
+  const TrajectoryShape & trajectory_shape, const ObjectDecelMap & object_decel_map,
+  const double stopped_vel_th);
+
+/**
+ * @brief RSS longitudinal safe distance between the ego and an object ahead.
+ * @param ego_vel Ego velocity [m/s].
+ * @param ego_decel Magnitude of ego deceleration [m/s^2].
+ * @param object_stopping_distance Object braking distance [m].
+ * @param reaction_time Ego reaction time [s].
+ * @param safety_margin Distance added to the required gap [m].
+ * @return Required gap from ego front to object [m]; may be negative.
+ */
+double get_safe_distance(
+  const double ego_vel, const double ego_decel, const double object_stopping_distance,
+  const double reaction_time, const double safety_margin);
+
+/**
+ * @brief Largest ego velocity whose RSS safe distance does not exceed the current gap.
+ * @details Inverse of get_safe_distance(): solves
+ * `gap = v * reaction_time + v^2 / (2 * ego_decel) - object_stopping_distance + safety_margin`
+ * for the non-negative root `v`.
+ * @param gap Distance from ego front to object [m].
+ * @param ego_decel Magnitude of ego deceleration [m/s^2].
+ * @param object_stopping_distance Object braking distance [m].
+ * @param reaction_time Ego reaction time [s].
+ * @param safety_margin Distance added to the required gap [m].
+ * @return Velocity [m/s], 0 if the gap does not exceed the required standstill distance.
+ */
+double compute_cruise_velocity(
+  const double gap, const double ego_decel, const double object_stopping_distance,
+  const double reaction_time, const double safety_margin);
+
+/**
+ * @brief Select the object to follow: the nearest along the path that moves forward.
+ * @param object_states States from evaluate_object_states().
+ * @return State of the nearest object with `is_dynamic` and positive `lon_vel`, or nullopt.
+ */
+std::optional<ObjectRssState> select_cruise_target(
+  const std::vector<ObjectRssState> & object_states);
 
 /**
  * @brief Find the nearest predicted object that is not longitudinally safe relative to the ego
@@ -369,7 +465,8 @@ struct ObjectFilter
   ObjectFilter(
     const std::vector<std::string> & bbox_object_type_strings,
     const std::vector<std::string> & polygon_object_type_strings, const double stopped_velocity_th,
-    const double max_lateral_velocity_th, const double safety_buffer, const double traj_low_velocity_th)
+    const double max_lateral_velocity_th, const double safety_buffer,
+    const double traj_low_velocity_th)
   : stopped_velocity_th_(stopped_velocity_th),
     max_lateral_velocity_th_(max_lateral_velocity_th),
     safety_buffer_(safety_buffer),
@@ -431,7 +528,8 @@ struct ObjectFilter
   void set_params(
     const std::vector<std::string> & bbox_object_type_strings,
     const std::vector<std::string> & polygon_object_type_strings, const double stopped_velocity_th,
-    const double max_lateral_velocity_th, const double safety_buffer, const double traj_low_velocity_th)
+    const double max_lateral_velocity_th, const double safety_buffer,
+    const double traj_low_velocity_th)
   {
     bbox_object_types_.clear();
     polygon_object_types_.clear();

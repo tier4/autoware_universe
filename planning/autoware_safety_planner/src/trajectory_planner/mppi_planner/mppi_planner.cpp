@@ -16,6 +16,7 @@
 
 #include "../../utils/frenet_utils.hpp"
 #include "../frenet_sampling_based_planner/compiled_constraints_utils.hpp"
+#include "../planning_factors.hpp"
 
 #include <autoware/mppi_optimizer/detail/trajectory_utils.hpp>
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_conversion.hpp>
@@ -241,7 +242,7 @@ TrajectoryPlannerResult MppiPlanner::plan_trajectories(const TrajectoryPlannerIn
   TrajectoryPlannerResult result;
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
-    result.normal_trajectory = plan_one_side(
+    std::tie(result.normal_trajectory, result.normal_planning_factor_data) = plan_one_side(
       *normal_optimizer_, normal_turn_indicator_decider_, input.context, input.normal_constraints,
       result.normal_debug);
   }
@@ -250,18 +251,19 @@ TrajectoryPlannerResult MppiPlanner::plan_trajectories(const TrajectoryPlannerIn
     [](const Constraint & constraint) { return constraint.certainty == Certainty::POSSIBLE; });
   if (cautious_differs) {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
-    result.cautious_trajectory = plan_one_side(
+    std::tie(result.cautious_trajectory, result.cautious_planning_factor_data) = plan_one_side(
       *cautious_optimizer_, cautious_turn_indicator_decider_, input.context,
       input.cautious_constraints, result.cautious_debug);
   } else {
     // Not left empty: the node would publish an ego-only cautious candidate every cycle
     result.cautious_trajectory = result.normal_trajectory;
+    result.cautious_planning_factor_data = result.normal_planning_factor_data;
     result.cautious_debug = result.normal_debug;
   }
   return result;
 }
 
-PlannedTrajectory MppiPlanner::plan_one_side(
+std::pair<PlannedTrajectory, PlanningFactorData> MppiPlanner::plan_one_side(
   MppiInterface & optimizer, TurnIndicatorDecider & turn_indicator_decider,
   const PlannerContext & context, const std::vector<Constraint> & constraints,
   TrajectoryPlannerDebug & debug)
@@ -269,6 +271,8 @@ PlannedTrajectory MppiPlanner::plan_one_side(
   auto compile_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "compile_constraint_list", *time_keeper_);
   const auto compiled_constraints = compile_constraint_list(context, constraints);
+  const auto planning_factor_data =
+    create_planning_factor_data(context, compiled_constraints, kMppiHorizon * kMppiDt);
   compile_st.reset();
   auto reference_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "make_reference_trajectory", *time_keeper_);
@@ -292,7 +296,7 @@ PlannedTrajectory MppiPlanner::plan_one_side(
   }
   autoware_utils_debug::ScopedTimeTrack turn_st("decide_turn_indicators", *time_keeper_);
   const auto turn_indicators = turn_indicator_decider.decide(context, trajectory);
-  return PlannedTrajectory{std::move(trajectory), turn_indicators};
+  return {PlannedTrajectory{std::move(trajectory), turn_indicators}, planning_factor_data};
 }
 
 Trajectory MppiPlanner::make_reference_trajectory(

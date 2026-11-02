@@ -58,6 +58,13 @@ SafetyPlannerNode::SafetyPlannerNode(const rclcpp::NodeOptions & options)
   pub_debug_cautious_constraints_marker_ =
     this->create_publisher<MarkerArray>("~/debug/cautious/constraints", 1);
 
+  normal_planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      this, "safety_planner_normal");
+  cautious_planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      this, "safety_planner_cautious");
+
   debug_processing_time_detail_pub_ =
     this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
       "~/debug/processing_time_detail_ms", 1);
@@ -191,6 +198,8 @@ void SafetyPlannerNode::on_timer()
       planned.error().c_str());
 
     publish_trajectories(SafetyPlannerResult{});
+    normal_planning_factor_interface_->publish();
+    cautious_planning_factor_interface_->publish();
     return;
   }
   const auto & result = planned.value();
@@ -206,8 +215,23 @@ void SafetyPlannerNode::on_timer()
     publish_planner_debug_trajectories(result.debug);
     publish_debug_markers(result.debug);
 
-    // TODO(odashima): publish planning factors?
-    // publish_planning_factors();
+    if (result.normal_planning_factor_data) {
+      normal_planning_factor_interface_->add(
+        result.normal_planning_factor_data->distance,
+        result.normal_planning_factor_data->control_point_pose, PlanningFactor::STOP,
+        result.normal_planning_factor_data->safety_factors, true, 0.0, 0.0,
+        result.normal_planning_factor_data->detail);
+      normal_planning_factor_interface_->publish();
+    }
+
+    if (result.cautious_planning_factor_data) {
+      cautious_planning_factor_interface_->add(
+        result.cautious_planning_factor_data->distance,
+        result.cautious_planning_factor_data->control_point_pose, PlanningFactor::STOP,
+        result.cautious_planning_factor_data->safety_factors, true, 0.0, 0.0,
+        result.cautious_planning_factor_data->detail);
+      cautious_planning_factor_interface_->publish();
+    }
   }
 }
 

@@ -701,6 +701,53 @@
               },
               "required": [],
               "additionalProperties": false
+            },
+            "cruise": {
+              "type": "object",
+              "properties": {
+                "enable": {
+                  "type": "boolean",
+                  "description": "Limit the ego velocity to keep an RSS safe distance from the nearest forward moving object",
+                  "default": false
+                },
+                "min_distance": {
+                  "type": "number",
+                  "description": "Minimum distance to keep from the cruise target, raised to at least stop_margin [m]",
+                  "default": 7,
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "time_headway": {
+                  "type": "number",
+                  "description": "Time gap to keep from the cruise target; the kept distance is max(min_distance, time_headway * target velocity) [s]",
+                  "default": 1,
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "ego_decel": {
+                  "type": "number",
+                  "description": "Ego deceleration assumed when computing the cruise velocity, lowered to at most rss_params.ego_decel [m/s^2]",
+                  "default": 1,
+                  "minimum": 0.1,
+                  "maximum": 10
+                },
+                "max_deceleration": {
+                  "type": "number",
+                  "description": "Maximum deceleration of the cruise velocity profile [m/s^2]",
+                  "default": 1.0,
+                  "minimum": 0.1,
+                  "maximum": 10
+                },
+                "max_jerk": {
+                  "type": "number",
+                  "description": "Maximum jerk of the cruise velocity profile [m/s^3]",
+                  "default": 1.0,
+                  "minimum": 0.1,
+                  "maximum": 10
+                }
+              },
+              "required": [],
+              "additionalProperties": false
             }
           },
           "required": [],
