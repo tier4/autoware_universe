@@ -731,6 +731,13 @@
                   "minimum": 0.1,
                   "maximum": 10
                 },
+                "max_acceleration": {
+                  "type": "number",
+                  "description": "Maximum acceleration of the cruise velocity profile [m/s^2]",
+                  "default": 1.0,
+                  "minimum": 0.0,
+                  "maximum": 10
+                },
                 "max_deceleration": {
                   "type": "number",
                   "description": "Maximum deceleration of the cruise velocity profile [m/s^2]",
@@ -744,6 +751,11 @@
                   "default": 1.0,
                   "minimum": 0.1,
                   "maximum": 10
+                },
+                "reuse_previous_profile": {
+                  "type": "boolean",
+                  "description": "Start the cruise profile from the previous plan at the current time instead of the measured ego state, while the ego tracks that plan. Reset thresholds come from velocity_limits.fixed_profile.",
+                  "default": false
                 }
               },
               "required": [],

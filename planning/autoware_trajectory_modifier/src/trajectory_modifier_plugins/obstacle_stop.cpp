@@ -60,6 +60,8 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   debug_viz_pub_ = node_ptr->create_publisher<visualization_msgs::msg::MarkerArray>(
     "~/obstacle_stop/debug/marker", 1);
   pub_debug_text_ = node_ptr->create_publisher<StringStamped>("~/obstacle_stop/debug/text", 1);
+  cruise_profile_reset_pub_ = node_ptr->create_publisher<StringStamped>(
+    "~/debug/velocity_profile_reset", rclcpp::QoS{10}.reliable().durability_volatile());
 
   params_ = params.obstacle_stop;
   stopping_params_ = params.stopping_constraints;
@@ -67,6 +69,7 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   trajectory_time_step_ = params.trajectory_time_step;
 
   verify_params();
+  configure_cruise_fixed_profile(params);
 
   {
     const auto & p = params_.objects;
@@ -131,6 +134,7 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
   trajectory_time_step_ = params.trajectory_time_step;
 
   verify_params();
+  configure_cruise_fixed_profile(params);
 
   {
     const auto & p = params_.objects;
@@ -207,6 +211,16 @@ void ObstacleStop::verify_params()
       "[TM ObstacleStop] cruise.min_distance (%.2f) is below stop_margin (%.2f), clamping",
       cruise.min_distance, params_.stop_margin);
     cruise.min_distance = params_.stop_margin;
+  }
+}
+
+void ObstacleStop::configure_cruise_fixed_profile(const TrajectoryModifierParams & params)
+{
+  auto fixed = detail::make_fixed_profile_parameters(params);
+  fixed.enable = params.obstacle_stop.cruise.reuse_previous_profile;
+  cruise_fixed_profile_.set_parameters(fixed);
+  if (!enabled_ || !params_.cruise.enable || !fixed.enable) {
+    cruise_fixed_profile_.clear();
   }
 }
 
@@ -301,12 +315,14 @@ bool ObstacleStop::apply_cruise(
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::apply_cruise", *get_time_keeper());
 
+  last_cruise_profile_start_ = detail::ProfileStart::Measured;
   if (!params_.cruise.enable || traj_points.size() < 2 || !input.current_odometry) {
     return false;
   }
 
   const auto target = select_cruise_target(object_rss_states_);
   if (!target) {
+    cruise_fixed_profile_.store(input, TrajectoryPoints{}, {});
     return false;
   }
 
@@ -315,13 +331,36 @@ bool ObstacleStop::apply_cruise(
   const auto v_cruise = compute_cruise_velocity(
     target->gap, cruise.ego_decel, target->stopping_distance, stopping_params_.delay_response_time,
     margin);
+
+  if (v_cruise <= 0) {
+    cruise_fixed_profile_.store(input, TrajectoryPoints{}, {});
+    return false;
+  }
+
   cruise_report_ = CruiseReport{*target, v_cruise};
 
-  const detail::VelocityLimitConstraints constraints{0.0, cruise.max_deceleration, cruise.max_jerk};
+  auto stop_state = detail::make_fixed_profile_stop_state(
+    traj_points, v_cruise <= detail::k_fixed_profile_stop_velocity_threshold_mps);
+  const auto start = cruise_fixed_profile_.start(input, stop_state, traj_points);
+  last_cruise_profile_start_ = start.start;
+  if (detail::is_reset(start.start)) {
+    RCLCPP_DEBUG(
+      get_node_ptr()->get_logger(),
+      "[TM ObstacleStop] Cruise candidate %zu restarted from the measured ego state (%s)",
+      input.candidate_index, detail::to_string(start.start));
+    StringStamped reset;
+    reset.stamp = get_clock()->now();
+    reset.data = "plugin=" + get_name() + " candidate=" + std::to_string(input.candidate_index) +
+                 " reason=" + detail::to_string(start.start);
+    cruise_profile_reset_pub_->publish(reset);
+  }
+
+  const detail::VelocityLimitConstraints constraints{
+    cruise.max_acceleration, cruise.max_deceleration, cruise.max_jerk};
   const auto result = detail::apply_velocity_limits(
     traj_points, constraints,
     [v_cruise](const geometry_msgs::msg::Point &) { return std::optional<double>{v_cruise}; },
-    detail::make_velocity_limit_options(input));
+    start.options);
 
   if (!result.error.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -329,10 +368,12 @@ bool ObstacleStop::apply_cruise(
       "[TM ObstacleStop] Cruise velocity limit failed for candidate %zu: %s", input.candidate_index,
       result.error.c_str());
   }
-  if (result.status != ProcessingResult::Modified) {
-    return false;
+  if (result.status == ProcessingResult::Unchanged && !result.error.empty()) {
+    cruise_fixed_profile_.store(input, TrajectoryPoints{}, stop_state);
+  } else {
+    cruise_fixed_profile_.store(input, traj_points, stop_state);
   }
-  return true;
+  return result.status == ProcessingResult::Modified;
 }
 
 void ObstacleStop::add_cruise_planning_factor(
