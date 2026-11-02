@@ -938,20 +938,14 @@ ProcessingResult TrajectoryMppiOptimizer::skip_optimization(
 void TrajectoryMppiOptimizer::update_route_context(
   const autoware::trajectory_modifier::TrajectoryModifierData & data)
 {
-  const bool route_changed = !current_route_uuid_ ||
-                             current_route_uuid_.value() != data.route->uuid ||
-                             current_route_segments_ != data.route->segments;
-  const bool map_changed = current_map_ != data.lanelet_map_bin;
-  if (!route_changed && !map_changed && extended_route_handler_) {
+  auto next_handler = context_->extended_route_cache.get_or_create(
+    data.lanelet_map, data.lanelet_map_bin, *data.route, true);
+  if (next_handler == extended_route_handler_) {
     return;
   }
 
-  extended_route_handler_ =
-    std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
-      *data.lanelet_map_bin, *data.route);
-  extended_route_handler_->create_map();
   std::vector<PreferredLaneCenterlineSelector::Section> sections;
-  const auto map = extended_route_handler_->getOriginalRouteHandler()->getLaneletMapPtr();
+  const auto & map = next_handler->getOriginalMap();
   for (const auto & route_section : data.route->segments) {
     PreferredLaneCenterlineSelector::Section section;
     for (const auto & primitive : route_section.primitives) {
@@ -968,9 +962,7 @@ void TrajectoryMppiOptimizer::update_route_context(
     sections.push_back(std::move(section));
   }
   preferred_lane_selector_.reset(std::move(sections));
-  current_route_uuid_ = data.route->uuid;
-  current_route_segments_ = data.route->segments;
-  current_map_ = data.lanelet_map_bin;
+  extended_route_handler_ = std::move(next_handler);
   reset_optimizer();
 }
 
