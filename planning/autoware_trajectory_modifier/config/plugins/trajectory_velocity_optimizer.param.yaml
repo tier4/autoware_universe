@@ -10,9 +10,6 @@
       target_pull_out_acc_mps2: 1.0   # [m/s²] Target acceleration during pull-out
       set_engage_speed: false         # Set minimum speed during engage
 
-      # Speed limiting (uses external_velocity_limit topic to set max speed)
-      limit_speed: true               # Enable speed limiting
-
       # Lateral acceleration limiting
       max_lateral_accel_mps2: 2.0     # [m/s²] Maximum lateral acceleration
       limit_lateral_acceleration: false  # Enable lateral acceleration limiting, should be launched with velocity smoother
@@ -24,7 +21,6 @@
       # Continuous jerk smoother settings
       # Note: Kinematic limits (max_accel, min_decel, max_jerk, min_jerk) are loaded
       # from the common namespace (limit.max_acc, limit.min_acc, limit.max_jerk, limit.min_jerk)
-      # Note: max_velocity uses max_speed_mps from parent namespace
       continuous_jerk_smoother:
         # QP optimization weights
         jerk_weight: 30.0                     # Weight for jerk minimization (smoothness)
