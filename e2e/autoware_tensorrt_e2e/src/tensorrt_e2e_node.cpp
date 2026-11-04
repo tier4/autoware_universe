@@ -392,7 +392,7 @@ void TensorrtE2eNode::create_providers()
     namespace dp = autoware::diffusion_planner;
     dp::MapConversionOptions map_options;
     std::optional<ContextInputProvider::EgoShape> training_ego_shape;
-    if (derived_contract_ == DERIVED_CONTRACT) {
+    if (feeds_derived_contract(derived_contract_)) {
       map_options = dp::MapConversionOptions::oneplanner_derived_v10();
       // The producer's table entry for this vehicle, not its vehicle_info.
       const auto & shape = training_ego_shape_for(vehicle_info_.wheel_base_m);
@@ -423,16 +423,14 @@ void TensorrtE2eNode::initialize_pipeline()
   diagnostics_->publish(get_clock()->now());
 
   create_providers();
-  // derived format_version 10: the ego state of 9 (measured steering_tire_angle,
-  // unmodified yaw rate, twist at or before and pose at the LiDAR time) and the
-  // producer's map conversion (see MapConversionOptions::oneplanner_derived_v10).
-  // Weights trained on older derived data learned different inputs, so a package
-  // that does not state this is refused.
-  if (recorded_ego_dynamics_ && derived_contract_ != DERIVED_CONTRACT)
+  // The derived conventions this node feeds (DERIVED_CONTRACTS: the ego state of format 9
+  // and the producer's map conversion). Weights trained on other derived data learned
+  // different inputs, so a package that does not state one of them is refused.
+  if (recorded_ego_dynamics_ && !feeds_derived_contract(derived_contract_))
     throw std::runtime_error(
-        "derived_contract is '" + derived_contract_ + "', this node feeds '" +
-        std::string(DERIVED_CONTRACT) +
-        "': the model was trained on other derived data (or its package predates the "
+        "derived_contract is '" + derived_contract_ + "', this node feeds " +
+        derived_contracts_text() +
+        ": the model was trained on other derived data (or its package predates the "
         "field); retrain and re-export");
 
   planning_time_ = parse_planning_time(get_parameter("planning_time").as_string());

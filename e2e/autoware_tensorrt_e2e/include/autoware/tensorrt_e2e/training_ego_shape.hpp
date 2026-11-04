@@ -19,8 +19,8 @@
 #include <string>
 namespace autoware::tensorrt_e2e {
 // e2e-data-producer make_derived VEHICLE_DIMENSIONS for the vehicles the
-// derived-v10 training data was recorded on: jpntaxi (prd_jt) and j6 (x2_dev,
-// 71 % of the training scenes). The model learned ego_shape from this table,
+// derived-v10 and derived-v12 training data was recorded on: jpntaxi (prd_jt) and
+// j6 (x2_dev, 71 % of the training scenes in both). The model learned ego_shape from this table,
 // not from vehicle_info, so it is fed the entry of the vehicle it runs on.
 struct TrainingEgoShape {
   const char *vehicle;

@@ -13,12 +13,13 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/curvature_bias.hpp"
-#include "autoware/tensorrt_e2e/start_accel.hpp"
+#include "autoware/tensorrt_e2e/derived_contract.hpp"
 #include "autoware/tensorrt_e2e/engine_identity.hpp"
 #include "autoware/tensorrt_e2e/planning_time.hpp"
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/rolling_latency.hpp"
 #include "autoware/tensorrt_e2e/signal_history.hpp"
+#include "autoware/tensorrt_e2e/start_accel.hpp"
 #include "autoware/tensorrt_e2e/training_ego_shape.hpp"
 #include <iostream>
 #include <limits>
@@ -44,6 +45,11 @@ int main(int argc, char **argv) {
     }
     check(refused);
   }
+  // The derived conventions this node feeds; a package stating any other is refused.
+  check(feeds_derived_contract("derived-v10") && feeds_derived_contract("derived-v12"));
+  for (const char *other : {"derived-v9", "derived-v11", "derived-v13", "", "derived-v12 "})
+    check(!feeds_derived_contract(other));
+  check(derived_contracts_text() == "'derived-v10', 'derived-v12'");
   const auto file = root / "graph.onnx";
   std::ofstream(file) << "original graph";
   const auto digest = file_sha256(file);
