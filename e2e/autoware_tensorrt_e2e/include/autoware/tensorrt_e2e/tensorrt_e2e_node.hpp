@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_
 #define AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_
 
+#include "autoware/tensorrt_e2e/derived_contract.hpp"
 #include "autoware/tensorrt_e2e/inference_engine.hpp"
 #include "autoware/tensorrt_e2e/input_provider.hpp"
 #include "autoware/tensorrt_e2e/planning_time.hpp"
@@ -98,10 +99,6 @@ struct PlanningFactorParams
   bool enable_slowdown{false};
   autoware::diffusion_planner::PlanningFactorDetectionConfig detection_config;
 };
-
-//! The derived-data convention (e2e-data-producer ``format_version``) this node
-//! feeds a model trained with recorded ego dynamics; see initialize_pipeline().
-inline constexpr const char * DERIVED_CONTRACT = "derived-v10";
 
 /**
  * @class TensorrtE2eNode
