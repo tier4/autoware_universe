@@ -106,8 +106,6 @@ public:
         return "aborting_lane_change";
       case DrivingState::INTENTIONAL_LANE_CROSSING:
         return "intentional_lane_crossing";
-      case DrivingState::ABORTING_INTENTIONAL_LANE_CROSSING:
-        return "aborting_intentional_lane_crossing";
       case DrivingState::UNKNOWN:
         return "unknown";
       default:
