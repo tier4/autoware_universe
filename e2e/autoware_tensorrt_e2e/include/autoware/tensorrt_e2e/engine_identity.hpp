@@ -14,13 +14,24 @@
 
 #pragma once
 #include <array>
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
+#include <iterator>
 #include <memory>
 #include <openssl/evp.h>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <stdexcept>
+#include <string>
+#include <thread>
+#include <unistd.h>
 namespace autoware::tensorrt_e2e {
 inline std::string file_sha256(const std::filesystem::path &path) {
   std::ifstream input(path, std::ios::binary);
@@ -58,17 +69,76 @@ inline bool engine_identity_matches(const std::string &onnx,
          engine_hash == file_sha256(engine);
 }
 
+// Replace `target` with `content` whole. The temporary file is unique to this
+// call (pid, thread, random suffix, created exclusively) and sits beside the
+// target, so the rename is atomic and several processes may write the same
+// target at once: each reader sees one complete file, and the last writer wins.
+inline void write_file_atomically(const std::filesystem::path &target,
+                                  const std::string &content) {
+  std::random_device random;
+  std::ostringstream name;
+  name << target.string() << ".tmp." << ::getpid() << "."
+       << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ".";
+  std::string temporary;
+  int fd = -1;
+  for (int attempt = 0; fd < 0 && attempt < 16; ++attempt) {
+    std::ostringstream candidate;
+    candidate << name.str() << std::hex << random();
+    temporary = candidate.str();
+    fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+    if (fd < 0 && errno != EEXIST)
+      break;
+  }
+  if (fd < 0)
+    throw std::runtime_error("Cannot create " + temporary + ": " +
+                             std::strerror(errno));
+  ::close(fd);
+  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+  output << content;
+  output.close();
+  if (!output || std::rename(temporary.c_str(), target.c_str()) != 0) {
+    const int error = errno;
+    std::remove(temporary.c_str());
+    throw std::runtime_error("Cannot write " + target.string() + ": " +
+                             std::strerror(error));
+  }
+}
+
+// What the identity file of `engine` holds, or nothing if the engine is gone.
+inline std::optional<std::string>
+engine_identity_text(const std::string &onnx, const std::string &engine,
+                     const std::string &precision) {
+  try {
+    return file_sha256(onnx) + "\n" + file_sha256(engine) + "\n" + precision +
+           "\n";
+  } catch (const std::runtime_error &) {
+    if (std::filesystem::exists(engine))
+      throw;
+    return std::nullopt;
+  }
+}
+
+// Records which graph and engine bytes belong together. A load whose identity
+// already matches writes nothing, so any number of processes can open one
+// cached engine at once. After a build it writes the file atomically and reads
+// it back: a process that built the same engine concurrently may have replaced
+// the engine meanwhile, and whichever records last re-hashes the engine then on
+// disk, so the pair ends consistent. An engine removed meanwhile (another
+// process found it stale) is left to the process that rebuilds it.
 inline void record_engine_identity(const std::string &onnx,
                                    const std::string &engine,
                                    const std::string &precision = "default") {
-  const std::string temporary = engine + ".identity.tmp";
-  std::ofstream output(temporary);
-  output << file_sha256(onnx) << "\n"
-         << file_sha256(engine) << "\n"
-         << precision << "\n";
-  output.close();
-  if (!output)
-    throw std::runtime_error("Cannot write engine identity: " + temporary);
-  std::filesystem::rename(temporary, engine + ".identity");
+  const std::string path = engine + ".identity";
+  for (int attempt = 0; attempt < 8; ++attempt) {
+    const auto expected = engine_identity_text(onnx, engine, precision);
+    if (!expected)
+      return;
+    std::ifstream input(path, std::ios::binary);
+    const std::string saved((std::istreambuf_iterator<char>(input)),
+                            std::istreambuf_iterator<char>());
+    if (saved == *expected)
+      return;
+    write_file_atomically(path, *expected);
+  }
 }
 } // namespace autoware::tensorrt_e2e
