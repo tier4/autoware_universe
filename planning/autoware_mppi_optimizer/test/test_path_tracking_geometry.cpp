@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <vector>
 
 // This translation unit tests the shared geometry with an ordinary C++17 compiler,
 // without constructing a cost/model or requiring CUDA headers, libraries or a device.
@@ -28,8 +29,46 @@
 
 namespace
 {
+using mppi::cost::detail::makePolylineSegmentDelta;
 using mppi::cost::detail::pathLengthAtProjection;
+using mppi::cost::detail::PolylineSegmentDelta;
 using mppi::cost::detail::projectPointToPolyline;
+using mppi::cost::detail::projectPointToPreparedPolyline;
+
+TEST(PathTrackingGeometry, PreparedProjectionMatchesIndependentExhaustiveSearch)
+{
+  for (const auto & c : autoware::mppi_optimizer::projection_test::cases()) {
+    SCOPED_TRACE(c.name);
+    const int n = static_cast<int>(c.x.size());
+    std::vector<PolylineSegmentDelta> deltas;
+    for (int i = 0; i + 1 < n; ++i) {
+      deltas.push_back(makePolylineSegmentDelta(c.x[i], c.y[i], c.x[i + 1], c.y[i + 1]));
+    }
+    for (int hint = -2; hint <= n + 1; ++hint) {
+      SCOPED_TRACE(hint);
+      const auto oracle =
+        projectPointToPolyline(c.query_x, c.query_y, c.x.data(), c.y.data(), n, hint);
+      const auto prepared = projectPointToPreparedPolyline(
+        c.query_x, c.query_y, c.x.data(), c.y.data(), deltas.data(), n, hint);
+      EXPECT_EQ(prepared.best_i, oracle.best_i);
+      EXPECT_FLOAT_EQ(prepared.best_t_raw, oracle.best_t_raw);
+      EXPECT_FLOAT_EQ(prepared.lateral_distance, oracle.lateral_distance);
+    }
+  }
+  const auto empty = projectPointToPreparedPolyline(2, 3, nullptr, nullptr, nullptr, 0, 10);
+  EXPECT_EQ(empty.best_i, 0);
+  EXPECT_FLOAT_EQ(empty.lateral_distance, 0.0F);
+  const float x[] = {1, 1, 1};
+  const float y[] = {2, 2, 2};
+  const PolylineSegmentDelta deltas[] = {{0, 0}, {0, 0}};
+  for (int n : {1, 2, 3}) {
+    const auto oracle = projectPointToPolyline(2, 3, x, y, n, 1);
+    const auto prepared = projectPointToPreparedPolyline(2, 3, x, y, deltas, n, 1);
+    EXPECT_EQ(prepared.best_i, oracle.best_i);
+    EXPECT_FLOAT_EQ(prepared.best_t_raw, oracle.best_t_raw);
+    EXPECT_FLOAT_EQ(prepared.lateral_distance, oracle.lateral_distance);
+  }
+}
 
 TEST(PathTrackingGeometry, GlobalProjectionIsIndependentOfHintAndLegacyStepBudget)
 {

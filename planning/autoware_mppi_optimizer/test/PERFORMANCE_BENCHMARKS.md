@@ -26,6 +26,38 @@ build/autoware_mppi_optimizer/test_performance_benchmarks \
   --gtest_output=xml:mppi_benchmark.xml
 ```
 
+For the prepared path-projection change, run the ordinary geometry and cost parity tests first,
+then compare complete-call latency with separate cost-kernel phase timing. Use the same build type,
+profiles, seed, warmup, samples, GPU conditions, and instrumentation mode as the saved baseline;
+the projection delta arrays add runtime-upload bytes even on cycles with unchanged geometry.
+The initial runs have completed; their results and comparison limits are recorded in
+[GPU_PERFORMANCE_REVIEW.md](../GPU_PERFORMANCE_REVIEW.md#validation-and-timing-follow-up-2026-11-04).
+The subsequent review added direct original/prepared device comparisons with exact numerical
+equality for segment selection, raw projection parameter, and lateral distance, plus production
+safety-status checks. These additions and the corrected representable near-tie inputs have not
+yet been run. The translated-vertex cost test does not exercise the interface's frame lifecycle;
+the interface test below crosses the actual recentering threshold.
+
+```bash
+build/autoware_mppi_optimizer/test_path_tracking_geometry
+build/autoware_mppi_optimizer/test_distance_map \
+  --gtest_filter='DistanceMapGpuTest.AdversarialProjectionMatchesHostWithAndWithoutPersistentHints:DistanceMapGpuTest.ReferenceOnlyProjectionUsesTheSameGlobalSearch:DistanceMapGpuTest.PreparedProjectionMatchesOriginalDeviceArithmeticAndSafety:DistanceMapGpuTest.PreparedProjectionTracksReferenceCorridorAndTranslatedVertices'
+build/autoware_mppi_optimizer/test_costs \
+  --gtest_filter='GpuCostEvaluation.AdversarialProjectionCostsAndTerminalMatchHost:GpuCostEvaluation.CombinedAndSplitRolloutsUseGlobalProjectionAndSafetyFlags:GpuCostEvaluation.ZeroSoftWeightsStillReportExactSafetyViolations:GpuCostEvaluation.PreparedProjectionPreservesLateralSafetyBoundary'
+build/autoware_mppi_optimizer/test_first_order_dubins_mppi_interface \
+  --gtest_filter='FirstOrderDubinsMppiInterfaceGpuTest.PublishesPreciseMapPositionsAcrossOriginChange'
+
+MPPI_BENCHMARK_WARMUP=10 MPPI_BENCHMARK_SAMPLES=100 MPPI_BENCHMARK_PHASE_TIMING=0 \
+  MPPI_BENCHMARK_OUTPUT_DIR=mppi_benchmark_results/projection_after_latency \
+  build/autoware_mppi_optimizer/test_performance_benchmarks \
+  --gtest_filter='MppiPerformanceBenchmark.FreeSpaceCached:MppiPerformanceBenchmark.Hairpin256Cached:MppiPerformanceBenchmark.StaticObstacles64Cached:MppiPerformanceBenchmark.StaticObstacleGeometryUpdates:MppiPerformanceBenchmark.GridBoundaryCrossings'
+
+MPPI_BENCHMARK_WARMUP=10 MPPI_BENCHMARK_SAMPLES=100 MPPI_BENCHMARK_PHASE_TIMING=1 \
+  MPPI_BENCHMARK_OUTPUT_DIR=mppi_benchmark_results/projection_after_phases \
+  build/autoware_mppi_optimizer/test_performance_benchmarks \
+  --gtest_filter='MppiPerformanceBenchmark.FreeSpaceCached:MppiPerformanceBenchmark.Hairpin256Cached:MppiPerformanceBenchmark.StaticObstacles64Cached:MppiPerformanceBenchmark.StaticObstacleGeometryUpdates:MppiPerformanceBenchmark.GridBoundaryCrossings'
+```
+
 Use your workspace's existing build wrapper/environment if required. CUDA architecture flags must
 support the target GPU. The optional benchmark additionally uses `yaml-cpp` and `nlohmann_json`,
 declared as test dependencies. Reconfigure after changing revisions so the recorded revision and
@@ -116,8 +148,11 @@ return a validated, unrejected candidate; the infeasible case must report the ex
 Unexpected results remain in the JSON and fail GTest, marking the report invalid for comparison.
 Custom profiles may legitimately fail these quality gates; such a failure is not a timing result.
 
-With phase timing enabled, sampling/rollout/weight/reduction counts must equal the requested
-iterations. After initialization, cached scenes must have no map rebuilds. Geometry updates must
+With phase timing enabled, sampling/rollout/weight/reduction range and CUDA event-pair counts must
+equal the requested iterations. When `rollout_kernel` is `split`, the dynamics and cost subphases
+must each have the same counts, including on the first optimizer call. Startup kernel-selection
+trials are excluded from these subphase counts. The combined kernel must have neither subphase.
+After initialization, cached scenes must have no map rebuilds. Geometry updates must
 rebuild only the obstacle map; grid crossings must rebuild static and nearest-segment maps, plus
 nonempty obstacle/active centerline maps. Counters are the observed instrumented rebuild-range
 invocations, not inferred from timestamps. Instrumentation-off runs omit these counters/checks.
@@ -147,6 +182,28 @@ validation, and debug/result preparation. `host_ms` is inclusive wall duration, 
 `gpu_ms` is elapsed stream time and can contain scheduling/launch gaps. Host-only ranges have
 `gpu_ms: null`. Nested ranges are not additive, and these ranges do not account for every operation.
 GPU elapsed time is not SM utilization, occupancy, memory bandwidth, or energy consumption.
+
+For the split rollout path, two nested NVTX/event ranges identify its individual kernel launches:
+
+| JSON phase name         | Timed work                                                              |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `MPPI/rollout`          | Inclusive rollout total, including both subphases and work between them |
+| `MPPI/rollout_dynamics` | Dynamics launch preparation and trajectory propagation kernel           |
+| `MPPI/rollout_cost`     | Cost launch preparation and trajectory cost/safety evaluation kernel    |
+
+The subphases use the same CUDA stream as their parent and introduce no synchronization. CUDA
+events are recorded only with phase timing enabled; the NVTX ranges are also available to Nsight
+Systems with phase timing off. Subphase ranges are enabled only for optimizer iterations, so the
+startup kernel-selection trials retain their original launch path. The combined kernel continues
+to report only `MPPI/rollout` because dynamics and cost execute inside a single kernel.
+
+Each sample's `phases` and the aggregate `phase_summary` include these names. Times are totals
+across all iterations in one optimizer call; for example, at 10 iterations the dynamics phase
+contains 10 launches, not the timing of one launch. Instrumented console output also shows the
+rollout/dynamics/cost GPU means per call. Do not add the parent time to its subphase times. The two
+subphases need not sum exactly to the parent because the parent also spans the gap between ranges
+and their event overhead. Rebuild both the vendor headers and optimizer to obtain the new ranges;
+older reports do not contain the subphases.
 
 The JSON includes first-call data, raw warm samples, per-phase totals per cycle, and mean/median/p95/
 minimum/maximum/population-standard-deviation summaries. p95 uses nearest rank. Missing phase

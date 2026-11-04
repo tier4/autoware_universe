@@ -118,6 +118,19 @@ struct PolylineProjection
   float best_t_raw = 0.5F;
 };
 
+/** Endpoint differences for a finite segment. These subtractions are independent of the query. */
+struct PolylineSegmentDelta
+{
+  float dx = 0.0F;
+  float dy = 0.0F;
+};
+
+__host__ __device__ inline PolylineSegmentDelta makePolylineSegmentDelta(
+  const float x0, const float y0, const float x1, const float y1)
+{
+  return {x1 - x0, y1 - y0};
+}
+
 /** Distance and unclamped parameter of point (px,py) onto segment i. */
 __host__ __device__ inline void distanceToPolylineSegment(
   const float px, const float py, const float * poly_x, const float * poly_y, const int i,
@@ -129,6 +142,29 @@ __host__ __device__ inline void distanceToPolylineSegment(
   const float y1 = poly_y[i + 1];
   const float dx = x1 - x0;
   const float dy = y1 - y0;
+  const float len_sq = dx * dx + dy * dy;
+  if (len_sq < 1.0E-8F) {
+    dist = vectorLength(px - x0, py - y0);
+    t_raw = 0.0F;
+    return;
+  }
+  t_raw = ((px - x0) * dx + (py - y0) * dy) / len_sq;
+  const float t = clampUnitInterval(t_raw);
+  dist = vectorLength(px - (x0 + t * dx), py - (y0 + t * dy));
+}
+
+/** Same arithmetic and finite-segment conventions as distanceToPolylineSegment. */
+__host__ __device__ inline void distanceToPreparedPolylineSegment(
+  const float px, const float py, const float * poly_x, const float * poly_y,
+  const PolylineSegmentDelta * deltas, const int i, float & dist, float & t_raw)
+{
+  const float x0 = poly_x[i];
+  const float y0 = poly_y[i];
+  const float dx = deltas[i].dx;
+  const float dy = deltas[i].dy;
+  // Keep the original multiply/add, division, square root and distance comparison on
+  // the querying processor. A host-precomputed squared length can round differently
+  // from the device expression and change a near-tie or a safety boundary.
   const float len_sq = dx * dx + dy * dy;
   if (len_sq < 1.0E-8F) {
     dist = vectorLength(px - x0, py - y0);
@@ -239,6 +275,48 @@ __host__ __device__ inline PolylineProjection projectPointToPolyline(
     }
   }
 
+  finalizePolylineProjection(result, px, py, poly_x, poly_y, n_pts, best_i, best_t_raw, best_dist);
+  return result;
+}
+
+/** Exhaustive projection using geometry prepared from the same local-frame vertices. */
+__host__ __device__ inline PolylineProjection projectPointToPreparedPolyline(
+  const float px, const float py, const float * poly_x, const float * poly_y,
+  const PolylineSegmentDelta * deltas, const int n_pts, const int hint_i = -1)
+{
+  PolylineProjection result;
+  if (n_pts <= 0) {
+    return result;
+  }
+  if (n_pts == 1) {
+    result.lateral_distance = px - poly_x[0];
+    result.best_t_raw = 0.0F;
+    return result;
+  }
+
+  const int n_seg = n_pts - 1;
+  float best_dist = FLT_MAX;
+  int best_i = 0;
+  float best_t_raw = 0.5F;
+  const bool valid_hint = hint_i >= 0 && hint_i < n_seg;
+  if (valid_hint) {
+    best_i = hint_i;
+    distanceToPreparedPolylineSegment(
+      px, py, poly_x, poly_y, deltas, best_i, best_dist, best_t_raw);
+  }
+  for (int i = 0; i < n_seg; ++i) {
+    if (valid_hint && i == hint_i) {
+      continue;
+    }
+    float dist = 0.0F;
+    float t_raw = 0.0F;
+    distanceToPreparedPolylineSegment(px, py, poly_x, poly_y, deltas, i, dist, t_raw);
+    if (dist < best_dist || (dist == best_dist && i < best_i)) {
+      best_dist = dist;
+      best_i = i;
+      best_t_raw = t_raw;
+    }
+  }
   finalizePolylineProjection(result, px, py, poly_x, poly_y, n_pts, best_i, best_t_raw, best_dist);
   return result;
 }

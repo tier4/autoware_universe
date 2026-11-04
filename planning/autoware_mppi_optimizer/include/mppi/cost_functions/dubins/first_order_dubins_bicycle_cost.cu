@@ -19,11 +19,12 @@ using O = FirstOrderDubinsBicycleParams::OutputIndex;
 using C = FirstOrderDubinsBicycleParams::ControlIndex;
 using mppi::cost::detail::crossTrackDistanceToPolyline;
 using mppi::cost::detail::distancePointToSegment;
+using mppi::cost::detail::makePolylineSegmentDelta;
 using mppi::cost::detail::orientedBoxCorners;
 using mppi::cost::detail::orientedBoxesOverlap;
 using mppi::cost::detail::pathLengthAtProjection;
 using mppi::cost::detail::pointInPolygon;
-using mppi::cost::detail::projectPointToPolyline;
+using mppi::cost::detail::projectPointToPreparedPolyline;
 using mppi::cost::detail::vectorLength;
 
 struct CostPathBuffers
@@ -34,9 +35,11 @@ struct CostPathBuffers
   const float * corridor_x = nullptr;
   const float * corridor_y = nullptr;
   const float * corridor_s = nullptr;
+  const mppi::cost::detail::PolylineSegmentDelta * corridor_segment_delta = nullptr;
   const float * corridor_ref_velocity = nullptr;
   const float * ref_x = nullptr;
   const float * ref_y = nullptr;
+  const mppi::cost::detail::PolylineSegmentDelta * ref_segment_delta = nullptr;
   const float * ref_s = nullptr;
   const float * ref_v = nullptr;
   const float * ref_yaw = nullptr;
@@ -63,6 +66,10 @@ __host__ __device__ inline CostPathBuffers resolvePathBuffers(
   // Keep the additional corridor velocity profile in global memory. Staging another
   // kMaxLateralCorridorPoints floats would increase block shared-memory pressure.
   b.corridor_ref_velocity = cost.runtimeData().lateral_corridor_ref_velocity_;
+  // Segment deltas stay in the runtime snapshot. Staging them in theta_c would raise
+  // shared-memory use for every rollout block, including reference-only paths.
+  b.corridor_segment_delta = cost.runtimeData().lateral_corridor_segment_delta_;
+  b.ref_segment_delta = cost.runtimeData().ref_segment_delta_;
   if (theta_c != nullptr) {
     b.total_path_length_s = theta_c[Cost::kSharedTotalOffset];
     const float n_raw = theta_c[Cost::kSharedNumCorridorOffset];
@@ -484,17 +491,15 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     const float * terminal_reference)
 {
   const int n = std::max(0, std::min(count, NUM_TIMESTEPS));
+  bool reference_geometry_changed = false;
   bool projection_geometry_changed = runtimeData().num_lateral_corridor_points_ < 2 &&
                                      !texture_state_.nearest_segment_texture_valid_;
   runtimeData().has_pointwise_velocity_limits_ =
     max_velocity != nullptr && velocity_limit_active != nullptr;
   const float end_yaw = referenceEndYaw<NUM_TIMESTEPS>(x, y, yaw, n);
   for (int i = 0; i < n; ++i) {
-    if (runtimeData().num_lateral_corridor_points_ < 2) {
-      projection_geometry_changed = projection_geometry_changed ||
-                                    runtimeData().ref_x_[i] != x[i] ||
-                                    runtimeData().ref_y_[i] != y[i];
-    }
+    reference_geometry_changed |=
+      runtimeData().ref_x_[i] != x[i] || runtimeData().ref_y_[i] != y[i];
     runtimeData().ref_x_[i] = x[i];
     runtimeData().ref_y_[i] = y[i];
     runtimeData().ref_s_[i] =
@@ -514,11 +519,8 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   }
   if (n > 0) {
     for (int i = n; i < NUM_TIMESTEPS; ++i) {
-      if (runtimeData().num_lateral_corridor_points_ < 2) {
-        projection_geometry_changed = projection_geometry_changed ||
-                                      runtimeData().ref_x_[i] != x[n - 1] ||
-                                      runtimeData().ref_y_[i] != y[n - 1];
-      }
+      reference_geometry_changed |=
+        runtimeData().ref_x_[i] != x[n - 1] || runtimeData().ref_y_[i] != y[n - 1];
       runtimeData().ref_x_[i] = x[n - 1];
       runtimeData().ref_y_[i] = y[n - 1];
       runtimeData().ref_s_[i] = runtimeData().ref_s_[n - 1];
@@ -529,11 +531,8 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     }
   } else {
     for (int i = 0; i < NUM_TIMESTEPS; ++i) {
-      if (runtimeData().num_lateral_corridor_points_ < 2) {
-        projection_geometry_changed = projection_geometry_changed ||
-                                      runtimeData().ref_x_[i] != 0.0F ||
-                                      runtimeData().ref_y_[i] != 0.0F;
-      }
+      reference_geometry_changed |=
+        runtimeData().ref_x_[i] != 0.0F || runtimeData().ref_y_[i] != 0.0F;
       runtimeData().ref_x_[i] = 0.0F;
       runtimeData().ref_y_[i] = 0.0F;
       runtimeData().ref_s_[i] = 0.0F;
@@ -542,6 +541,16 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       runtimeData().ref_max_velocity_[i] = 0.0F;
       runtimeData().ref_velocity_limit_active_[i] = 0U;
     }
+  }
+  if (reference_geometry_changed) {
+    for (int i = 0; i < NUM_TIMESTEPS - 1; ++i) {
+      runtimeData().ref_segment_delta_[i] = makePolylineSegmentDelta(
+        runtimeData().ref_x_[i], runtimeData().ref_y_[i], runtimeData().ref_x_[i + 1],
+        runtimeData().ref_y_[i + 1]);
+    }
+  }
+  if (runtimeData().num_lateral_corridor_points_ < 2) {
+    projection_geometry_changed |= reference_geometry_changed;
   }
   if (terminal_reference != nullptr) {
     runtimeData().terminal_reference_[0] = terminal_reference[0];
@@ -565,17 +574,16 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 {
   const int n = std::max(0, std::min(count, kMaxLateralCorridorPoints));
   const bool had_corridor = runtimeData().num_lateral_corridor_points_ >= 2;
-  bool projection_geometry_changed = !texture_state_.nearest_segment_texture_valid_;
+  bool corridor_geometry_changed =
+    n >= 2 && (!had_corridor || runtimeData().num_lateral_corridor_points_ != n);
   if (n >= 2) {
-    projection_geometry_changed = projection_geometry_changed || !had_corridor ||
-                                  runtimeData().num_lateral_corridor_points_ != n;
-    for (int i = 0; i < n && !projection_geometry_changed; ++i) {
-      projection_geometry_changed = runtimeData().lateral_corridor_x_[i] != x[i] ||
-                                    runtimeData().lateral_corridor_y_[i] != y[i];
+    for (int i = 0; i < n && !corridor_geometry_changed; ++i) {
+      corridor_geometry_changed = runtimeData().lateral_corridor_x_[i] != x[i] ||
+                                  runtimeData().lateral_corridor_y_[i] != y[i];
     }
-  } else {
-    projection_geometry_changed = projection_geometry_changed || had_corridor;
   }
+  const bool projection_geometry_changed = !texture_state_.nearest_segment_texture_valid_ ||
+                                           (n >= 2 ? corridor_geometry_changed : had_corridor);
   runtimeData().num_lateral_corridor_points_ = n;
   runtimeData().lateral_corridor_has_s_ = (s != nullptr && n > 0);
   for (int i = 0; i < n; ++i) {
@@ -584,6 +592,13 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     runtimeData().lateral_corridor_s_[i] = runtimeData().lateral_corridor_has_s_ ? s[i] : 0.0F;
     runtimeData().lateral_corridor_ref_velocity_[i] =
       reference_velocity != nullptr ? reference_velocity[i] : 0.0F;
+  }
+  if (corridor_geometry_changed) {
+    for (int i = 0; i < n - 1; ++i) {
+      runtimeData().lateral_corridor_segment_delta_[i] = makePolylineSegmentDelta(
+        runtimeData().lateral_corridor_x_[i], runtimeData().lateral_corridor_y_[i],
+        runtimeData().lateral_corridor_x_[i + 1], runtimeData().lateral_corridor_y_[i + 1]);
+    }
   }
   if (!runtimeData().lateral_corridor_has_s_ && n > 0) {
     runtimeData().lateral_corridor_s_[0] = 0.0F;
@@ -945,6 +960,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const float * poly_y = buf.ref_y;
   const float * poly_s = buf.ref_s;
   const float * poly_ref_velocity = buf.ref_v;
+  const auto * segment_delta = buf.ref_segment_delta;
   int n_pts = NUM_TIMESTEPS;
   float total_s = buf.ref_s[NUM_TIMESTEPS - 1];
   bool velocity_profile_is_global = false;
@@ -954,6 +970,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     n_pts = buf.num_corridor;
     poly_s = buf.has_corridor_s ? buf.corridor_s : nullptr;
     poly_ref_velocity = buf.corridor_ref_velocity;
+    segment_delta = buf.corridor_segment_delta;
     velocity_profile_is_global = true;
     total_s = buf.total_path_length_s;
   }
@@ -981,7 +998,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   }
 #endif
   // Seeds affect evaluation order only; every query verifies the global nearest segment.
-  const auto proj = projectPointToPolyline(x, y, poly_x, poly_y, n_pts, hint_i);
+  const auto proj =
+    projectPointToPreparedPolyline(x, y, poly_x, poly_y, segment_delta, n_pts, hint_i);
 #ifdef __CUDA_ARCH__
   if (hint_slot != nullptr) {
     *hint_slot = static_cast<float>(proj.best_i);

@@ -955,6 +955,29 @@ TEST_F(GpuCostEvaluation, ZeroSoftWeightsStillReportExactSafetyViolations)
   for (bool shared : {false, true}) parity(y, u, 0, "zero weights", 1.0E-4, shared);
 }
 
+TEST_F(GpuCostEvaluation, PreparedProjectionPreservesLateralSafetyBoundary)
+{
+  params = disabledParams();
+  params.boundary_threshold = 0.5F;
+  apply();
+  const float corridor_x[] = {0.0F, 10.0F};
+  const float corridor_y[] = {0.0F, 0.0F};
+  cost->setLateralCorridor(corridor_x, corridor_y, 2);
+  auto y = Cost::output_array::Zero().eval();
+  y(static_cast<int>(O::BASELINK_POS_I_X)) = 5.0F;
+  const auto u = Cost::control_array::Zero().eval();
+  const std::array<std::pair<float, bool>, 3> boundaries{
+    {{0.499999F, false}, {0.5F, true}, {0.500001F, true}}};
+  for (const auto [offset, violated] : boundaries) {
+    SCOPED_TRACE(offset);
+    y(static_cast<int>(O::BASELINK_POS_I_Y)) = offset;
+    int status = 0;
+    cost->computeRunningCost(y, u, 0, &status);
+    EXPECT_EQ((status & mppi::safety::kLateral) != 0, violated);
+    for (bool shared : {false, true}) parity(y, u, 0, "lateral boundary", 1.0E-4, shared);
+  }
+}
+
 TEST_F(GpuCostEvaluation, AdversarialProjectionCostsAndTerminalMatchHost)
 {
   auto y = Cost::output_array::Zero().eval();

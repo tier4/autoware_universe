@@ -162,11 +162,31 @@ const char * changeName(SceneChange change)
   return "unknown";
 }
 
+const FirstOrderDubinsMppiPerformancePhase * findPhase(
+  const FirstOrderDubinsMppiPerformanceReport & report, const char * name)
+{
+  for (const auto & phase : report.phases) {
+    if (phase.name == name) return &phase;
+  }
+  return nullptr;
+}
+
 std::size_t phaseCalls(const FirstOrderDubinsMppiPerformanceReport & report, const char * name)
 {
-  for (const auto & phase : report.phases)
-    if (phase.name == name) return phase.calls;
-  return 0;
+  const auto * phase = findPhase(report, name);
+  return phase ? phase->calls : 0U;
+}
+
+void expectGpuPhaseCalls(
+  const FirstOrderDubinsMppiPerformanceReport & report, const char * name, std::size_t expected)
+{
+  const auto * phase = findPhase(report, name);
+  EXPECT_EQ(phase ? phase->calls : 0U, expected) << name;
+  EXPECT_EQ(phase ? phase->gpu_calls : 0U, expected) << name << " CUDA event pairs";
+  if (phase) {
+    EXPECT_TRUE(std::isfinite(phase->gpu_ms)) << name;
+    EXPECT_GE(phase->gpu_ms, 0.0) << name;
+  }
 }
 
 Json phaseJson(const FirstOrderDubinsMppiPerformanceReport & report)
@@ -362,12 +382,15 @@ protected:
       if (!ran_full_workload || !outcome_ok) ++unexpected_outcomes;
 
       if (settings_->phase_timing) {
+        const auto iterations = static_cast<std::size_t>(profile_.cost.max_iter);
         for (const char * phase :
              {"MPPI/random_sampling", "MPPI/rollout", "MPPI/weight_statistics",
               "MPPI/weighted_control_reduction"}) {
-          EXPECT_EQ(
-            phaseCalls(configuration, phase), static_cast<std::size_t>(profile_.cost.max_iter))
-            << phase;
+          expectGpuPhaseCalls(configuration, phase, iterations);
+        }
+        const auto split_iterations = configuration.kernel == "split" ? iterations : 0U;
+        for (const char * phase : {"MPPI/rollout_dynamics", "MPPI/rollout_cost"}) {
+          expectGpuPhaseCalls(configuration, phase, split_iterations);
         }
         if (cycle > 0) {
           const auto obstacle_rebuilds =
@@ -485,6 +508,20 @@ protected:
     std::cout << "\n[MPPI benchmark] " << name << " | " << report["mode"]
               << " | median=" << wall_summary["median_ms"] << " ms | p95=" << wall_summary["p95_ms"]
               << " ms | CPU mean=" << cpu_summary["mean_ms"] << " ms\n  " << report_path_ << '\n';
+    if (settings_->phase_timing) {
+      std::cout << "  GPU mean per call (all iterations, rollout includes subphases):";
+      const std::pair<const char *, const char *> rollout_phases[] = {
+        {"rollout", "MPPI/rollout"},
+        {"dynamics", "MPPI/rollout_dynamics"},
+        {"cost", "MPPI/rollout_cost"}};
+      for (const auto & phase : rollout_phases) {
+        const auto entry = phase_summary.find(phase.second);
+        if (entry != phase_summary.end() && !entry->at("gpu").is_null()) {
+          std::cout << ' ' << phase.first << '=' << entry->at("gpu").at("mean_ms") << " ms";
+        }
+      }
+      std::cout << '\n';
+    }
   }
 
   std::unique_ptr<benchmark::Settings> settings_;

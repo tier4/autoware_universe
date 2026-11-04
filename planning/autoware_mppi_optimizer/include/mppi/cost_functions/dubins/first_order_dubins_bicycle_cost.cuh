@@ -10,6 +10,7 @@
 #include <mppi/cost_functions/cost.cuh>
 #include <mppi/cost_functions/dubins/distance_map_texture.cuh>
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_kinematic_limits.cuh>
+#include <mppi/cost_functions/path_tracking_geometry.cuh>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 #include <mppi/utils/pinned_host_buffer.cuh>
 
@@ -112,6 +113,8 @@ struct alignas(16) FirstOrderDubinsRuntimeData
 
   float ref_x_[NUM_TIMESTEPS] = {};
   float ref_y_[NUM_TIMESTEPS] = {};
+  /** Local-frame endpoint differences for exhaustive reference projection. */
+  mppi::cost::detail::PolylineSegmentDelta ref_segment_delta_[NUM_TIMESTEPS] = {};
   /** Cumulative reference chord length [m], allowing O(1) projected path-length lookup. */
   float ref_s_[NUM_TIMESTEPS] = {};
   float ref_v_[NUM_TIMESTEPS] = {};
@@ -125,6 +128,9 @@ struct alignas(16) FirstOrderDubinsRuntimeData
   int num_lateral_corridor_points_ = 0;
   float lateral_corridor_x_[kMaxLateralCorridorPoints] = {};
   float lateral_corridor_y_[kMaxLateralCorridorPoints] = {};
+  /** Local-frame endpoint differences for exhaustive corridor projection. */
+  mppi::cost::detail::PolylineSegmentDelta
+    lateral_corridor_segment_delta_[kMaxLateralCorridorPoints - 1] = {};
   /** Cumulative chord length [m] along lateral_corridor_* (s[0]=0); valid when count >= 1. */
   float lateral_corridor_s_[kMaxLateralCorridorPoints] = {};
   /** Reference longitudinal velocity [m/s] at each corridor vertex. */

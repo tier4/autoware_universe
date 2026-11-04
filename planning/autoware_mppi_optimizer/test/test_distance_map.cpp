@@ -264,6 +264,118 @@ struct ProjectionSample
   float initial_hint;
 };
 
+struct DeviceProjectionSample
+{
+  mppi::cost::detail::PolylineProjection projection;
+  int projection_status;
+  int state_status;
+};
+
+// Separate kernel instantiations keep the original device arithmetic independent of the
+// prepared projector. Both read identical uploaded vertices; only Prepared reads cached deltas.
+template <bool Prepared>
+__global__ void compareProjectionKernel(
+  const TestCost * cost, const float2 * queries, const int query_count, const int hint_count,
+  const bool use_shared, const float boundary_threshold, DeviceProjectionSample * output)
+{
+  extern __shared__ float theta[];
+  cost->initializeCosts(nullptr, nullptr, theta, 0.0F, 0.1F);
+  const int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (index >= query_count * hint_count) {
+    return;
+  }
+  const auto & data = cost->runtimeData();
+  const bool corridor = data.num_lateral_corridor_points_ >= 2;
+  const int count = corridor ? data.num_lateral_corridor_points_ : kTestHorizon;
+  const float * x = corridor ? data.lateral_corridor_x_ : data.ref_x_;
+  const float * y = corridor ? data.lateral_corridor_y_ : data.ref_y_;
+  if (use_shared) {
+    x = theta + (corridor ? TestCost::kSharedCorridorXOffset : TestCost::kSharedRefXOffset);
+    y = theta + (corridor ? TestCost::kSharedCorridorYOffset : TestCost::kSharedRefYOffset);
+  }
+  const auto query = queries[index / hint_count];
+  const int hint = index % hint_count - 2;
+  auto & sample = output[index];
+  if constexpr (Prepared) {
+    const auto * deltas = corridor ? data.lateral_corridor_segment_delta_ : data.ref_segment_delta_;
+    sample.projection = mppi::cost::detail::projectPointToPreparedPolyline(
+      query.x, query.y, x, y, deltas, count, hint);
+  } else {
+    sample.projection =
+      mppi::cost::detail::projectPointToPolyline(query.x, query.y, x, y, count, hint);
+  }
+  constexpr int timestep = 7;
+  sample.projection_status = fabsf(sample.projection.lateral_distance) >= boundary_threshold
+                               ? mppi::safety::event(1, timestep)
+                               : 0;
+  sample.state_status = 0;
+  if constexpr (Prepared) {
+    // Check the real state-cost safety path against the original device projection too.
+    // The fixture has no obstacles/borders, so only lateral safety can contribute a flag.
+    using Output = FirstOrderDubinsBicycleParams::OutputIndex;
+    float state[TestCost::OUTPUT_DIM] = {};
+    state[static_cast<int>(Output::BASELINK_POS_I_X)] = query.x;
+    state[static_cast<int>(Output::BASELINK_POS_I_Y)] = query.y;
+    *cost->projectionHintSlot(theta) = static_cast<float>(hint);
+    cost->computeStateCost(state, timestep, use_shared ? theta : nullptr, &sample.state_status);
+  }
+}
+
+void expectDeviceProjectionParity(
+  TestCost & cost, const std::vector<float2> & queries, const cudaStream_t stream)
+{
+  ASSERT_FALSE(queries.empty());
+  const auto & data = cost.runtimeData();
+  const int count =
+    data.num_lateral_corridor_points_ >= 2 ? data.num_lateral_corridor_points_ : kTestHorizon;
+  const int hint_count = count + 4;  // Every valid segment, plus hints -2, -1, n-1, n, n+1.
+  const int query_count = static_cast<int>(queries.size());
+  const int sample_count = query_count * hint_count;
+  const dim3 block(80, 1, 1);
+  const dim3 grid((sample_count + block.x - 1) / block.x, 1, 1);
+  const auto shared_bytes = mppi::kernels::calcClassSharedMemSize(&cost, block);
+  DeviceBuffer<float2> device_queries(queries.size());
+  device_queries.copyFromHost(queries.data(), stream);
+  DeviceBuffer<DeviceProjectionSample> original(sample_count), prepared(sample_count);
+  std::vector<DeviceProjectionSample> expected(sample_count), actual(sample_count);
+  for (bool texture : {true, false}) {
+    SCOPED_TRACE(texture ? "texture seed" : "no texture");
+    setProjectionTextureEnabled<<<1, 1, 0, stream>>>(cost.cost_d_, texture);
+    CUDA_CHECK(cudaGetLastError());
+    for (bool shared : {false, true}) {
+      SCOPED_TRACE(shared ? "shared vertices" : "global vertices");
+      compareProjectionKernel<false><<<grid, block, shared_bytes, stream>>>(
+        cost.cost_d_, device_queries.get(), query_count, hint_count, shared,
+        cost.getParams().boundary_threshold, original.get());
+      CUDA_CHECK(cudaGetLastError());
+      compareProjectionKernel<true><<<grid, block, shared_bytes, stream>>>(
+        cost.cost_d_, device_queries.get(), query_count, hint_count, shared,
+        cost.getParams().boundary_threshold, prepared.get());
+      CUDA_CHECK(cudaGetLastError());
+      original.copyToHost(expected.data(), stream);
+      prepared.copyToHost(actual.data(), stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      for (int i = 0; i < sample_count; ++i) {
+        SCOPED_TRACE(i / hint_count);
+        SCOPED_TRACE(i % hint_count - 2);
+        const auto & a = expected[i];
+        const auto & b = actual[i];
+        ASSERT_TRUE(std::isfinite(a.projection.best_t_raw));
+        ASSERT_TRUE(std::isfinite(a.projection.lateral_distance));
+        EXPECT_EQ(b.projection.best_i, a.projection.best_i);
+        // EXPECT_EQ deliberately allows no float/ULP tolerance for device-to-device parity.
+        EXPECT_EQ(b.projection.best_t_raw, a.projection.best_t_raw);
+        EXPECT_EQ(b.projection.lateral_distance, a.projection.lateral_distance);
+        EXPECT_EQ(b.projection_status, a.projection_status);
+        EXPECT_EQ(b.state_status, a.projection_status);
+      }
+    }
+  }
+  setProjectionTextureEnabled<<<1, 1, 0, stream>>>(cost.cost_d_, true);
+  CUDA_CHECK(cudaGetLastError());
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+}
+
 __global__ void sampleProjectionSequenceKernel(
   TestCost * cost, const float2 * queries, const int count, const bool use_shared,
   ProjectionSample * output)
@@ -317,6 +429,37 @@ void expectProjectionSequence(
           const auto & sample = actual[lane * queries.size() + i];
           EXPECT_FLOAT_EQ(sample.initial_hint, -1.0F);
           const auto & value = sample.metrics;
+          const auto & data = cost.runtimeData();
+          const bool corridor = data.num_lateral_corridor_points_ >= 2;
+          const float * oracle_x = corridor ? data.lateral_corridor_x_ : data.ref_x_;
+          const float * oracle_y = corridor ? data.lateral_corridor_y_ : data.ref_y_;
+          const int oracle_count = corridor ? data.num_lateral_corridor_points_ : kTestHorizon;
+          // This is the unchanged exhaustive search, independent of the prepared deltas.
+          const auto oracle = mppi::cost::detail::projectPointToPolyline(
+            queries[i].x, queries[i].y, oracle_x, oracle_y, oracle_count,
+            static_cast<int>(sample.initial_hint));
+          const float * oracle_s = corridor ? data.lateral_corridor_s_ : data.ref_s_;
+          const float total_s =
+            corridor ? data.lateral_corridor_total_length_s_ : data.ref_s_[kTestHorizon - 1];
+          float oracle_progress = 0.0F;
+          float oracle_remaining = 0.0F;
+          float oracle_overshoot = 0.0F;
+          mppi::cost::detail::pathLengthAtProjection(
+            oracle, oracle_x, oracle_y, oracle_s, oracle_count, total_s, oracle_progress,
+            oracle_remaining, oracle_overshoot);
+          const float * oracle_v = corridor ? data.lateral_corridor_ref_velocity_ : data.ref_v_;
+          const float segment_t = std::clamp(oracle.best_t_raw, 0.0F, 1.0F);
+          const float oracle_velocity =
+            oracle_v[oracle.best_i] +
+            segment_t * (oracle_v[oracle.best_i + 1] - oracle_v[oracle.best_i]);
+          EXPECT_EQ(expected.best_segment_i, oracle.best_i);
+          EXPECT_NEAR(expected.lateral_distance, oracle.lateral_distance, 1.0E-4F);
+          EXPECT_EQ(value.best_segment_i, oracle.best_i);
+          EXPECT_NEAR(value.lateral_distance, oracle.lateral_distance, 1.0E-4F);
+          EXPECT_NEAR(value.path_length_s, oracle_progress, 1.0E-4F);
+          EXPECT_NEAR(value.remaining_distance_s, oracle_remaining, 1.0E-4F);
+          EXPECT_NEAR(value.overshoot_distance_s, oracle_overshoot, 1.0E-4F);
+          EXPECT_NEAR(value.spatial_ref_velocity, oracle_velocity, 1.0E-4F);
           EXPECT_EQ(value.best_segment_i, expected.best_segment_i);
           // Analytical projection has no texture-resolution error allowance.
           EXPECT_NEAR(value.lateral_distance, expected.lateral_distance, 1.0E-4F);
@@ -931,6 +1074,107 @@ TEST_F(DistanceMapGpuTest, ReferenceOnlyProjectionUsesTheSameGlobalSearch)
   cost_->commitDataUpdate();
   expectProjectionSequence(
     *cost_, {make_float2(1, 0), make_float2(1, 9), make_float2(-1000, 9)}, stream());
+}
+
+TEST_F(DistanceMapGpuTest, PreparedProjectionMatchesOriginalDeviceArithmeticAndSafety)
+{
+  auto params = distanceOnlyParams();
+  params.boundary_threshold = 0.5F;
+  cost_->setParams(params);
+  for (const auto & c : autoware::mppi_optimizer::projection_test::cases()) {
+    SCOPED_TRACE(c.name);
+    cost_->setLateralCorridor(c.x.data(), c.y.data(), static_cast<int>(c.x.size()));
+    expectDeviceProjectionParity(
+      *cost_,
+      {make_float2(c.query_x, c.query_y),
+       make_float2(c.query_x, std::nextafter(c.query_y, c.query_y - 1.0F)),
+       make_float2(c.query_x, std::nextafter(c.query_y, c.query_y + 1.0F))},
+      stream());
+  }
+
+  // Exercise both signs immediately inside, on, and outside the hard lateral boundary.
+  const float line_x[] = {0, 10};
+  const float line_y[] = {0, 0};
+  cost_->setLateralCorridor(line_x, line_y, 2);
+  std::vector<float2> queries;
+  for (float sign : {-1.0F, 1.0F}) {
+    for (float offset : {std::nextafter(0.5F, 0.0F), 0.5F, std::nextafter(0.5F, 1.0F)}) {
+      queries.push_back(make_float2(5.0F, sign * offset));
+    }
+  }
+  expectDeviceProjectionParity(*cost_, queries, stream());
+
+  // Fractional oblique vertices exercise rounded endpoint differences in reference fallback.
+  const float ref_x[] = {-0.17F, 3.14159F, 3.7F, 0.13F};
+  const float ref_y[] = {0.23F, 2.71828F, -0.41F, -0.19F};
+  const float velocity[] = {2, 2, 2, 2};
+  cost_->beginDataUpdate();
+  cost_->setReferenceTrajectory(ref_x, ref_y, velocity, 4);
+  cost_->clearLateralCorridor();
+  cost_->commitDataUpdate();
+  expectDeviceProjectionParity(
+    *cost_, {make_float2(1.1F, 1.3F), make_float2(2.7F, -0.2F), make_float2(-1000, 9)}, stream());
+}
+
+TEST_F(DistanceMapGpuTest, PreparedProjectionTracksReferenceCorridorAndTranslatedVertices)
+{
+  std::array<float, kTestHorizon> x{}, y{}, velocity{};
+  velocity.fill(2.0F);
+  x[1] = x[2] = 10.0F;
+  for (int i = 2; i < kTestHorizon; ++i) y[i] = 10.0F;
+  cost_->beginDataUpdate();
+  cost_->clearLateralCorridor();
+  cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon);
+  cost_->commitDataUpdate();
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_segment_delta_[0].dx, 10.0F);
+  expectProjectionSequence(*cost_, {make_float2(1, 9), make_float2(-1000, 9)}, stream());
+
+  const float corridor_x[] = {0, 10, 10, 0};
+  const float corridor_y[] = {0, 0, 2, 2};
+  cost_->setLateralCorridor(corridor_x, corridor_y, 4);
+  EXPECT_FLOAT_EQ(cost_->runtimeData().lateral_corridor_segment_delta_[2].dx, -10.0F);
+  expectProjectionSequence(*cost_, {make_float2(1, 1), make_float2(1, 1.000001F)}, stream());
+
+  // Reference changes while the corridor is active must be ready when it is removed.
+  x[1] = x[2] = 20.0F;
+  cost_->beginDataUpdate();
+  cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon);
+  cost_->clearLateralCorridor();
+  cost_->commitDataUpdate();
+  EXPECT_FLOAT_EQ(cost_->runtimeData().ref_segment_delta_[0].dx, 20.0F);
+  expectProjectionSequence(*cost_, {make_float2(18, 1), make_float2(1, 9)}, stream());
+
+  // Simulate replacement by translated local vertices at the cost-setter boundary.
+  // The interface's PublishesPreciseMapPositionsAcrossOriginChange test triggers recentering.
+  const float replacement_x[] = {100, 120, 120, 100};
+  const float replacement_y[] = {50, 50, 52, 52};
+  for (int i = 0; i < kTestHorizon; ++i) {
+    x[i] += 100.0F;
+    y[i] += 50.0F;
+  }
+  cost_->beginDataUpdate();
+  cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon);
+  cost_->setLateralCorridor(replacement_x, replacement_y, 4);
+  cost_->commitDataUpdate();
+  EXPECT_FLOAT_EQ(cost_->runtimeData().lateral_corridor_segment_delta_[0].dx, 20.0F);
+  const float below_tie = std::nextafter(51.0F, 50.0F);
+  const float above_tie = std::nextafter(51.0F, 52.0F);
+  ASSERT_LT(below_tie, 51.0F);
+  ASSERT_GT(above_tie, 51.0F);
+  const std::array<float, 3> query_y{below_tie, 51.0F, above_tie};
+  const std::array<int, 3> expected_segments{0, 0, 2};
+  for (std::size_t i = 0; i < query_y.size(); ++i) {
+    SCOPED_TRACE(i);
+    EXPECT_EQ(
+      cost_->computeLateralPathMetrics(101, query_y[i], 0.0F).best_segment_i, expected_segments[i]);
+    EXPECT_EQ(sampleProjectionSegment(*cost_, 101, query_y[i], stream()), expected_segments[i]);
+  }
+  const std::vector<float2> translated_queries{
+    make_float2(101, below_tie), make_float2(101, 51), make_float2(101, above_tie)};
+  expectProjectionSequence(*cost_, translated_queries, stream());
+  expectDeviceProjectionParity(*cost_, translated_queries, stream());
+  cost_->clearLateralCorridor();
+  expectProjectionSequence(*cost_, {make_float2(118, 51), make_float2(101, 59)}, stream());
 }
 
 TEST_F(DistanceMapGpuTest, EgoSpineSubtractsTheConservativeSliceRadius)

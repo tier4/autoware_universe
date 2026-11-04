@@ -2507,10 +2507,11 @@ void FirstOrderDubinsMppiInterface::setPerformanceInstrumentationEnabled(const b
 {
   if (!impl_) throw std::logic_error("MPPI interface has been moved from");
   if (enabled && !impl_->performance_recorder) {
-    // Four device phases per optimizer iteration plus uploads and map generation. Extra host
-    // slots cover nested ranges. Allocation and event creation never happen in a timed cycle.
+    // Six device ranges per split iteration: sampling, inclusive rollout, dynamics, cost,
+    // weighting and reduction. Reserve extra slots for uploads, maps and nested host ranges.
+    // Allocation and event creation never happen in a timed cycle.
     impl_->performance_recorder = std::make_unique<mppi::instrumentation::PerformanceRecorder>(
-      8U * kMaxMppiIterations + 128U, 4U * kMaxMppiIterations + 64U);
+      10U * kMaxMppiIterations + 128U, 6U * kMaxMppiIterations + 64U);
   } else if (!enabled) {
     impl_->performance_recorder.reset();
   }
