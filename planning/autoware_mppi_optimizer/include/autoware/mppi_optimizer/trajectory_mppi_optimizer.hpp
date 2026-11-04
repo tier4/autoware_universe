@@ -28,12 +28,10 @@
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
-#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/header.hpp>
-#include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <cstddef>
@@ -219,8 +217,6 @@ private:
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
-  AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_map_msgs::msg::LaneletMapBin) current_map_;
-  std::optional<unique_identifier_msgs::msg::UUID> current_route_uuid_;
   double object_filter_margin_m_{0.0};
   double object_filter_prediction_extension_s_{0.0};
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides

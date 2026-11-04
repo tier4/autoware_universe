@@ -169,9 +169,9 @@ protected:
     time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>();
     context_ = std::make_shared<TrajectoryProcessorContext>(node_.get());
 
-    const auto map = make_straight_road();
+    map_ = make_straight_road();
     map_bin_ = std::make_shared<LaneletMapBin>(
-      autoware::experimental::lanelet2_utils::to_autoware_map_msgs(map));
+      autoware::experimental::lanelet2_utils::to_autoware_map_msgs(map_));
     map_bin_->header.frame_id = "map";
     route_ = std::make_shared<LaneletRoute>(make_route());
   }
@@ -201,6 +201,7 @@ protected:
       data.current_acceleration = acceleration;
     }
     data.lanelet_map_bin = map_bin_;
+    data.lanelet_map = map_;
     data.route = route_;
     return data;
   }
@@ -235,9 +236,32 @@ protected:
   std::shared_ptr<rclcpp::Node> node_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   std::shared_ptr<TrajectoryProcessorContext> context_;
+  lanelet::LaneletMapPtr map_;
   std::shared_ptr<LaneletMapBin> map_bin_;
   std::shared_ptr<LaneletRoute> route_;
 };
+
+TEST_F(VelocityLimitPluginSimulation, MapPluginReusesCoreRouteAndRebuildsChangedRoute)
+{
+  MapVelocityLimits plugin;
+  initialize(plugin, "MapVelocityLimits", make_params());
+  const auto scenario = road_scenario("route_cache", "", "", "", sim::StageKind::Map);
+  auto data = make_data(scenario, scenario.config.initial_state);
+  const sim::TrajectoryPoints points;
+
+  ASSERT_TRUE(plugin.is_trajectory_modification_required(points, data));
+  const auto first = context_->extended_route_cache.get_or_create(map_, map_bin_, *route_, false);
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(first->getRouteMapRoutingGraph(), nullptr);
+  ASSERT_TRUE(plugin.is_trajectory_modification_required(points, data));
+  EXPECT_EQ(context_->extended_route_cache.get_or_create(map_, map_bin_, *route_, false), first);
+
+  route_->segments.pop_back();
+  ASSERT_TRUE(plugin.is_trajectory_modification_required(points, data));
+  const auto second = context_->extended_route_cache.get_or_create(map_, map_bin_, *route_, false);
+  ASSERT_NE(second, first);
+  EXPECT_FALSE(second->getRouteMap()->laneletLayer.exists(lanelet_id(lanelet_count - 1)));
+}
 
 TEST_F(VelocityLimitPluginSimulation, P01_plugin_external_cruise_60_to_30)
 {

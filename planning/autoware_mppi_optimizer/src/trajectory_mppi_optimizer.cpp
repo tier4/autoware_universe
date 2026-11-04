@@ -405,20 +405,13 @@ void TrajectoryMppiOptimizer::reset_optimizer()
 void TrajectoryMppiOptimizer::update_route_context(
   const autoware::trajectory_processor::TrajectoryProcessorData & data)
 {
-  const bool route_changed =
-    !current_route_uuid_ || current_route_uuid_.value() != data.route->uuid;
-  // Compare the underlying pointers: message_ptr has no operator!=, unlike shared_ptr.
-  const bool map_changed = current_map_.get() != data.lanelet_map_bin.get();
-  if (!route_changed && !map_changed && extended_route_handler_) {
+  auto next_handler = context_->extended_route_cache.get_or_create(
+    data.lanelet_map, data.lanelet_map_bin, *data.route, true);
+  if (next_handler == extended_route_handler_) {
     return;
   }
 
-  current_route_uuid_ = data.route->uuid;
-  current_map_ = data.lanelet_map_bin;
-  extended_route_handler_ =
-    std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
-      *current_map_, *data.route);
-  extended_route_handler_->create_map();
+  extended_route_handler_ = std::move(next_handler);
   reset_optimizer();
 }
 

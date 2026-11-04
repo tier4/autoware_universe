@@ -88,16 +88,11 @@ bool MapVelocityLimits::is_trajectory_modification_required(
   if (!input.lanelet_map_bin || !input.route) {
     return false;
   }
-  if (!extended_route_handler_ || previous_route_uuid_ != input.route->uuid) {
-    auto handler = std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
-      *input.lanelet_map_bin, *input.route);
-    handler->create_map();
-    extended_route_handler_ = handler;
-    previous_route_uuid_ = input.route->uuid;
-  }
   if (input.current_odometry && input.current_odometry->twist.twist.linear.x < 0.1) {
     return false;
   }
+  extended_route_handler_ = context_->extended_route_cache.get_or_create(
+    input.lanelet_map, input.lanelet_map_bin, *input.route, false);
   return true;
 }
 

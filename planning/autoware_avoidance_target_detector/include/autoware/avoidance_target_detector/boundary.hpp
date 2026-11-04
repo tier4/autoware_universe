@@ -33,7 +33,9 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -111,19 +113,45 @@ private:
   std::vector<Segment> segments_;
 };
 
+/** Map data shared by route snapshots. Constructed once for each received map. */
+class ExtendedMapContext
+{
+public:
+  ExtendedMapContext(
+    lanelet::LaneletMapPtr map, LaneletMapBin::ConstSharedPtr binary_map = nullptr);
+
+  [[nodiscard]] const lanelet::LaneletMapPtr & map() const { return map_; }
+  [[nodiscard]] const lanelet::routing::RoutingGraphConstPtr & routing_graph() const
+  {
+    return routing_graph_;
+  }
+  [[nodiscard]] const LaneletMapBin::ConstSharedPtr & binary_map() const { return binary_map_; }
+
+private:
+  lanelet::LaneletMapPtr map_;
+  lanelet::routing::RoutingGraphConstPtr routing_graph_;
+  LaneletMapBin::ConstSharedPtr binary_map_;
+};
+
 class ExtendedRouteHandler
 {
 public:
   using VelocityLimitOverrides = std::unordered_map<lanelet::Id, double>;
 
   ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route);
+  ExtendedRouteHandler(std::shared_ptr<const ExtendedMapContext> map, const LaneletRoute & route);
 
   /** Build the extended route map and routing graph from the original map and route. */
   void create_map();
+  /** Build only the data needed for velocity-limit queries. */
+  void create_velocity_map();
+  /** Add route bounds, road borders, and the route-map graph when needed by MPPI. */
+  void create_boundary_map();
 
-  [[nodiscard]] const std::shared_ptr<RouteHandler> & getOriginalRouteHandler() const
+  [[nodiscard]] const std::shared_ptr<RouteHandler> & getOriginalRouteHandler() const;
+  [[nodiscard]] const lanelet::LaneletMapPtr & getOriginalMap() const
   {
-    return original_route_handler_;
+    return map_context_->map();
   }
 
   [[nodiscard]] lanelet::routing::RoutingGraphConstPtr getExtendedRoutingGraph() const
@@ -198,13 +226,34 @@ private:
   ExtendedLaneletSegments extended_lanelet_segments_;
   lanelet::routing::RoutingGraphConstPtr extended_routing_graph_;
   lanelet::routing::RoutingGraphConstPtr route_map_routing_graph_;
-  std::shared_ptr<RouteHandler> original_route_handler_;
+  std::shared_ptr<const ExtendedMapContext> map_context_;
+  mutable std::shared_ptr<RouteHandler> original_route_handler_;
+  std::set<lanelet::Id> route_lanelet_ids_;
+  bool velocity_map_ready_{false};
+  bool boundary_map_ready_{false};
   RouteBounds original_route_bounds_;
   RouteBounds extended_route_bounds_;
   std::unordered_map<lanelet::Id, std::size_t> lanelet_to_segment_index_;
   SegmentRtree road_borders_rtree_;
   SegmentRtree original_bounds_rtree_;
   SegmentRtree extended_bounds_rtree_;
+};
+
+/** Reuses map setup and one route snapshot across trajectory-modifier plugins. */
+class ExtendedRouteCache
+{
+public:
+  [[nodiscard]] std::shared_ptr<ExtendedRouteHandler> get_or_create(
+    const lanelet::LaneletMapPtr & map, const LaneletMapBin::ConstSharedPtr & binary_map,
+    const LaneletRoute & route, bool include_boundaries);
+
+private:
+  std::mutex mutex_;
+  lanelet::LaneletMapPtr current_map_;
+  LaneletMapBin::ConstSharedPtr current_binary_map_;
+  std::shared_ptr<const ExtendedMapContext> map_context_;
+  std::optional<LaneletRoute> current_route_;
+  std::shared_ptr<ExtendedRouteHandler> current_handler_;
 };
 
 /**
