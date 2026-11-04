@@ -6,6 +6,7 @@
   <arg name="safety_planner_vehicle_kinematics_param_path" default="$(var safety_planner_config_dir)/constraint_generator/vehicle_kinematics.param.yaml"/>
   <arg name="safety_planner_external_velocity_limit_param_path" default="$(var safety_planner_config_dir)/constraint_generator/external_velocity_limit.param.yaml"/>
   <arg name="safety_planner_lane_following_drivable_area_param_path" default="$(var safety_planner_config_dir)/constraint_generator/lane_following_drivable_area.param.yaml"/>
+  <arg name="safety_planner_map_based_stop_param_path" default="$(var safety_planner_config_dir)/constraint_generator/map_based_stop.param.yaml"/>
   <arg name="safety_planner_obstacle_stop_param_path" default="$(var safety_planner_config_dir)/constraint_generator/obstacle_stop.param.yaml"/>
   <!-- trajectory planner plugins -->
   <arg name="safety_planner_frenet_sampling_based_planner_param_path" default="$(var safety_planner_config_dir)/trajectory_planner/frenet_sampling_based_planner.param.yaml"/>
@@ -30,6 +31,7 @@
     <param from="$(var safety_planner_vehicle_kinematics_param_path)" allow_substs="true"/>
     <param from="$(var safety_planner_external_velocity_limit_param_path)" allow_substs="true"/>
     <param from="$(var safety_planner_lane_following_drivable_area_param_path)" allow_substs="true"/>
+    <param from="$(var safety_planner_map_based_stop_param_path)" allow_substs="true"/>
     <param from="$(var safety_planner_obstacle_stop_param_path)" allow_substs="true"/>
     <param from="$(var safety_planner_frenet_sampling_based_planner_param_path)" allow_substs="true"/>
     <param from="$(var safety_planner_reference_path_following_planner_param_path)" allow_substs="true"/>
