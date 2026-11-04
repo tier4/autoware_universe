@@ -355,8 +355,15 @@ bool ObstacleStop::apply_cruise(
     cruise_profile_reset_pub_->publish(reset);
   }
 
+  // Cap the max_acceleration to the ego's current acceleration (or the parameterized limit). If
+  // acceleration is unavailable, keep the parameterized limit. If ego is braking/coasting this
+  // becomes 0
+  const double max_acceleration =
+    input.current_acceleration
+      ? std::max(0.0, std::min(cruise.max_acceleration, input.current_acceleration->accel.accel.linear.x))
+      : cruise.max_acceleration;
   const detail::VelocityLimitConstraints constraints{
-    cruise.max_acceleration, cruise.max_deceleration, cruise.max_jerk};
+    max_acceleration, cruise.max_deceleration, cruise.max_jerk};
   const auto result = detail::apply_velocity_limits(
     traj_points, constraints,
     [v_cruise](const geometry_msgs::msg::Point &) { return std::optional<double>{v_cruise}; },
