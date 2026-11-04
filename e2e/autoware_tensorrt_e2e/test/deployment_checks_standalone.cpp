@@ -19,6 +19,7 @@
 #include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
 #include "autoware/tensorrt_e2e/rolling_latency.hpp"
 #include "autoware/tensorrt_e2e/signal_history.hpp"
+#include "autoware/tensorrt_e2e/start_accel.hpp"
 #include "autoware/tensorrt_e2e/training_ego_shape.hpp"
 #include <iostream>
 #include <limits>
@@ -130,6 +131,25 @@ int main(int argc, char **argv) {
   check(!refuses([] { check_curvature_bias_inputs(true, true); }));
   check(refuses([] { check_curvature_bias_inputs(false, true); }));
   check(refuses([] { check_curvature_bias_inputs(true, false); }));
+  // The predicted start's state: none before the first published plan, then the start that
+  // plan returned and the seconds since its planning time; a clock that went back gives
+  // dt <= 0, which the graph reads as none.
+  {
+    StartAccelState state;
+    check(!state.has_value());
+    check(state.inputs(100.0) == std::make_pair(0.0f, 0.0f));
+    state.record(0.75f, 100.0);
+    const auto [previous, dt_s] = state.inputs(100.1);
+    check(previous == 0.75f && std::abs(dt_s - 0.1f) < 1e-5f);
+    check(state.inputs(99.0).second < 0.0f);
+    state.record(-0.5f, 100.1);
+    check(state.inputs(100.3).first == -0.5f);
+  }
+  check(!refuses([] { check_start_accel_tensors(false, false, false); }));
+  check(!refuses([] { check_start_accel_tensors(true, true, true); }));
+  check(refuses([] { check_start_accel_tensors(true, true, false); }));
+  check(refuses([] { check_start_accel_tensors(false, false, true); }));
+  check(refuses([] { check_start_accel_tensors(true, false, true); }));
   // The signal history: a row is followed by its lanelet, not its slot (the devkit's
   // test_a_row_is_followed_by_its_lanelet_not_by_its_slot, at 0.5 s ticks here).
   {
