@@ -19,6 +19,7 @@
 #include <autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 #include <algorithm>
 #include <iomanip>
@@ -38,10 +39,11 @@ namespace
 
 using autoware::obstacle_proximity_checker::ObstacleTypeParameters;
 using autoware::obstacle_proximity_checker::Parameters;
+using SurroundObstacleStopParams = autoware::safety_planner::Params::SurroundObstacleStop;
 
 ObstacleTypeParameters to_obstacle_type_parameters(
   const double front_distance, const double side_distance, const double back_distance,
-  const bool enable_bbox_check, const bool enable_polygon_check)
+  const bool enable_bbox_check = true, const bool enable_polygon_check = true)
 {
   ObstacleTypeParameters parameters;
   parameters.surround_check_front_distance = front_distance;
@@ -52,22 +54,20 @@ ObstacleTypeParameters to_obstacle_type_parameters(
   return parameters;
 }
 
-//! Templated on the generated parameter struct so this stays independent of its exact type name
-template <typename SurroundObstacleStopParams>
 Parameters to_proximity_checker_parameters(const SurroundObstacleStopParams & p)
 {
   Parameters parameters;
-  parameters.pointcloud_enable_check = false;  // no pointcloud input in the safety_planner
+  parameters.pointcloud_enable_check = p.use_pointcloud;
 
-  const std::unordered_set<std::string> bbox_enabled(
+  const std::unordered_set<std::string> bbox_enabled_object_types(
     p.target_objects.bbox.begin(), p.target_objects.bbox.end());
-  const std::unordered_set<std::string> polygon_enabled(
+  const std::unordered_set<std::string> polygon_enabled_object_types(
     p.target_objects.polygon.begin(), p.target_objects.polygon.end());
 
   const auto & front = p.front_distance_th;
   const auto & side = p.side_distance_th;
   const auto & back = p.back_distance_th;
-  const auto get_distance_thresholds = [&](const std::string & label) {
+  const auto get_object_distance_thresholds = [&](const std::string & label) {
     if (label == "car") return std::make_tuple(front.car, side.car, back.car);
     if (label == "truck") return std::make_tuple(front.truck, side.truck, back.truck);
     if (label == "bus") return std::make_tuple(front.bus, side.bus, back.bus);
@@ -85,20 +85,23 @@ Parameters to_proximity_checker_parameters(const SurroundObstacleStopParams & p)
   for (const std::string label :
        {"unknown", "car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian",
         "hazard", "animal"}) {
-    const bool bbox = bbox_enabled.count(label) > 0;
-    const bool polygon = polygon_enabled.count(label) > 0;
-    const auto [d_front, d_side, d_back] = get_distance_thresholds(label);
-    parameters.object_type_enable_check[label] = bbox || polygon;
+    const bool bbox_enabled = bbox_enabled_object_types.count(label) > 0;
+    const bool polygon_enabled = polygon_enabled_object_types.count(label) > 0;
+    const auto [front, side, back] = get_object_distance_thresholds(label);
+    parameters.object_type_enable_check[label] = bbox_enabled || polygon_enabled;
     parameters.obstacle_types_map[label] =
-      to_obstacle_type_parameters(d_front, d_side, d_back, bbox, polygon);
+      to_obstacle_type_parameters(front, side, back, bbox_enabled, polygon_enabled);
   }
+
+  parameters.obstacle_types_map["pointcloud"] =
+    to_obstacle_type_parameters(front.pointcloud, side.pointcloud, back.pointcloud);
 
   return parameters;
 }
 
 MarkerArray make_debug_markers(
   const obstacle_proximity_checker::CheckResult & result, const bool is_active,
-  const builtin_interfaces::msg::Time & stamp)
+  const rclcpp::Time & stamp)
 {
   using autoware_utils_visualization::create_default_marker;
   using autoware_utils_visualization::create_marker_color;
@@ -113,37 +116,39 @@ MarkerArray make_debug_markers(
     return marker_array;
   }
 
-  const auto color =
-    is_active ? create_marker_color(1.0, 0.0, 0.0, 1.0) : create_marker_color(1.0, 1.0, 0.0, 1.0);
-  auto marker = create_default_marker(
-    "map", stamp, "nearest_obstacle", 0, Marker::SPHERE, create_marker_scale(0.5, 0.5, 0.5), color);
-  marker.pose.position = result.nearest_obstacle->nearest_point;
-  marker.pose.orientation.w = 1.0;
-  marker_array.markers.push_back(marker);
+  const auto create_nearest_obstacle_position_marker = [&]() {
+    const auto color =
+      is_active ? create_marker_color(1.0, 0.0, 0.0, 1.0) : create_marker_color(1.0, 1.0, 0.0, 1.0);
+    auto marker = create_default_marker(
+      "map", stamp, "nearest_obstacle_position", 0, Marker::SPHERE,
+      create_marker_scale(0.5, 0.5, 0.5), color);
+    marker.pose.position = result.nearest_obstacle->nearest_point;
+    marker.pose.orientation.w = 1.0;
+    return marker;
+  };
 
-  std::ostringstream ss;
-  ss << std::fixed << std::setprecision(2);
-  ss << "active: " << (is_active ? "true" : "false") << "\n";
-  ss << "distance: " << result.nearest_obstacle->nearest_distance << " m";
-  auto text = create_default_marker(
-    "map", stamp, "nearest_obstacle_text", 0, Marker::TEXT_VIEW_FACING,
-    create_marker_scale(0.4, 0.4, 0.4), create_marker_color(1.0, 1.0, 1.0, 1.0));
-  text.pose.position = result.nearest_obstacle->nearest_point;
-  text.pose.position.z += 1.0;
-  text.pose.orientation.w = 1.0;
-  text.text = ss.str();
-  marker_array.markers.push_back(text);
+  const auto create_nearest_obstacle_info_marker = [&]() {
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(2);
+    ss << "active: " << (is_active ? "true" : "false") << "\n";
+    ss << "distance: " << result.nearest_obstacle->nearest_distance << " m";
+    auto marker = create_default_marker(
+      "map", stamp, "nearest_obstacle_info", 0, Marker::TEXT_VIEW_FACING,
+      create_marker_scale(0.4, 0.4, 0.4), create_marker_color(1.0, 1.0, 1.0, 1.0));
+    marker.pose.position = result.nearest_obstacle->nearest_point;
+    marker.pose.position.z += 1.0;
+    marker.pose.orientation.w = 1.0;
+    marker.text = ss.str();
+    return marker;
+  };
+
+  marker_array.markers.push_back(create_nearest_obstacle_position_marker());
+  marker_array.markers.push_back(create_nearest_obstacle_info_marker());
 
   return marker_array;
 }
 
 }  // namespace
-
-void SurroundObstacleStopConstraintGenerator::reset()
-{
-  is_stop_active_ = false;
-  last_obstacle_found_time_ = std::nullopt;
-}
 
 ConstraintGeneratorOutput SurroundObstacleStopConstraintGenerator::generate_constraints(
   const PlannerContext & context)
@@ -153,7 +158,12 @@ ConstraintGeneratorOutput SurroundObstacleStopConstraintGenerator::generate_cons
   const auto & p = params_.surround_obstacle_stop;
   ConstraintGeneratorOutput output;
 
-  if (!p.enable || !context.predicted_objects) {
+  if (!p.enable) {
+    reset();
+    return output;
+  }
+
+  if (!check_inputs(context)) {
     reset();
     return output;
   }
@@ -171,36 +181,35 @@ ConstraintGeneratorOutput SurroundObstacleStopConstraintGenerator::generate_cons
       to_proximity_checker_parameters(p), context.vehicle_info);
   }
 
-  obstacle_proximity_checker::Inputs inputs;
-  inputs.ego_pose = context.odometry.pose.pose;
-  inputs.objects = context.predicted_objects;
+  if (!pointcloud_filter_) {
+    pointcloud_filter_ =
+      std::make_unique<trajectory_modifier::utils::obstacle_stop::PointCloudFilter>(
+        p.target_objects.pointcloud);
+  }
 
-  // While already active, the obstacle has to clear further out (hysteresis_distance) before the
-  // gate is released; otherwise even a touch (1e-3) is enough to raise it
-  const double contact_distance_threshold = is_stop_active_ ? p.hysteresis_distance : 1e-3;
-  const auto result = proximity_checker_->check(inputs, contact_distance_threshold);
+  const double contact_distance_threshold =
+    last_obstacle_found_time_.has_value() ? p.hysteresis_distance : 1e-3;
+  const auto result =
+    proximity_checker_->check(to_proximity_checker_inputs(context), contact_distance_threshold);
 
   const rclcpp::Time now(context.odometry.header.stamp);
-  bool obstacle_found = result.is_obstacle_found;
+  auto obstacle_found = result.is_obstacle_found;
   if (obstacle_found) {
     last_obstacle_found_time_ = now;
-    is_stop_active_ = true;
-  } else if (is_stop_active_ && last_obstacle_found_time_) {
+  } else if (last_obstacle_found_time_.has_value()) {
     if ((now - *last_obstacle_found_time_).seconds() <= p.hysteresis_time) {
-      obstacle_found = true;  // held through the time hysteresis
+      obstacle_found = true;
     } else {
       reset();
     }
   }
 
-  output.debug_markers = make_debug_markers(result, obstacle_found, context.odometry.header.stamp);
+  output.debug_markers = make_debug_markers(result, obstacle_found, now);
 
   if (!obstacle_found) {
     return output;
   }
 
-  // A Gate right at the ego's front, closed for good (the default TimeWindow): the trajectory
-  // planner cannot move the ego past its current position while it stands
   const auto & path = context.reference_path;
   const double s_ego = compute_ego_frenet_state(context).s;
   const double s_gate =
@@ -221,6 +230,73 @@ ConstraintGeneratorOutput SurroundObstacleStopConstraintGenerator::generate_cons
   output.constraints.push_back(std::move(constraint));
 
   return output;
+}
+
+bool SurroundObstacleStopConstraintGenerator::check_inputs(const PlannerContext & context) const
+{
+  const auto & p = params_.surround_obstacle_stop;
+  return context.predicted_objects || (p.use_pointcloud && context.obstacle_pointcloud);
+}
+
+obstacle_proximity_checker::Inputs
+SurroundObstacleStopConstraintGenerator::to_proximity_checker_inputs(
+  const PlannerContext & context) const
+{
+  obstacle_proximity_checker::Inputs inputs;
+  inputs.ego_pose = context.odometry.pose.pose;
+  inputs.objects = context.predicted_objects;
+
+  if (!context.obstacle_pointcloud || context.obstacle_pointcloud->data.empty()) {
+    return inputs;
+  }
+
+  auto transformed_pointcloud =
+    std::make_shared<trajectory_modifier::utils::obstacle_stop::PointCloud>();
+  pcl::fromROSMsg(*context.obstacle_pointcloud, *transformed_pointcloud);
+
+  const auto isometry =
+    tf2::transformToEigen(context.obstacle_sensor_to_base_link.transform).cast<float>();
+  for (auto & p : transformed_pointcloud->points) {
+    const auto q = isometry * Eigen::Vector3f(p.x, p.y, p.z);
+    p.x = q.x();
+    p.y = q.y();
+    p.z = q.z();
+  }
+
+  const auto & params = params_.surround_obstacle_stop;
+
+  const auto ego_front_offset = context.vehicle_info.max_longitudinal_offset_m;
+  const auto ego_rear_offset = context.vehicle_info.rear_overhang_m;
+  const auto ego_side_offset = context.vehicle_info.vehicle_width_m / 2.0;
+  const auto front_offset =
+    ego_front_offset + params.front_distance_th.pointcloud + params.hysteresis_distance;
+  const auto rear_offset =
+    ego_rear_offset + params.back_distance_th.pointcloud + params.hysteresis_distance;
+  const auto side_offset =
+    ego_side_offset + params.side_distance_th.pointcloud + params.hysteresis_distance;
+
+  pointcloud_filter_->filter_pointcloud(
+    transformed_pointcloud, -rear_offset, front_offset, -side_offset, side_offset,
+    params.pcd_min_height, context.vehicle_info.vehicle_height_m + params.pcd_height_buffer);
+
+  // ProximityChecker expects PointXYZ; drop CPE fields after label/range filtering.
+  auto xyz_pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  xyz_pointcloud->points.reserve(transformed_pointcloud->points.size());
+  for (const auto & p : transformed_pointcloud->points) {
+    xyz_pointcloud->points.emplace_back(p.x, p.y, p.z);
+  }
+  xyz_pointcloud->width = static_cast<std::uint32_t>(xyz_pointcloud->points.size());
+  xyz_pointcloud->height = 1;
+  xyz_pointcloud->is_dense = transformed_pointcloud->is_dense;
+
+  inputs.pointcloud_in_base_link = xyz_pointcloud;
+
+  return inputs;
+}
+
+void SurroundObstacleStopConstraintGenerator::reset()
+{
+  last_obstacle_found_time_ = std::nullopt;
 }
 
 }  // namespace autoware::safety_planner::experimental

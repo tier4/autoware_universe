@@ -454,6 +454,11 @@ safety_planner:
       default_value: true
       read_only: true
       description: enable surround obstacle stop
+    use_pointcloud:
+      type: bool
+      default_value: false
+      description: enable the use of pointcloud for surround obstacle stop
+      read_only: true
     target_objects:
       bbox:
         type: string_array
@@ -483,13 +488,20 @@ safety_planner:
           - unknown
         read_only: true
         description: classes of the POLYGON objects to stop for
+      pointcloud:
+        type: string_array
+        default_value:
+          - structure
+          - vegetation
+        description: classes of the POINTCLOUD objects to stop for
+        read_only: true
     front_distance_th: &surround_obstacle_stop_distance_template
       car:
         &surround_obstacle_stop_distance_default {
           type: double,
           default_value: 0.5,
+          validation: { bounds<>: [0.0, 10.0] },
           read_only: true,
-          description: "[m]",
         }
       truck: *surround_obstacle_stop_distance_default
       bus: *surround_obstacle_stop_distance_default
@@ -500,6 +512,7 @@ safety_planner:
       hazard: *surround_obstacle_stop_distance_default
       animal: *surround_obstacle_stop_distance_default
       unknown: *surround_obstacle_stop_distance_default
+      pointcloud: *surround_obstacle_stop_distance_default
     side_distance_th: *surround_obstacle_stop_distance_template
     back_distance_th: *surround_obstacle_stop_distance_template
     hysteresis_distance:
@@ -517,6 +530,20 @@ safety_planner:
       default_value: 0.1
       read_only: true
       description: speed [m/s] above which the ego is considered moving and the check does not run
+    pcd_height_buffer:
+      type: double
+      default_value: 0.5
+      description: height buffer to add above ego height [m]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: true
+    pcd_min_height:
+      type: double
+      default_value: 0.2
+      description: minimum height of pointcloud [m]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: true
 
   frenet_sampling_based_planner:
     time_step_s:

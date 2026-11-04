@@ -18,6 +18,7 @@
 #include "constraint_generator_interface.hpp"
 
 #include <autoware/obstacle_proximity_checker/obstacle_proximity_checker.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp>
 #include <rclcpp/time.hpp>
 
 #include <memory>
@@ -34,12 +35,17 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 
 private:
-  std::unique_ptr<obstacle_proximity_checker::ProximityChecker> proximity_checker_;
+  bool check_inputs(const PlannerContext & context) const;
 
-  bool is_stop_active_{false};
-  std::optional<rclcpp::Time> last_obstacle_found_time_;
+  obstacle_proximity_checker::Inputs to_proximity_checker_inputs(
+    const PlannerContext & context) const;
 
   void reset();
+
+  std::unique_ptr<obstacle_proximity_checker::ProximityChecker> proximity_checker_;
+  std::unique_ptr<trajectory_modifier::utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;
+
+  std::optional<rclcpp::Time> last_obstacle_found_time_;
 };
 
 }  // namespace autoware::safety_planner::experimental
