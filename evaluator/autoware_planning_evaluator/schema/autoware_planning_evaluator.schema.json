@@ -50,7 +50,8 @@
             "abnormal_stop_decision",
             "blinker_change_count",
             "steer_change_count",
-            "trajectory_validation"
+            "trajectory_validation",
+            "lane_event"
           ]
         },
         "metrics_for_output": {
@@ -87,7 +88,8 @@
             "abnormal_stop_decision",
             "blinker_change_count",
             "steer_change_count",
-            "trajectory_validation"
+            "trajectory_validation",
+            "lane_event"
           ]
         },
         "trajectory": {

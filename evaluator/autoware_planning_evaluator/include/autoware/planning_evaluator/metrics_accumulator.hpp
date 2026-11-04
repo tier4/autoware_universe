@@ -17,6 +17,7 @@
 
 #include "autoware/planning_evaluator/metric_accumulators/blinker_accumulator.hpp"
 #include "autoware/planning_evaluator/metric_accumulators/common_accumulator.hpp"
+#include "autoware/planning_evaluator/metric_accumulators/lane_event_accumulator.hpp"
 #include "autoware/planning_evaluator/metric_accumulators/planning_factor_accumulator.hpp"
 #include "autoware/planning_evaluator/metric_accumulators/steer_accumulator.hpp"
 #include "autoware/planning_evaluator/metric_accumulators/trajectory_validation_accumulator.hpp"
@@ -24,6 +25,7 @@
 #include "autoware/planning_evaluator/metrics/output_metric.hpp"
 
 #include <autoware_utils/math/accumulator.hpp>
+#include <lane_event_classifier_msgs/msg/driving_factor.hpp>
 #include <nlohmann/json.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
@@ -37,6 +39,7 @@ using autoware_utils::Accumulator;
 using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using json = nlohmann::json;
+using lane_event_classifier_msgs::msg::DrivingFactor;
 
 class MetricsAccumulator
 {
@@ -52,6 +55,8 @@ public:
 
   void setBlinkerData(const TurnIndicatorsReport & msg);
 
+  void setLaneEventData(const DrivingFactor & msg);
+
   void setSteerData(const SteeringReport & msg);
 
   void setPlanningFactors(
@@ -66,6 +71,7 @@ public:
 
   PlanningFactorAccumulator planning_factor_accumulator;
   TrajectoryValidationAccumulator trajectory_validation_accumulator;
+  LaneEventAccumulator lane_event_accumulator;
   BlinkerAccumulator blinker_accumulator;
   SteerAccumulator steer_accumulator;
   std::unordered_map<OutputMetric, CommonAccumulator> common_accumulators;

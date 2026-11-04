@@ -44,6 +44,7 @@
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <lane_event_classifier_msgs/msg/driving_factor.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <tier4_metric_msgs/msg/metric.hpp>
 #include <tier4_metric_msgs/msg/metric_array.hpp>
@@ -73,6 +74,7 @@ using autoware_internal_planning_msgs::msg::PlanningFactorArray;
 using autoware_internal_planning_msgs::msg::ValidationReportArray;
 using autoware_planning_msgs::msg::LaneletRoute;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
+using lane_event_classifier_msgs::msg::DrivingFactor;
 /**
  * @brief Node for planning evaluation
  */
@@ -126,6 +128,12 @@ public:
    * @param [in] blinker_msg received turn indicators message
    */
   void onBlinker(const TurnIndicatorsReport::ConstSharedPtr blinker_msg);
+
+  /**
+   * @brief callback on receiving a lane event classifier message
+   * @param [in] lane_event_msg received lane event classifier message
+   */
+  void onLaneEvent(const DrivingFactor::ConstSharedPtr lane_event_msg);
 
   /**
    * @brief callback on receiving a planning factors
@@ -209,6 +217,8 @@ private:
     this, "~/input/turn_indicators_status"};
   autoware_utils::InterProcessPollingSubscriber<ValidationReportArray> validation_reports_sub_{
     this, "~/input/validation_reports"};
+  autoware_utils::InterProcessPollingSubscriber<DrivingFactor> lane_event_sub_{
+    this, "~/input/lane_event"};
 
   std::unordered_map<
     std::string, autoware_utils::InterProcessPollingSubscriber<PlanningFactorArray>>

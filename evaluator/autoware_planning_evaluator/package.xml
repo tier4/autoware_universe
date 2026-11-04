@@ -26,6 +26,7 @@
   <depend>autoware_vehicle_msgs</depend>
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
+  <depend>lane_event_classifier_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>nlohmann-json-dev</depend>
   <depend>pluginlib</depend>

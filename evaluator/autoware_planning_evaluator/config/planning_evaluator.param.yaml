@@ -32,6 +32,7 @@
       - blinker_change_count
       - steer_change_count
       - trajectory_validation
+      - lane_event
 
     metrics_for_output:
       - curvature
@@ -62,6 +63,7 @@
       - blinker_change_count
       - steer_change_count
       - trajectory_validation
+      - lane_event
 
     trajectory:
       min_point_dist_m: 0.1 # [m] minimum distance between two successive points to use for angle calculation

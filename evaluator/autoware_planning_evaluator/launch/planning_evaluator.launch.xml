@@ -12,6 +12,7 @@
   <arg name="input/turn_indicators_status" default="/vehicle/status/turn_indicators_status"/>
   <arg name="input/steering_status" default="/vehicle/status/steering_status"/>
   <arg name="input/validation_reports" default="/planning/trajectory_selector/trajectory_selector_node/debug/validator/validation_reports"/>
+  <arg name="input/lane_event" default="/planning/driving_factor"/>
 
   <!-- planning evaluator -->
   <group>
@@ -30,6 +31,7 @@
       <remap from="~/input/turn_indicators_status" to="$(var input/turn_indicators_status)"/>
       <remap from="~/input/steering_status" to="$(var input/steering_status)"/>
       <remap from="~/input/validation_reports" to="$(var input/validation_reports)"/>
+      <remap from="~/input/lane_event" to="$(var input/lane_event)"/>
     </node>
   </group>
 </launch>

@@ -51,6 +51,7 @@ These files also provide string conversions and human-readable descriptions for 
 8. [Blinker Metrics](#blinker-metrics)
 9. [Trajectory validation metrics](#trajectory-validation-metrics)
 10. [Other Information](#other-information)
+11. [Lane events](#Lane-Events)
 
 ## Detailed Metrics
 
@@ -313,6 +314,19 @@ Metrics are calculated and published only when the node receives a message on `~
     - `/{scope}/error_count`: total error episodes.
     - `/{scope}/value/min`, `/{scope}/value/max`, `/{scope}/value/count`: session statistics over published `metric_value` samples.
     - `/{scope}/value/mean`: also output for non-`check_*` metrics (e.g. speed, DRAC, RSS).
+
+### Lane Events
+
+- **`lane events`**: Status statistics for lane events (driving state transitions).
+  - **Scopes**:
+    - `/lane_event/{driving_state}`: aggregated stats per driving state (e.g. lane_following, lane_change_left, etc.)
+  - Sub-metrics to publish (value-based):
+    - `/{scope}/duration`: current accumulated duration of the active apan for that scope (seconds).
+    - `/{scope}/count`: number of episodes for that scope.
+  - Sub-metrics to output:
+    - `/{scope}/duration/min`, `/{scope}/duration/max`, `/{scope}/duration/mean`: statistics over completed span durations.
+    - `/{scope}/duration/total`: sum of all completed span durations (seconds).
+    - `/{scope}/count`: number of times entering that driving state (includes the currently active episode, if any).
 
 ### Other Information
 

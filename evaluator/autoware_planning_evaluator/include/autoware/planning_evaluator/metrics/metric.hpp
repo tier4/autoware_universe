@@ -56,6 +56,7 @@ enum class Metric {
   blinker_change_count,
   steer_change_count,
   trajectory_validation,
+  lane_event,
   SIZE,
 };
 
@@ -90,7 +91,8 @@ static const std::unordered_map<std::string, Metric> str_to_metric = {
   {"abnormal_stop_decision", Metric::abnormal_stop_decision},
   {"blinker_change_count", Metric::blinker_change_count},
   {"steer_change_count", Metric::steer_change_count},
-  {"trajectory_validation", Metric::trajectory_validation}};
+  {"trajectory_validation", Metric::trajectory_validation},
+  {"lane_event", Metric::lane_event}};
 
 static const std::unordered_map<Metric, std::string> metric_to_str = {
   {Metric::curvature, "curvature"},
@@ -120,7 +122,8 @@ static const std::unordered_map<Metric, std::string> metric_to_str = {
   {Metric::abnormal_stop_decision, "abnormal_stop_decision"},
   {Metric::blinker_change_count, "blinker_change_count"},
   {Metric::steer_change_count, "steer_change_count"},
-  {Metric::trajectory_validation, "trajectory_validation"}};
+  {Metric::trajectory_validation, "trajectory_validation"},
+  {Metric::lane_event, "lane_event"}};
 
 // Metrics descriptions
 static const std::unordered_map<Metric, std::string> metric_descriptions = {
@@ -157,7 +160,8 @@ static const std::unordered_map<Metric, std::string> metric_descriptions = {
    "Count of steer_rate positive/negative changes in recent `window_duration_s` seconds"},
   {Metric::trajectory_validation,
    "Trajectory validation error_duration[s] and error_count per trajectory (generator) and per "
-   "MetricReport row"}};
+   "MetricReport row"},
+  {Metric::lane_event, "Lane event duration[s], count, and per MetricReport row"}};
 
 namespace details
 {

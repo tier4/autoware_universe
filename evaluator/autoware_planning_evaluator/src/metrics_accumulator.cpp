@@ -47,6 +47,11 @@ void MetricsAccumulator::setBlinkerData(const TurnIndicatorsReport & msg)
   blinker_accumulator.update(msg);
 }
 
+void MetricsAccumulator::setLaneEventData(const DrivingFactor & msg)
+{
+  lane_event_accumulator.update(msg);
+}
+
 void MetricsAccumulator::setSteerData(const SteeringReport & msg)
 {
   steer_accumulator.update(msg);
@@ -69,6 +74,9 @@ void MetricsAccumulator::addMetricMsg(const Metric & metric, MetricArrayMsg & me
       return;
     case Metric::trajectory_validation:
       trajectory_validation_accumulator.addMetricMsg(metric, metrics_msg);
+      return;
+    case Metric::lane_event:
+      lane_event_accumulator.addMetricMsg(metric, metrics_msg);
       return;
     default:
       return;
@@ -102,6 +110,9 @@ json MetricsAccumulator::getOutputJson(const OutputMetric & output_metric)
 
     case OutputMetric::trajectory_validation:
       return trajectory_validation_accumulator.getOutputJson(output_metric);
+
+    case OutputMetric::lane_event:
+      return lane_event_accumulator.getOutputJson(output_metric);
 
     default:
       if (common_accumulators.find(output_metric) == common_accumulators.end()) {

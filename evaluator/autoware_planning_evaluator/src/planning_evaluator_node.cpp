@@ -386,6 +386,11 @@ void PlanningEvaluatorNode::onTimer()
     const auto reports = validation_reports_sub_.take_data();
     onValidationReports(reports);
   }
+  {
+    const auto lane_event_msg = lane_event_sub_.take_data();
+    onLaneEvent(lane_event_msg);
+  }
+
   // Publish metrics
   metrics_msg_.stamp = now();
   metrics_pub_->publish(metrics_msg_);
@@ -541,6 +546,17 @@ void PlanningEvaluatorNode::onBlinker(const TurnIndicatorsReport::ConstSharedPtr
   metrics_accumulator_.setBlinkerData(*blinker_msg);
   if (metrics_for_publish_.count(Metric::blinker_change_count) != 0) {
     metrics_accumulator_.addMetricMsg(Metric::blinker_change_count, metrics_msg_);
+  }
+}
+
+void PlanningEvaluatorNode::onLaneEvent(const DrivingFactor::ConstSharedPtr lane_event_msg)
+{
+  if (!lane_event_msg) {
+    return;
+  }
+  metrics_accumulator_.setLaneEventData(*lane_event_msg);
+  if (metrics_for_publish_.count(Metric::lane_event) != 0) {
+    metrics_accumulator_.addMetricMsg(Metric::lane_event, metrics_msg_);
   }
 }
 
