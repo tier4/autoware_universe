@@ -407,6 +407,29 @@ struct FirstOrderDubinsMppiTiming
   double total_ms{0.0};
 };
 
+/** Inclusive host ranges and stream elapsed times; nested phases must not be summed. */
+struct FirstOrderDubinsMppiPerformancePhase
+{
+  std::string name;
+  std::size_t calls{0};
+  std::size_t gpu_calls{0};
+  double host_ms{0.0};
+  double gpu_ms{0.0};
+};
+
+struct FirstOrderDubinsMppiPerformanceReport
+{
+  bool instrumented{false};
+  bool initialized{false};
+  int rollouts{0};
+  int horizon{0};
+  int iterations{0};
+  float dt{0.0F};
+  unsigned int seed{0};
+  std::string kernel{"uninitialized"};
+  std::vector<FirstOrderDubinsMppiPerformancePhase> phases;
+};
+
 /** Post-step delay-bicycle state after u₀ (internal MPPI plant; for closed-loop sim feedback). */
 struct FirstOrderDubinsMppiAppliedPlantState
 {
@@ -551,6 +574,17 @@ class FirstOrderDubinsMppiInterface
 public:
   FirstOrderDubinsMppiInterface();
   ~FirstOrderDubinsMppiInterface();
+
+  /** Opt-in profiling. Creates reusable CUDA events; call outside measured regions. */
+  void setPerformanceInstrumentationEnabled(bool enabled);
+
+  /**
+   * Collect the last optimizeTrajectory call's ranges and effective workload configuration.
+   * The caller must finish GPU work before collection. Does not synchronize; throws on incomplete
+   * events, instrumentation overflow or CUDA errors. Empty phases when instrumentation is off.
+   * Like optimizeTrajectory, these methods require exclusive access to the interface.
+   */
+  FirstOrderDubinsMppiPerformanceReport performanceReport() const;
 
   FirstOrderDubinsMppiInterface(const FirstOrderDubinsMppiInterface &) = delete;
   FirstOrderDubinsMppiInterface & operator=(const FirstOrderDubinsMppiInterface &) = delete;

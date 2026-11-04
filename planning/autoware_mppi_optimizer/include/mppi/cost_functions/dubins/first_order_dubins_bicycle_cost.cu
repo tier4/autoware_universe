@@ -3,6 +3,7 @@
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh>
 #include <mppi/cost_functions/path_tracking_geometry.cuh>
 #include <mppi/utils/angle_utils.cuh>
+#include <mppi/utils/nvtx.cuh>
 #include <mppi/utils/read_only_load.cuh>
 
 #include <mppi/utils/math_utils.h>
@@ -442,6 +443,8 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     runtime_data_.resize(1);
     runtime_data_.data()[0] = runtime_data_device_;
   }
+  mppi::instrumentation::ScopedNvtxRange range(
+    "MPPI/scene_runtime_upload", mppi::instrumentation::NvtxColor::DATA_TRANSFER, this->stream_);
   HANDLE_ERROR(cudaMemcpyAsync(
     &this->cost_d_->runtime_data_device_, this->runtime_data_.data(), sizeof(RuntimeData),
     cudaMemcpyHostToDevice, this->stream_));

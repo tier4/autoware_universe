@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 project(autoware_mppi_optimizer)
 
+option(MPPI_BUILD_PERFORMANCE_BENCHMARKS "Build the manually invoked MPPI benchmark" OFF)
+
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
@@ -389,24 +391,53 @@ if(CUDA_AVAIL)
     mppi_add_host_cases(test_first_order_dubins_mppi_interface
       "-FirstOrderDubinsMppiInterfaceGpuTest.*")
 
-    find_package(rcutils REQUIRED)
-    ament_add_gtest(test_performance_benchmarks
-      test/test_performance_benchmarks.cpp
-      TIMEOUT 1800
-    )
-    target_link_libraries(test_performance_benchmarks
-      first_order_dubins_mppi
-      rcutils::rcutils
-      ${CUDA_LIBRARIES}
-    )
-    set_target_properties(test_performance_benchmarks PROPERTIES
-      CXX_STANDARD 17
-    )
-    # Prevent other tests in this CTest invocation from contending for the benchmark GPU.
-    set_tests_properties(test_performance_benchmarks PROPERTIES
-      LABELS "gpu;performance"
-      RUN_SERIAL TRUE
-    )
+    if(MPPI_BUILD_PERFORMANCE_BENCHMARKS)
+      find_package(rcutils REQUIRED)
+      find_package(yaml-cpp REQUIRED)
+      find_package(nlohmann_json REQUIRED)
+      find_package(Git QUIET)
+      function(mppi_benchmark_revision source_dir output_variable)
+        set(revision "unavailable")
+        if(GIT_FOUND AND IS_DIRECTORY "${source_dir}")
+          execute_process(COMMAND "${GIT_EXECUTABLE}" describe --always --dirty
+            WORKING_DIRECTORY "${source_dir}" RESULT_VARIABLE status ERROR_QUIET
+            OUTPUT_VARIABLE revision OUTPUT_STRIP_TRAILING_WHITESPACE)
+          if(NOT status EQUAL 0)
+            set(revision "unavailable")
+          endif()
+        endif()
+        set(${output_variable} "${revision}" PARENT_SCOPE)
+      endfunction()
+      mppi_benchmark_revision("${CMAKE_CURRENT_SOURCE_DIR}" MPPI_BENCHMARK_PACKAGE_REVISION)
+      mppi_benchmark_revision("${CMAKE_CURRENT_SOURCE_DIR}/../../../../vendor/mppi_generic_vendor"
+        MPPI_BENCHMARK_VENDOR_REVISION)
+      get_target_property(MPPI_BENCHMARK_VENDOR_DEFINITIONS MPPI::MPPI INTERFACE_COMPILE_DEFINITIONS)
+      if(NOT MPPI_BENCHMARK_VENDOR_DEFINITIONS)
+        set(MPPI_BENCHMARK_VENDOR_DEFINITIONS "")
+      endif()
+      string(TOUPPER "${CMAKE_BUILD_TYPE}" _mppi_build_type)
+      set(MPPI_BENCHMARK_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_mppi_build_type}}")
+      set(MPPI_BENCHMARK_CUDA_FLAGS "${CUDA_NVCC_FLAGS};${CUDA_NVCC_FLAGS_${_mppi_build_type}}")
+      configure_file(test/performance_build_info.hpp.in
+        "${CMAKE_CURRENT_BINARY_DIR}/performance_build_info.hpp" @ONLY)
+      configure_file(config/mppi_optimizer.param.yaml
+        "${CMAKE_CURRENT_BINARY_DIR}/benchmark_optimizer.param.yaml" COPYONLY)
+      configure_file(test/data/performance_vehicle.yaml
+        "${CMAKE_CURRENT_BINARY_DIR}/benchmark_vehicle.yaml" COPYONLY)
+
+      # Deliberately NOT registered with CTest/colcon test, even after opting in to the build.
+      ament_add_gtest_executable(test_performance_benchmarks test/test_performance_benchmarks.cpp)
+      if(NOT TARGET test_performance_benchmarks)
+        message(FATAL_ERROR "The explicitly requested MPPI benchmark requires GTest")
+      endif()
+      target_link_libraries(test_performance_benchmarks
+        first_order_dubins_mppi rcutils::rcutils ${CUDA_LIBRARIES}
+        yaml-cpp nlohmann_json::nlohmann_json)
+      mppi_link_acados_runtime(test_performance_benchmarks)
+      target_include_directories(test_performance_benchmarks PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+      set_target_properties(test_performance_benchmarks PROPERTIES
+        CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+    endif()
 
     # FindCUDA uses custom NVCC commands: target_compile_options with a CUDA language
     # expression never reaches them. Suppress GoogleTest's unused registration-member
@@ -515,6 +546,10 @@ if(CUDA_AVAIL)
     scripts/mppi_open_loop_line_sim_plot.py
     DESTINATION lib/${PROJECT_NAME}
   )
+endif()
+
+if(MPPI_BUILD_PERFORMANCE_BENCHMARKS AND (NOT BUILD_TESTING OR NOT CUDA_AVAIL))
+  message(FATAL_ERROR "MPPI benchmarks require BUILD_TESTING=ON and an available CUDA toolkit")
 endif()
 
 ament_export_include_directories(include)

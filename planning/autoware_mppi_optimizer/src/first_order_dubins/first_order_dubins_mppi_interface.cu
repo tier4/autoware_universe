@@ -63,6 +63,7 @@ constexpr int kMppiHorizon = detail::kMppiHorizon;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = detail::kMppiDt;
 constexpr int kNumRollouts = 16 * 1024;
+constexpr unsigned int kRandomSeed = 1U;
 constexpr int kSampledDebugRollouts = 128;
 constexpr int kMaxVizRollouts = 256;
 constexpr int kMaxWorstVizRollouts = 128;
@@ -872,6 +873,8 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::vector<Segment> drivable_area;
   std::vector<mppi::cost::MovingCarObstacle> obstacles;
 
+  // Declared before the controller and cost so CUDA events outlive their resources.
+  std::unique_ptr<mppi::instrumentation::PerformanceRecorder> performance_recorder;
   DYN model;
   FirstOrderDubinsBicycleParams dyn;
   FirstOrderDubinsMppiVehicleParams vehicle_params{};
@@ -1188,7 +1191,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     cp.init_control_traj_ = u_nom;
     cp.dynamics_rollout_dim_ = dim3(32, 2, 1);
     cp.cost_rollout_dim_ = dim3(80, 1, 1);
-    cp.seed_ = 1U;
+    cp.seed_ = kRandomSeed;
     // Pass the finalized launch configuration into the constructor because it benchmarks the
     // rollout kernels before returning. Setting these dimensions afterward would benchmark the
     // default dim3(1, 1, 1) configuration during initialization.
@@ -2500,6 +2503,44 @@ FirstOrderDubinsMppiInterface::FirstOrderDubinsMppiInterface() : impl_(std::make
 
 FirstOrderDubinsMppiInterface::~FirstOrderDubinsMppiInterface() = default;
 
+void FirstOrderDubinsMppiInterface::setPerformanceInstrumentationEnabled(const bool enabled)
+{
+  if (!impl_) throw std::logic_error("MPPI interface has been moved from");
+  if (enabled && !impl_->performance_recorder) {
+    // Four device phases per optimizer iteration plus uploads and map generation. Extra host
+    // slots cover nested ranges. Allocation and event creation never happen in a timed cycle.
+    impl_->performance_recorder = std::make_unique<mppi::instrumentation::PerformanceRecorder>(
+      8U * kMaxMppiIterations + 128U, 4U * kMaxMppiIterations + 64U);
+  } else if (!enabled) {
+    impl_->performance_recorder.reset();
+  }
+}
+
+FirstOrderDubinsMppiPerformanceReport FirstOrderDubinsMppiInterface::performanceReport() const
+{
+  if (!impl_) throw std::logic_error("MPPI interface has been moved from");
+  FirstOrderDubinsMppiPerformanceReport report;
+  report.instrumented = static_cast<bool>(impl_->performance_recorder);
+  report.initialized = impl_->initialized;
+  report.rollouts = kNumRollouts;
+  report.horizon = kMppiHorizon;
+  report.iterations = impl_->user_cost_params_.max_iter;
+  report.dt = kDt;
+  report.seed = kRandomSeed;
+  if (impl_->controller) {
+    report.kernel = impl_->controller->getKernelChoiceAsEnum() == kernelType::USE_SPLIT_KERNELS
+                      ? "split"
+                      : "combined";
+  }
+  if (impl_->performance_recorder) {
+    for (const auto & phase : impl_->performance_recorder->collect()) {
+      report.phases.push_back(
+        {phase.name, phase.calls, phase.gpu_calls, phase.host_ms, phase.gpu_ms});
+    }
+  }
+  return report;
+}
+
 FirstOrderDubinsMppiInterface::FirstOrderDubinsMppiInterface(
   FirstOrderDubinsMppiInterface && other) noexcept = default;
 
@@ -3044,6 +3085,7 @@ try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
+  mppi::instrumentation::ScopedPerformanceRecording recording(impl_->performance_recorder.get());
   impl_->pending_trajectory_.reset();
   FirstOrderDubinsMppiOptimizationResult result;
   const auto not_enough_input_points = input.points.size() < 2U;
@@ -3090,10 +3132,14 @@ try {
 
   const auto start_time = std::chrono::steady_clock::now();
 
-  impl_->updateDiffusionReference(
-    input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
-    vegetation_points, kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline,
-    predicted_objects);
+  {
+    mppi::instrumentation::ScopedNvtxRange range(
+      "MPPI/prepare_reference", mppi::instrumentation::NvtxColor::DATA_TRANSFER);
+    impl_->updateDiffusionReference(
+      input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
+      vegetation_points, kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline,
+      predicted_objects);
+  }
   Impl::TrackingTransaction transaction(*impl_);
   result.debug.preferred_lane_center_status = impl_->preferred_lane_centerline.status;
   result.debug.preferred_lane_center_segment_count =
@@ -3233,9 +3279,14 @@ try {
 
   // Validate every published optimized state, including reconstructed x[H]. Obstacle slot i
   // represents the same post-step time (i + 1) * dt as optimized_states[i].
-  auto validation = detail::validateOptimizedTrajectory(
-    impl_->cost, optimized_states, impl_->min_trajectory_progress_m,
-    impl_->validation_interpolation_substeps);
+  FirstOrderDubinsMppiValidationResult validation;
+  {
+    mppi::instrumentation::ScopedNvtxRange range(
+      "MPPI/validate_output", mppi::instrumentation::NvtxColor::ROLLOUT);
+    validation = detail::validateOptimizedTrajectory(
+      impl_->cost, optimized_states, impl_->min_trajectory_progress_m,
+      impl_->validation_interpolation_substeps);
+  }
   if (no_eligible_rollouts) {
     validation.reasons =
       validation.reasons | FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts;

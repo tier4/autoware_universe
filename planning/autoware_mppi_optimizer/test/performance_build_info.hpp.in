@@ -1,0 +1,18 @@
+// Copyright 2026 TIER IV, Inc.
+// SPDX-License-Identifier: Apache-2.0
+#ifndef MPPI_PERFORMANCE_BUILD_INFO_HPP_
+#define MPPI_PERFORMANCE_BUILD_INFO_HPP_
+namespace autoware::mppi_optimizer::benchmark
+{
+inline constexpr char kPackageRevision[] = R"mppi(@MPPI_BENCHMARK_PACKAGE_REVISION@)mppi";
+inline constexpr char kVendorRevision[] = R"mppi(@MPPI_BENCHMARK_VENDOR_REVISION@)mppi";
+inline constexpr char kBuildType[] = R"mppi(@CMAKE_BUILD_TYPE@)mppi";
+inline constexpr char kCompiler[] = R"mppi(@CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@)mppi";
+inline constexpr char kCxxFlags[] = R"mppi(@MPPI_BENCHMARK_CXX_FLAGS@)mppi";
+inline constexpr char kCudaFlags[] = R"mppi(@MPPI_BENCHMARK_CUDA_FLAGS@)mppi";
+inline constexpr char kCudaToolkit[] = R"mppi(@CUDA_VERSION@)mppi";
+inline constexpr char kVendorDefinitions[] = R"mppi(@MPPI_BENCHMARK_VENDOR_DEFINITIONS@)mppi";
+inline constexpr char kDefaultCostProfile[] = R"mppi(@CMAKE_CURRENT_BINARY_DIR@/benchmark_optimizer.param.yaml)mppi";
+inline constexpr char kDefaultVehicleProfile[] = R"mppi(@CMAKE_CURRENT_BINARY_DIR@/benchmark_vehicle.yaml)mppi";
+}  // namespace autoware::mppi_optimizer::benchmark
+#endif  // MPPI_PERFORMANCE_BUILD_INFO_HPP_

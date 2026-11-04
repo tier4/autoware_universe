@@ -1,0 +1,19 @@
+# Explicit synthetic small-vehicle fixture, version 1. These are interface units, not a claim
+# about any deployed vehicle. Supply MPPI_BENCHMARK_VEHICLE_PROFILE to compare another profile.
+vehicle:
+  ego_length: 0.825
+  ego_width: 0.42
+  ego_axle_to_box_center: 0.2
+  wheel_base: 0.32
+  max_steer_angle: 0.45
+  acc_time_constant: 0.1
+  steer_time_constant: 0.27
+  steer_rate_lim: 5.0
+  max_lateral_jerk_mps3: 2.5
+  standstill_steer_rate_lim: 0.15
+  restart_steer_command_rate_lim: 0.15
+  restart_steer_command_acceleration_lim: 0.5
+  restart_velocity_threshold_mps: 0.5
+  vel_rate_lim: 7.0
+  acc_time_delay: 0.1
+  steer_time_delay: 0.24

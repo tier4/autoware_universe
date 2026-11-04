@@ -13,17 +13,14 @@
 // limitations under the License.
 
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
-#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/input_collision_gate.hpp"
 #include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
-
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include "performance_benchmark_support.hpp"
 
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 #include <rcutils/logging.h>
 
-#include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -31,26 +28,23 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
-#include <numeric>
 #include <optional>
-#include <sstream>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::mppi_optimizer
 {
 namespace
 {
-constexpr std::size_t kMeasuredIterations = 50U;
+using benchmark::Json;
 constexpr std::size_t kHorizon = 80U;
-constexpr int kOptimizerIterations = 20;
-// Matches FirstOrderDubinsRuntimeData::kMaxRoadBorderSegments.
 constexpr std::size_t kRoadBorderSegments = 256U;
-// Matches FirstOrderDubinsRuntimeData::kMaxLateralCorridorPoints.
 constexpr std::size_t kProjectionPathPoints = 256U;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
-static_assert(detail::kMppiHorizon == kHorizon, "Rebaseline if the MPPI horizon changes");
-static_assert(detail::kMppiDt == 0.1F, "Rebaseline trajectory timestamps if MPPI dt changes");
+static_assert(detail::kMppiHorizon == kHorizon, "Update benchmark trajectories with the horizon");
+static_assert(detail::kMppiDt == 0.1F, "Update benchmark timestamps with the model timestep");
 
 Trajectory makeBenchmarkTrajectory()
 {
@@ -103,59 +97,89 @@ Trajectory makeHairpinBenchmarkTrajectory()
   return trajectory;
 }
 
-TrackedObjects makeHeavyObstacles()
+TrackedObjects makeObstacles(std::size_t count, double clearance)
 {
   TrackedObjects objects;
   objects.header.frame_id = "map";
-  objects.header.stamp.sec = 123;
-  objects.objects.resize(kMaxMppiObstacles);
-  for (std::size_t i = 0; i < objects.objects.size(); ++i) {
+  objects.objects.resize(count);
+  for (std::size_t i = 0; i < count; ++i) {
     auto & object = objects.objects[i];
-    object.object_id.uuid[0] = static_cast<std::uint8_t>(i + 1U);
+    object.object_id.uuid[0] = static_cast<std::uint8_t>(i + 1);
     object.existence_probability = 1.0F;
     auto & pose = object.kinematics.pose_with_covariance.pose;
-    // Deterministic staggered rows on both sides of the ego/reference, from x=-4 to x=13.5.
-    // Leave the centerline clear while keeping obstacles near sampled trajectories.
-    pose.position.x = -4.0 + 2.5 * static_cast<double>(i % 8U);
-    const double side = (i / 8U) % 2U == 0U ? 1.0 : -1.0;
-    pose.position.y = side * (1.2 + 0.8 * static_cast<double>(i / 16U));
+    pose.position.x = -4.0 + 2.5 * static_cast<double>(i % 8);
+    const double side = (i / 8) % 2 == 0 ? 1.0 : -1.0;
+    pose.position.y = side * (clearance + 0.8 * static_cast<double>(i / 16));
     pose.orientation.w = 1.0;
     object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
     object.shape.dimensions.x = 0.8;
-    object.shape.dimensions.y = 0.5;
+    object.shape.dimensions.y = 0.8;
     object.shape.dimensions.z = 1.0;
-    // Nonzero velocity prevents static-obstacle extrusion from bypassing temporal work.
-    object.kinematics.twist_with_covariance.twist.linear.x =
-      0.2 + 0.05 * static_cast<double>(i % 4U);
+    // Zero velocity: these are stationary targets, including in the dirty-map scenarios.
   }
   return objects;
 }
 
-std::vector<Segment> makeTightCorridor()
+std::vector<Segment> makeCorridor(double half_width)
 {
-  constexpr std::size_t segments_per_side = kRoadBorderSegments / 2U;
   std::vector<Segment> borders;
   borders.reserve(kRoadBorderSegments);
-  const auto half_width = [](const float x) { return 0.65F + 0.03F * std::sin(x); };
-  for (std::size_t i = 0; i < segments_per_side; ++i) {
-    const float x0 = -2.0F + 20.0F * static_cast<float>(i) / segments_per_side;
-    const float x1 = -2.0F + 20.0F * static_cast<float>(i + 1U) / segments_per_side;
-    // Two continuous walls close to the default 0.42 m ego width plus collision margins.
-    borders.push_back(Segment{x0, half_width(x0), x1, half_width(x1)});
-    borders.push_back(Segment{x0, -half_width(x0), x1, -half_width(x1)});
+  constexpr std::size_t per_side = kRoadBorderSegments / 2;
+  for (std::size_t i = 0; i < per_side; ++i) {
+    const double x0 = -2.0 + 20.0 * static_cast<double>(i) / per_side;
+    const double x1 = -2.0 + 20.0 * static_cast<double>(i + 1) / per_side;
+    borders.push_back({x0, half_width, x1, half_width});
+    borders.push_back({x0, -half_width, x1, -half_width});
   }
   return borders;
 }
 
-::testing::AssertionResult completedOptimization(
-  const FirstOrderDubinsMppiOptimizationResult & result, const std::size_t input_points)
+enum class SceneChange { cached, obstacle_geometry, grid_crossing };
+enum class ReferenceIssue { none, static_collision, border_near_collision };
+
+struct Scene
 {
-  if (
-    !result.debug.applied_plant.valid || result.optimized_point_count != kHorizon ||
-    result.trajectory.points.size() != input_points || !std::isfinite(result.debug.baseline_cost)) {
-    return ::testing::AssertionFailure() << "Expected a completed, finite 80-step optimization";
+  Trajectory trajectory{makeBenchmarkTrajectory()};
+  TrackedObjects objects{};
+  std::vector<Segment> borders;
+  PreferredLaneCenterlineInput preferred;
+  SceneChange change{SceneChange::cached};
+  ReferenceIssue reference_issue{ReferenceIssue::none};
+  bool expect_rejection{false};
+  bool exact_centerline{false};
+};
+
+const char * changeName(SceneChange change)
+{
+  switch (change) {
+    case SceneChange::cached:
+      return "cached";
+    case SceneChange::obstacle_geometry:
+      return "obstacle_geometry";
+    case SceneChange::grid_crossing:
+      return "grid_crossing";
   }
-  return ::testing::AssertionSuccess();
+  return "unknown";
+}
+
+std::size_t phaseCalls(const FirstOrderDubinsMppiPerformanceReport & report, const char * name)
+{
+  for (const auto & phase : report.phases)
+    if (phase.name == name) return phase.calls;
+  return 0;
+}
+
+Json phaseJson(const FirstOrderDubinsMppiPerformanceReport & report)
+{
+  Json phases = Json::object();
+  for (const auto & phase : report.phases) {
+    phases[phase.name] = {
+      {"calls", phase.calls},
+      {"gpu_calls", phase.gpu_calls},
+      {"host_ms", phase.host_ms},
+      {"gpu_ms", phase.gpu_calls ? Json(phase.gpu_ms) : Json(nullptr)}};
+  }
+  return phases;
 }
 
 class MppiPerformanceBenchmark : public ::testing::Test
@@ -163,19 +187,37 @@ class MppiPerformanceBenchmark : public ::testing::Test
 protected:
   void SetUp() override
   {
+    settings_ = std::make_unique<benchmark::Settings>();
+    profile_ = benchmark::loadProfile(*settings_);
+    report_path_ = benchmark::reportPath(
+      *settings_, ::testing::UnitTest::GetInstance()->current_test_info()->name());
     int device_count = 0;
-    const cudaError_t status = cudaGetDeviceCount(&device_count);
+    const auto status = cudaGetDeviceCount(&device_count);
     if (status == cudaErrorNoDevice || (status == cudaSuccess && device_count == 0)) {
-      GTEST_SKIP() << "A CUDA GPU is required for MPPI performance benchmarks";
+      GTEST_SKIP() << "A CUDA GPU is required; no performance samples were produced";
     }
     ASSERT_EQ(status, cudaSuccess) << cudaGetErrorString(status);
-    int device = 0;
-    ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
-    ASSERT_EQ(cudaGetDeviceProperties(&device_properties_, device), cudaSuccess);
-    ASSERT_EQ(cudaRuntimeGetVersion(&runtime_version_), cudaSuccess);
-    ASSERT_EQ(cudaDriverGetVersion(&driver_version_), cudaSuccess);
-
-    // Exclude console/debug I/O from the baseline; restore the logger after each case.
+    ASSERT_LT(settings_->device, device_count);
+    ASSERT_EQ(cudaSetDevice(settings_->device), cudaSuccess);
+    cudaDeviceProp device{};
+    ASSERT_EQ(cudaGetDeviceProperties(&device, settings_->device), cudaSuccess);
+    int runtime = 0;
+    int driver = 0;
+    ASSERT_EQ(cudaRuntimeGetVersion(&runtime), cudaSuccess);
+    ASSERT_EQ(cudaDriverGetVersion(&driver), cudaSuccess);
+    char pci_bus_id[32]{};
+    ASSERT_EQ(
+      cudaDeviceGetPCIBusId(pci_bus_id, sizeof(pci_bus_id), settings_->device), cudaSuccess);
+    gpu_info_ = {
+      {"name", device.name},
+      {"visible_device_index", settings_->device},
+      {"pci_bus_id", pci_bus_id},
+      {"compute_capability", std::to_string(device.major) + "." + std::to_string(device.minor)},
+      {"multiprocessors", device.multiProcessorCount},
+      {"global_memory_bytes", device.totalGlobalMem},
+      {"cuda_runtime", runtime},
+      {"cuda_driver", driver},
+      {"CUDA_VISIBLE_DEVICES", benchmark::environment("CUDA_VISIBLE_DEVICES")}};
     ASSERT_EQ(rcutils_logging_initialize(), RCUTILS_RET_OK);
     previous_log_level_ = rcutils_logging_get_logger_level(kLoggerName);
     ASSERT_GE(previous_log_level_, 0);
@@ -183,17 +225,10 @@ protected:
       rcutils_logging_set_logger_level(kLoggerName, RCUTILS_LOG_SEVERITY_ERROR), RCUTILS_RET_OK);
     restore_log_level_ = true;
     interface_ = std::make_unique<FirstOrderDubinsMppiInterface>();
-    FirstOrderDubinsMppiCostParams cost_params;
-    cost_params.max_iter = kOptimizerIterations;
-    interface_->setCostParams(cost_params);
-    FirstOrderDubinsMppiRuntimeOptions options;
-    options.enable_debug_trajectory_log = false;
-    options.enable_distance_map_texture_debug = false;
-    options.enable_iteration_rollout_debug = false;
-    options.force_cold_start_each_step = false;
-    options.use_last_control_as_nominal = false;
-    options.skip_if_invalid = false;
-    interface_->setRuntimeOptions(options);
+    interface_->setVehicleParams(profile_.vehicle);
+    interface_->setCostParams(profile_.cost);
+    interface_->setRuntimeOptions(profile_.runtime);
+    interface_->setPerformanceInstrumentationEnabled(settings_->phase_timing);
   }
 
   void TearDown() override
@@ -204,143 +239,371 @@ protected:
     }
   }
 
-  void benchmark(
-    const TrackedObjects & objects, const std::vector<Segment> & borders,
-    Trajectory trajectory = makeBenchmarkTrajectory(),
-    const PreferredLaneCenterlineInput & preferred = {}, const bool moving_grid = false)
+  Scene parkedScene(std::size_t count = 16) const
   {
-    Odometry odometry;
-    odometry.header = trajectory.header;
-    odometry.child_frame_id = "base_link";
-    odometry.pose.pose.orientation.w = 1.0;
-    odometry.twist.twist.linear.x = 2.0;
-    const std::vector<Segment> drivable_area;
-    const FirstOrderDubinsMppiKinematicLimits limits;
-    const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration;
-    const std::optional<autoware_vehicle_msgs::msg::SteeringReport> steering;
-
-    // Exactly one unmeasured optimizeTrajectory call per case. Keep the same interface,
-    // inputs and timestamps for all samples; persistent caches/control history remain live.
-    {
-      const auto warmup = interface_->optimizeTrajectory(
-        trajectory, odometry, acceleration, steering, objects, borders, drivable_area, limits, {},
-        false, std::nullopt, preferred);
-      const cudaError_t status = cudaDeviceSynchronize();
-      ASSERT_EQ(status, cudaSuccess) << cudaGetErrorString(status);
-      ASSERT_TRUE(interface_->isInitialized());
-      ASSERT_TRUE(completedOptimization(warmup, trajectory.points.size()));
-    }
-
-    using Clock = std::chrono::high_resolution_clock;
-    std::array<double, kMeasuredIterations> elapsed_ms{};
-    for (std::size_t i = 0; i < kMeasuredIterations; ++i) {
-      if (moving_grid) {
-        for (auto & point : trajectory.points) point.pose.position.x += 0.3;
-        odometry.pose.pose.position.x += 0.3;
-      }
-      // Drain any preceding work outside the measured interval.
-      ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
-      const auto start = Clock::now();
-      const auto result = interface_->optimizeTrajectory(
-        trajectory, odometry, acceleration, steering, objects, borders, drivable_area, limits, {},
-        false, std::nullopt, preferred);
-      const cudaError_t status = cudaDeviceSynchronize();
-      const auto stop = Clock::now();
-
-      // Assertions, statistics, printing and destruction of the result are outside timing.
-      ASSERT_EQ(status, cudaSuccess) << "Iteration " << i << ": " << cudaGetErrorString(status);
-      ASSERT_TRUE(completedOptimization(result, trajectory.points.size())) << "Iteration " << i;
-      elapsed_ms[i] = std::chrono::duration<double, std::milli>(stop - start).count();
-      ASSERT_GE(elapsed_ms[i], 0.0) << "high_resolution_clock moved backwards";
-    }
-
-    const double average =
-      std::accumulate(elapsed_ms.begin(), elapsed_ms.end(), 0.0) / kMeasuredIterations;
-    const auto extrema = std::minmax_element(elapsed_ms.begin(), elapsed_ms.end());
-    std::ostringstream summary;
-    summary << std::fixed << std::setprecision(3) << "\n[MPPI latency] "
-            << ::testing::UnitTest::GetInstance()->current_test_info()->name()
-            << "\n  GPU: " << device_properties_.name << " | CUDA runtime: " << runtime_version_
-            << " | driver: " << driver_version_ << "\n  horizon=" << kHorizon
-            << " | optimizer_iterations=" << kOptimizerIterations
-            << " | projection_path_points=" << trajectory.points.size()
-            << " | obstacles=" << objects.objects.size() << " | road_borders=" << borders.size()
-            << " | warmup=1 | measured=" << kMeasuredIterations << "\n  average=" << average
-            << " ms | minimum=" << *extrema.first << " ms | maximum=" << *extrema.second << " ms\n";
-    std::cout << summary.str() << std::flush;
-    RecordProperty("average_ms", std::to_string(average));
-    RecordProperty("minimum_ms", std::to_string(*extrema.first));
-    RecordProperty("maximum_ms", std::to_string(*extrema.second));
+    Scene scene;
+    scene.objects = makeObstacles(
+      count, profile_.vehicle.ego_width * 0.5 + profile_.cost.obstacle_safe_margin + 1.5);
+    return scene;
   }
 
-protected:
+  double corridorHalfWidth() const
+  {
+    return profile_.vehicle.ego_width * 0.5 + profile_.cost.road_border_safe_margin + 0.25;
+  }
+
+  void runBenchmark(const Scene & base)
+  {
+    ASSERT_FALSE(profile_.runtime.ignore_obstacles)
+      << "Benchmark profiles must retain obstacle checks";
+    ASSERT_FALSE(profile_.runtime.ignore_road_borders)
+      << "Benchmark profiles must retain border checks";
+    if (!base.preferred.segments.empty()) {
+      profile_.cost.preferred_lane_center_coeff = 100.0F;
+      profile_.description["cost"]["preferred_lane_center_coeff"] = 100.0F;
+      interface_->setCostParams(profile_.cost);
+    }
+    interface_->setPreferredLaneCenterTextureEnabled(!base.exact_centerline);
+    profile_.description["preferred_lane_center_texture_enabled"] = !base.exact_centerline;
+    const auto hard_input = checkInputTrajectoryCollisions(
+      base.trajectory, base.objects, base.borders, profile_.vehicle,
+      profile_.cost.obstacle_collision_margin, profile_.cost.road_border_collision_margin,
+      {true, true});
+    const auto soft_input = checkInputTrajectoryCollisions(
+      base.trajectory, base.objects, base.borders, profile_.vehicle,
+      profile_.cost.obstacle_safe_margin, profile_.cost.road_border_safe_margin, {true, true});
+    if (base.reference_issue == ReferenceIssue::static_collision) {
+      ASSERT_TRUE(hard_input.static_object);
+    }
+    if (base.reference_issue == ReferenceIssue::border_near_collision) {
+      ASSERT_TRUE(soft_input.road_border);
+      ASSERT_FALSE(hard_input.road_border);
+    }
+
+    Json measured = Json::array();
+    Json first_call;
+    std::vector<double> wall_times;
+    std::vector<double> cpu_times;
+    wall_times.reserve(settings_->samples);
+    cpu_times.reserve(settings_->samples);
+    FirstOrderDubinsMppiPerformanceReport configuration;
+    std::size_t unexpected_outcomes = 0;
+    const auto total_cycles = settings_->warmup + settings_->samples;
+    for (int cycle = 0; cycle < total_cycles; ++cycle) {
+      SCOPED_TRACE("cycle=" + std::to_string(cycle));
+      Scene scene = base;
+      Odometry odometry;
+      // Advance epochs without pretending to execute the optimized command. Alternate bounded
+      // offsets for dirty maps so the local frame never recenters and workload size stays fixed.
+      const double offset = base.change == SceneChange::grid_crossing && cycle % 2 != 0 ? 0.6 : 0.0;
+      scene.trajectory.header.stamp.sec = 123 + cycle / 10;
+      scene.trajectory.header.stamp.nanosec = static_cast<std::uint32_t>(cycle % 10) * 100000000U;
+      for (auto & point : scene.trajectory.points) point.pose.position.x += offset;
+      scene.objects.header = scene.trajectory.header;
+      for (auto & object : scene.objects.objects)
+        object.kinematics.pose_with_covariance.pose.position.x += offset;
+      for (auto & border : scene.borders) {
+        border.x0 += offset;
+        border.x1 += offset;
+      }
+      for (auto & segment : scene.preferred.segments) {
+        segment.x0 += offset;
+        segment.x1 += offset;
+      }
+      if (base.change == SceneChange::obstacle_geometry) {
+        ASSERT_FALSE(scene.objects.objects.empty());
+        scene.objects.objects.front().kinematics.pose_with_covariance.pose.position.y +=
+          cycle % 2 == 0 ? 0.0 : 0.125;
+      }
+      odometry.header = scene.trajectory.header;
+      odometry.child_frame_id = "base_link";
+      odometry.pose.pose.position.x = offset;
+      odometry.pose.pose.orientation.w = 1.0;
+      odometry.twist.twist.linear.x = 2.0;
+      const std::vector<Segment> drivable_area;
+      const FirstOrderDubinsMppiKinematicLimits limits;
+      const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration;
+      const std::optional<autoware_vehicle_msgs::msg::SteeringReport> steering;
+
+      // Only the optimizer call and its completion wait are timed. Event collection, assertions,
+      // input construction, result destruction and all report I/O are outside these boundaries.
+      ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+      const double cpu_start = benchmark::processCpuMilliseconds();
+      const auto start = std::chrono::steady_clock::now();
+      const auto result = interface_->optimizeTrajectory(
+        scene.trajectory, odometry, acceleration, steering, scene.objects, scene.borders,
+        drivable_area, limits, {}, true, std::nullopt, scene.preferred);
+      const auto completion = cudaDeviceSynchronize();
+      const auto stop = std::chrono::steady_clock::now();
+      const double cpu_ms = benchmark::processCpuMilliseconds() - cpu_start;
+      const double wall_ms = std::chrono::duration<double, std::milli>(stop - start).count();
+      ASSERT_EQ(completion, cudaSuccess) << cudaGetErrorString(completion);
+      configuration = interface_->performanceReport();
+      ASSERT_TRUE(configuration.initialized);
+      EXPECT_GE(wall_ms, 0.0);
+      EXPECT_GE(cpu_ms, 0.0);
+      const bool ran_full_workload =
+        result.optimized_point_count == kHorizon &&
+        result.trajectory.points.size() == scene.trajectory.points.size() &&
+        result.debug.rollout_iteration_diagnostics.size() ==
+          static_cast<std::size_t>(profile_.cost.max_iter);
+      const bool outcome_ok = base.expect_rejection
+                                ? result.debug.was_rejected &&
+                                    result.debug.failed_rollout_iteration >= 0 &&
+                                    hasInvalidityReason(
+                                      result.debug.validation.reasons,
+                                      FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts)
+                                : !result.debug.was_rejected && result.debug.validation.isValid() &&
+                                    result.debug.failed_rollout_iteration == -1 &&
+                                    std::isfinite(result.debug.baseline_cost);
+      EXPECT_TRUE(ran_full_workload) << "Optimizer skipped or changed the requested workload";
+      EXPECT_TRUE(outcome_ok) << "Unexpected outcome: "
+                              << to_string(result.debug.validation.reasons);
+      if (!ran_full_workload || !outcome_ok) ++unexpected_outcomes;
+
+      if (settings_->phase_timing) {
+        for (const char * phase :
+             {"MPPI/random_sampling", "MPPI/rollout", "MPPI/weight_statistics",
+              "MPPI/weighted_control_reduction"}) {
+          EXPECT_EQ(
+            phaseCalls(configuration, phase), static_cast<std::size_t>(profile_.cost.max_iter))
+            << phase;
+        }
+        if (cycle > 0) {
+          const auto obstacle_rebuilds =
+            !scene.objects.objects.empty() && base.change != SceneChange::cached ? 1U : 0U;
+          const auto grid_rebuilds = base.change == SceneChange::grid_crossing ? 1U : 0U;
+          EXPECT_EQ(phaseCalls(configuration, "MPPI/distance_map_obstacle"), obstacle_rebuilds);
+          EXPECT_EQ(phaseCalls(configuration, "MPPI/distance_map_static"), grid_rebuilds);
+          EXPECT_EQ(phaseCalls(configuration, "MPPI/distance_map_nearest_segment"), grid_rebuilds);
+          const auto preferred_rebuilds =
+            !scene.preferred.segments.empty() && !base.exact_centerline ? grid_rebuilds : 0U;
+          EXPECT_EQ(
+            phaseCalls(configuration, "MPPI/distance_map_preferred_lane_center"),
+            preferred_rebuilds);
+        }
+      }
+      Json sample = {
+        {"cycle", cycle},
+        {"wall_ms", wall_ms},
+        {"process_cpu_ms", cpu_ms},
+        {"workload_complete", ran_full_workload},
+        {"outcome_expected", outcome_ok},
+        {"rejected", result.debug.was_rejected},
+        {"validation", to_string(result.debug.validation.reasons)},
+        {"optimized_points", result.optimized_point_count},
+        {"iterations_completed", result.debug.rollout_iteration_diagnostics.size()},
+        {"failed_iteration", result.debug.failed_rollout_iteration},
+        {"eligible_rollouts", result.debug.eligible_rollout_count},
+        {"baseline_cost", benchmark::finiteNumber(result.debug.baseline_cost)},
+        {"lambda_used", benchmark::finiteNumber(result.debug.lambda_used)},
+        {"lambda_next", benchmark::finiteNumber(result.debug.lambda_next)},
+        {"phases", phaseJson(configuration)}};
+      if (cycle == 0) first_call = sample;
+      if (cycle >= settings_->warmup) {
+        measured.push_back(std::move(sample));
+        wall_times.push_back(wall_ms);
+        cpu_times.push_back(cpu_ms);
+      }
+    }
+
+    Json phase_summary = Json::object();
+    std::set<std::string> phase_names;
+    for (const auto & sample : measured) {
+      for (auto phase = sample["phases"].begin(); phase != sample["phases"].end(); ++phase)
+        phase_names.insert(phase.key());
+    }
+    for (const auto & name : phase_names) {
+      std::vector<double> host_ms;
+      std::vector<double> gpu_ms;
+      std::size_t calls = 0;
+      std::size_t gpu_calls = 0;
+      for (const auto & sample : measured) {
+        const auto & phases = sample["phases"];
+        if (phases.contains(name)) {
+          const auto & phase = phases[name];
+          host_ms.push_back(phase["host_ms"].get<double>());
+          gpu_ms.push_back(phase["gpu_ms"].is_null() ? 0.0 : phase["gpu_ms"].get<double>());
+          calls += phase["calls"].get<std::size_t>();
+          gpu_calls += phase["gpu_calls"].get<std::size_t>();
+        } else {
+          host_ms.push_back(0.0);
+          gpu_ms.push_back(0.0);
+        }
+      }
+      phase_summary[name] = {
+        {"calls", calls},
+        {"gpu_calls", gpu_calls},
+        {"host", benchmark::statistics(host_ms)},
+        {"gpu", gpu_calls ? benchmark::statistics(gpu_ms) : Json(nullptr)}};
+    }
+    const auto wall_summary = benchmark::statistics(wall_times);
+    const auto cpu_summary = benchmark::statistics(cpu_times);
+    const std::string name = ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    const Json report = {
+      {"schema_version", 1},
+      {"scenario", name},
+      {"measurements_valid", !HasFailure()},
+      {"unexpected_outcomes_including_warmup", unexpected_outcomes},
+      {"mode", settings_->phase_timing ? "instrumented" : "latency_only"},
+      {"scope", "optimizer_interface_call_and_completion_wait"},
+      {"warmup_calls_including_first", settings_->warmup},
+      {"measured_calls", settings_->samples},
+      {"scene_change", changeName(base.change)},
+      {"reference_points", base.trajectory.points.size()},
+      {"objects", base.objects.objects.size()},
+      {"hypotheses", base.objects.objects.size()},
+      {"road_border_segments", base.borders.size()},
+      {"preferred_centerline_segments", base.preferred.segments.size()},
+      {"input_hard_collision", hard_input.triggered()},
+      {"input_soft_collision", soft_input.triggered()},
+      {"rollouts", configuration.rollouts},
+      {"horizon", configuration.horizon},
+      {"iterations", configuration.iterations},
+      {"dt_s", configuration.dt},
+      {"seed", configuration.seed},
+      {"rollout_kernel", configuration.kernel},
+      {"resolved_input_profile", profile_.description},
+      {"host", benchmark::hostInformation()},
+      {"gpu", gpu_info_},
+      {"build", benchmark::buildInformation()},
+      {"environment_note", settings_->environment_note},
+      {"first_optimizer_call", first_call},
+      {"wall", wall_summary},
+      {"process_cpu", cpu_summary},
+      {"phase_summary", phase_summary},
+      {"samples", measured}};
+    benchmark::writeReport(report_path_, report);
+    RecordProperty("benchmark_report", std::filesystem::absolute(report_path_).string());
+    RecordProperty("instrumented", settings_->phase_timing ? "true" : "false");
+    RecordProperty("samples", settings_->samples);
+    RecordProperty("wall_mean_ms", std::to_string(wall_summary["mean_ms"].get<double>()));
+    RecordProperty("wall_median_ms", std::to_string(wall_summary["median_ms"].get<double>()));
+    RecordProperty("wall_p95_ms", std::to_string(wall_summary["p95_ms"].get<double>()));
+    RecordProperty("wall_max_ms", std::to_string(wall_summary["max_ms"].get<double>()));
+    RecordProperty("process_cpu_mean_ms", std::to_string(cpu_summary["mean_ms"].get<double>()));
+    std::cout << "\n[MPPI benchmark] " << name << " | " << report["mode"]
+              << " | median=" << wall_summary["median_ms"] << " ms | p95=" << wall_summary["p95_ms"]
+              << " ms | CPU mean=" << cpu_summary["mean_ms"] << " ms\n  " << report_path_ << '\n';
+  }
+
+  std::unique_ptr<benchmark::Settings> settings_;
+  benchmark::Profile profile_;
   std::unique_ptr<FirstOrderDubinsMppiInterface> interface_;
 
 private:
-  cudaDeviceProp device_properties_{};
-  int runtime_version_{0};
-  int driver_version_{0};
+  Json gpu_info_;
+  std::filesystem::path report_path_;
   int previous_log_level_{RCUTILS_LOG_SEVERITY_UNSET};
   bool restore_log_level_{false};
 };
 
-TEST_F(MppiPerformanceBenchmark, Benchmark_PreferredLaneCenterTexture)
+TEST_F(MppiPerformanceBenchmark, FreeSpaceCached)
 {
-  FirstOrderDubinsMppiCostParams params;
-  params.preferred_lane_center_coeff = 100;
-  interface_->setCostParams(params);
-  benchmark(TrackedObjects{}, {}, makeBenchmarkTrajectory(), {{{-100, 0, 200, 0}}, "active", 1});
+  runBenchmark(Scene{});
 }
 
-TEST_F(MppiPerformanceBenchmark, Benchmark_PreferredLaneCenterExact)
+TEST_F(MppiPerformanceBenchmark, StaticObstacles16Cached)
 {
-  FirstOrderDubinsMppiCostParams params;
-  params.preferred_lane_center_coeff = 100;
-  interface_->setCostParams(params);
-  interface_->setPreferredLaneCenterTextureEnabled(false);
-  benchmark(TrackedObjects{}, {}, makeBenchmarkTrajectory(), {{{-100, 0, 200, 0}}, "active", 1});
+  runBenchmark(parkedScene());
 }
 
-TEST_F(MppiPerformanceBenchmark, Benchmark_PreferredLaneCenterMovingGrid)
+TEST_F(MppiPerformanceBenchmark, StaticObstacles64Cached)
 {
-  FirstOrderDubinsMppiCostParams params;
-  params.preferred_lane_center_coeff = 100;
-  interface_->setCostParams(params);
-  PreferredLaneCenterlineInput preferred;
-  preferred.status = "active";
+  runBenchmark(parkedScene(kMaxMppiObstacles));
+}
+
+TEST_F(MppiPerformanceBenchmark, StaticObstacleReferenceCollision)
+{
+  auto scene = parkedScene(1);
+  auto & pose = scene.objects.objects.front().kinematics.pose_with_covariance.pose;
+  pose.position.x = 8.0;
+  // A shallow hard-margin overlap, leaving a feasible lateral correction within the corridor.
+  pose.position.y =
+    profile_.vehicle.ego_width * 0.5 + 0.4 + profile_.cost.obstacle_collision_margin - 0.05;
+  scene.reference_issue = ReferenceIssue::static_collision;
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, RoadBorderReferenceNearCollision)
+{
+  ASSERT_GT(profile_.cost.road_border_safe_margin, profile_.cost.road_border_collision_margin);
+  Scene scene;
+  const double y =
+    profile_.vehicle.ego_width * 0.5 +
+    0.5 * (profile_.cost.road_border_collision_margin + profile_.cost.road_border_safe_margin);
+  scene.borders.push_back({4.0, y, 14.0, y});
+  scene.reference_issue = ReferenceIssue::border_near_collision;
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, TightCorridor256Cached)
+{
+  Scene scene;
+  scene.borders = makeCorridor(corridorHalfWidth());
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, StaticObstacleGeometryUpdates)
+{
+  auto scene = parkedScene();
+  scene.change = SceneChange::obstacle_geometry;
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, GridBoundaryCrossings)
+{
+  auto scene = parkedScene();
+  scene.borders = makeCorridor(corridorHalfWidth());
+  scene.change = SceneChange::grid_crossing;
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, Hairpin256Cached)
+{
+  Scene scene;
+  scene.trajectory = makeHairpinBenchmarkTrajectory();
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, NoEligibleRollouts)
+{
+  auto scene = parkedScene(1);
+  auto & object = scene.objects.objects.front();
+  object.kinematics.pose_with_covariance.pose.position.x = 0.0;
+  object.kinematics.pose_with_covariance.pose.position.y = 0.0;
+  object.shape.dimensions.x = 200.0;
+  object.shape.dimensions.y = 200.0;
+  scene.expect_rejection = true;
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, PreferredCenterlineTextureCached)
+{
+  Scene scene;
+  scene.preferred = {{{-100, 0, 200, 0}}, "active", 1};
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, PreferredCenterlineExactCached)
+{
+  Scene scene;
+  scene.preferred = {{{-100, 0, 200, 0}}, "active", 1};
+  scene.exact_centerline = true;
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, PreferredCenterline256GridCrossings)
+{
+  Scene scene;
+  scene.preferred.status = "active";
   for (int i = 0; i < 256; ++i) {
-    const float x = -100.0F + i * 1.5F;
-    preferred.segments.push_back({x, 0, x + 1.5F, 0});
+    const double x = -100.0 + i * 1.5;
+    scene.preferred.segments.push_back({x, 0, x + 1.5, 0});
   }
-  benchmark(TrackedObjects{}, {}, makeBenchmarkTrajectory(), preferred, true);
+  scene.change = SceneChange::grid_crossing;
+  runBenchmark(scene);
 }
 
-TEST_F(MppiPerformanceBenchmark, Benchmark_FreeSpace)
-{
-  benchmark(TrackedObjects{}, {});
-}
-
-TEST_F(MppiPerformanceBenchmark, Benchmark_HeavyObstacles)
-{
-  const auto objects = makeHeavyObstacles();
-  ASSERT_EQ(objects.objects.size(), kMaxMppiObstacles);
-  benchmark(objects, {});
-}
-
-TEST_F(MppiPerformanceBenchmark, Benchmark_TightCorridor)
-{
-  const auto borders = makeTightCorridor();
-  ASSERT_EQ(borders.size(), kRoadBorderSegments);
-  benchmark(TrackedObjects{}, borders);
-}
-
-TEST_F(MppiPerformanceBenchmark, Benchmark_256PointHairpin)
-{
-  const auto trajectory = makeHairpinBenchmarkTrajectory();
-  ASSERT_EQ(trajectory.points.size(), kProjectionPathPoints);
-  // The full input feeds the lateral corridor; optimization still uses 80 time steps.
-  // This measures maximum-capacity projection work with a nearby returning branch.
-  benchmark(TrackedObjects{}, {}, trajectory);
-}
 }  // namespace
 }  // namespace autoware::mppi_optimizer

@@ -529,7 +529,8 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     return;
   state.preferred_lane_center_texture_valid_ = false;
   mppi::instrumentation::ScopedNvtxRange range(
-    "MPPI/distance_map_preferred_lane_center", mppi::instrumentation::NvtxColor::MAP_GENERATION);
+    "MPPI/distance_map_preferred_lane_center", mppi::instrumentation::NvtxColor::MAP_GENERATION,
+    this->stream_);
   ensurePreferredLaneCenterResources();
   const dim3 block(16, 16);
   const dim3 grid(
@@ -603,6 +604,9 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   if (!this->GPUMemStatus_) {
     return;
   }
+  mppi::instrumentation::ScopedNvtxRange range(
+    "MPPI/distance_map_nearest_segment", mppi::instrumentation::NvtxColor::MAP_GENERATION,
+    this->stream_);
   ensureNearestSegmentMapResources();
   const dim3 block(16, 16, 1);
   const dim3 grid(
@@ -703,7 +707,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
     return;
   }
   mppi::instrumentation::ScopedNvtxRange range(
-    "MPPI/distance_map_static", mppi::instrumentation::NvtxColor::MAP_GENERATION);
+    "MPPI/distance_map_static", mppi::instrumentation::NvtxColor::MAP_GENERATION, this->stream_);
   ensureDistanceMapResources();
   const dim3 block(16, 16, 1);
   const dim3 grid(
@@ -765,7 +769,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     return;
   }
   mppi::instrumentation::ScopedNvtxRange range(
-    "MPPI/distance_map_obstacle", mppi::instrumentation::NvtxColor::MAP_GENERATION);
+    "MPPI/distance_map_obstacle", mppi::instrumentation::NvtxColor::MAP_GENERATION, this->stream_);
   ensureDistanceMapResources();
   const dim3 block(16, 16, 1);
   const dim3 grid(
