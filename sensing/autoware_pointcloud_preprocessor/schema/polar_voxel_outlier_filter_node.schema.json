@@ -44,9 +44,16 @@
           "default": "300.0",
           "minimum": 0
         },
-        "intensity_threshold": {
+        "low_visibility_intensity_threshold": {
           "type": "integer",
-          "description": "The maximum intensity threshold for secondary returns (primary returns are not affected).",
+          "description": "Maximum point intensity counted as a secondary return for low-visibility estimation.",
+          "default": "2",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "filter_ratio_intensity_threshold": {
+          "type": "integer",
+          "description": "Maximum point intensity counted as a secondary return for filter-ratio voxel validation.",
           "default": "2",
           "minimum": 0,
           "maximum": 255
@@ -95,9 +102,15 @@
           "description": "Whether to filter secondary returns (if true, only primary returns are kept).",
           "default": "false"
         },
-        "secondary_noise_threshold": {
-          "type": "number",
-          "description": "Threshold for classifying primary vs secondary returns.",
+        "low_visibility_secondary_returns_threshold": {
+          "type": "integer",
+          "description": "Maximum low-intensity secondary-return count before a voxel becomes a low-visibility candidate.",
+          "default": "4",
+          "minimum": 0
+        },
+        "filter_ratio_secondary_returns_threshold": {
+          "type": "integer",
+          "description": "Maximum low-intensity secondary-return count for a filter-ratio-valid voxel.",
           "default": "4",
           "minimum": 0
         },
@@ -223,7 +236,8 @@
         "voxel_points_threshold",
         "min_radius_m",
         "max_radius_m",
-        "intensity_threshold",
+        "low_visibility_intensity_threshold",
+        "filter_ratio_intensity_threshold",
         "visibility_estimation_max_range_m",
         "visibility_estimation_min_azimuth_rad",
         "visibility_estimation_max_azimuth_rad",
@@ -231,7 +245,8 @@
         "visibility_estimation_max_elevation_rad",
         "use_return_type_classification",
         "filter_secondary_returns",
-        "secondary_noise_threshold",
+        "low_visibility_secondary_returns_threshold",
+        "filter_ratio_secondary_returns_threshold",
         "low_visibility_entropy_threshold",
         "low_visibility_anisotropy_threshold",
         "low_visibility_average_intensity_threshold",

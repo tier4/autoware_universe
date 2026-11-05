@@ -78,17 +78,11 @@ struct PointVoxelInfo
 {
   PolarVoxelIndex voxel_idx;
   bool is_primary{false};
-  bool meets_intensity_threshold{false};
   uint8_t intensity{0};
 
   PointVoxelInfo() = default;
-  explicit PointVoxelInfo(
-    const PolarVoxelIndex & voxel_idx, bool is_primary, bool meets_intensity_threshold,
-    uint8_t intensity)
-  : voxel_idx(voxel_idx),
-    is_primary(is_primary),
-    meets_intensity_threshold(meets_intensity_threshold),
-    intensity(intensity)
+  explicit PointVoxelInfo(const PolarVoxelIndex & voxel_idx, bool is_primary, uint8_t intensity)
+  : voxel_idx(voxel_idx), is_primary(is_primary), intensity(intensity)
   {
   }
 };
@@ -97,7 +91,8 @@ struct PointVoxelInfo
 struct VoxelPointCounts
 {
   size_t primary_count{0};
-  size_t secondary_count{0};
+  size_t secondary_count{0};  // Low-visibility secondary points
+  size_t filter_ratio_secondary_count{0};
   size_t secondary_return_count{0};
   size_t intensity_sum{0};
   bool is_in_visibility_range{true};
@@ -123,9 +118,14 @@ struct VoxelPointCounts
     return primary_count >= static_cast<size_t>(threshold);
   }
 
-  [[nodiscard]] bool meets_secondary_threshold(int threshold) const
+  [[nodiscard]] bool meets_low_visibility_secondary_returns_threshold(int threshold) const
   {
     return secondary_count <= static_cast<size_t>(threshold);
+  }
+
+  [[nodiscard]] bool meets_filter_ratio_secondary_returns_threshold(int threshold) const
+  {
+    return filter_ratio_secondary_count <= static_cast<size_t>(threshold);
   }
 };
 
@@ -265,7 +265,6 @@ protected:
   // Return type and validation methods
   bool is_point_primary(uint8_t return_type) const;
   bool is_valid_polar_point(const PolarCoordinate & polar) const;
-  bool meets_intensity_threshold(uint8_t intensity) const;
   static bool has_polar_coordinates(const PointCloud2 & input);
 
   // Parameter callback and diagnostics
@@ -293,8 +292,10 @@ protected:
   double visibility_estimation_max_elevation_rad_{};
   bool use_return_type_classification_{};
   bool enable_secondary_return_filtering_{};
-  int secondary_noise_threshold_{};
-  int intensity_threshold_{};
+  int low_visibility_secondary_returns_threshold_{};
+  int filter_ratio_secondary_returns_threshold_{};
+  int low_visibility_intensity_threshold_{};
+  int filter_ratio_intensity_threshold_{};
   double low_visibility_entropy_threshold_{};
   double low_visibility_anisotropy_threshold_{};
   double low_visibility_average_intensity_threshold_{};

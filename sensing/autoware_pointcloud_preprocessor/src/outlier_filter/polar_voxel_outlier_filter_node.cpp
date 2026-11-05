@@ -146,8 +146,10 @@ PolarVoxelOutlierFilterComponent::PolarVoxelOutlierFilterComponent(
     declare_parameter<double>("visibility_estimation_max_elevation_rad");
   use_return_type_classification_ = declare_parameter<bool>("use_return_type_classification");
   enable_secondary_return_filtering_ = declare_parameter<bool>("filter_secondary_returns");
-  secondary_noise_threshold_ =
-    static_cast<int>(declare_parameter<int64_t>("secondary_noise_threshold"));
+  low_visibility_secondary_returns_threshold_ =
+    static_cast<int>(declare_parameter<int64_t>("low_visibility_secondary_returns_threshold"));
+  filter_ratio_secondary_returns_threshold_ =
+    static_cast<int>(declare_parameter<int64_t>("filter_ratio_secondary_returns_threshold"));
   low_visibility_entropy_threshold_ =
     declare_parameter<double>("low_visibility_entropy_threshold", 0.0);
   low_visibility_anisotropy_threshold_ =
@@ -180,7 +182,10 @@ PolarVoxelOutlierFilterComponent::PolarVoxelOutlierFilterComponent(
   visibility_warn_threshold_ = declare_parameter<double>("visibility_warn_threshold");
   filter_ratio_error_threshold_ = declare_parameter<double>("filter_ratio_error_threshold");
   filter_ratio_warn_threshold_ = declare_parameter<double>("filter_ratio_warn_threshold");
-  intensity_threshold_ = declare_parameter<uint8_t>("intensity_threshold");
+  low_visibility_intensity_threshold_ =
+    static_cast<int>(declare_parameter<int64_t>("low_visibility_intensity_threshold"));
+  filter_ratio_intensity_threshold_ =
+    static_cast<int>(declare_parameter<int64_t>("filter_ratio_intensity_threshold"));
 
   // Initialize diagnostics
   hysteresis_state_machine_ = std::make_shared<custom_diagnostic_tasks::HysteresisStateMachine>(
@@ -387,7 +392,6 @@ std::optional<PointVoxelInfo> PolarVoxelOutlierFilterComponent::process_polar_po
   // Step 1: Extract polar coordinates and determine point classification
   auto polar_opt = extract_polar_from_dae(distance, azimuth, elevation);
   bool is_primary = is_point_primary(return_type);
-  bool passes_intensity = meets_intensity_threshold(intensity);
 
   // Step 2: Early return on invalid coordinates
   if (!polar_opt.has_value()) {
@@ -397,7 +401,7 @@ std::optional<PointVoxelInfo> PolarVoxelOutlierFilterComponent::process_polar_po
   // Step 3: Create voxel index and determine point classification
   PolarVoxelIndex voxel_idx = polar_to_polar_voxel(*polar_opt);
 
-  return PointVoxelInfo{voxel_idx, is_primary, passes_intensity, intensity};
+  return PointVoxelInfo{voxel_idx, is_primary, intensity};
 }
 
 std::optional<PointVoxelInfo> PolarVoxelOutlierFilterComponent::process_cartesian_point(
@@ -435,11 +439,6 @@ bool PolarVoxelOutlierFilterComponent::is_point_primary(uint8_t return_type) con
   auto it = std::find(
     primary_return_types_.begin(), primary_return_types_.end(), static_cast<int>(return_type));
   return it != primary_return_types_.end();
-}
-
-bool PolarVoxelOutlierFilterComponent::meets_intensity_threshold(uint8_t intensity) const
-{
-  return intensity <= intensity_threshold_;
 }
 
 PolarVoxelOutlierFilterComponent::ValidPointsMask
@@ -602,7 +601,8 @@ void PolarVoxelOutlierFilterComponent::calculate_visibility_metric(
     const auto point_count = counts.point_count();
     const auto secondary_return_ratio = counts.secondary_return_ratio();
     const bool is_secondary_noise_candidate =
-      !counts.meets_secondary_threshold(secondary_noise_threshold_);
+      !counts.meets_low_visibility_secondary_returns_threshold(
+        low_visibility_secondary_returns_threshold_);
     const bool is_sparse_low_intensity_secondary_voxel =
       point_count < static_cast<size_t>(low_visibility_sparse_voxel_point_count_threshold_) &&
       secondary_return_ratio > low_visibility_sparse_voxel_secondary_return_ratio_threshold_ &&
@@ -905,8 +905,11 @@ PolarVoxelOutlierFilterComponent::count_voxel_points(
         voxel_point_counts[info.voxel_idx].primary_count++;
       } else {
         voxel_point_counts[info.voxel_idx].secondary_return_count++;
-        if (info.meets_intensity_threshold) {
+        if (info.intensity <= low_visibility_intensity_threshold_) {
           voxel_point_counts[info.voxel_idx].secondary_count++;
+        }
+        if (info.intensity <= filter_ratio_intensity_threshold_) {
+          voxel_point_counts[info.voxel_idx].filter_ratio_secondary_count++;
         }
       }
     }
@@ -963,8 +966,14 @@ void PolarVoxelOutlierFilterComponent::update_parameter(const rclcpp::Parameter 
      }},
     {"voxel_points_threshold",
      [this](const auto & p) { voxel_points_threshold_ = static_cast<int>(p.as_int()); }},
-    {"secondary_noise_threshold",
-     [this](const auto & p) { secondary_noise_threshold_ = static_cast<int>(p.as_int()); }},
+    {"low_visibility_secondary_returns_threshold",
+     [this](const auto & p) {
+       low_visibility_secondary_returns_threshold_ = static_cast<int>(p.as_int());
+     }},
+    {"filter_ratio_secondary_returns_threshold",
+     [this](const auto & p) {
+       filter_ratio_secondary_returns_threshold_ = static_cast<int>(p.as_int());
+     }},
     {"low_visibility_entropy_threshold",
      [this](const auto & p) { low_visibility_entropy_threshold_ = p.as_double(); }},
     {"low_visibility_anisotropy_threshold",
@@ -979,8 +988,12 @@ void PolarVoxelOutlierFilterComponent::update_parameter(const rclcpp::Parameter 
      [this](const auto & p) {
        low_visibility_sparse_voxel_secondary_return_ratio_threshold_ = p.as_double();
      }},
-    {"intensity_threshold",
-     [this](const auto & p) { intensity_threshold_ = static_cast<int>(p.as_int()); }},
+    {"low_visibility_intensity_threshold",
+     [this](const auto & p) {
+       low_visibility_intensity_threshold_ = static_cast<int>(p.as_int());
+     }},
+    {"filter_ratio_intensity_threshold",
+     [this](const auto & p) { filter_ratio_intensity_threshold_ = static_cast<int>(p.as_int()); }},
     {"visibility_estimation_max_secondary_voxel_count",
      [this](const auto & p) {
        visibility_estimation_max_secondary_voxel_count_ = static_cast<int>(p.as_int());
@@ -1111,7 +1124,8 @@ PolarVoxelOutlierFilterComponent::determine_valid_voxels_with_return_types(
   return determine_valid_voxels_generic(
     voxel_point_counts, [this](const VoxelPointCounts & counts) {
       return counts.meets_primary_threshold(voxel_points_threshold_) &&
-             counts.meets_secondary_threshold(secondary_noise_threshold_);
+             counts.meets_filter_ratio_secondary_returns_threshold(
+               filter_ratio_secondary_returns_threshold_);
     });
 }
 
@@ -1174,7 +1188,7 @@ bool PolarVoxelOutlierFilterComponent::validate_intensity_threshold(
 {
   int val = param.as_int();
   if (val < 0 || val > 255) {
-    reason = "intensity_threshold must be between 0 and 255";
+    reason = param.get_name() + " must be between 0 and 255";
     return false;
   }
   return true;
@@ -1270,9 +1284,12 @@ rcl_interfaces::msg::SetParametersResult PolarVoxelOutlierFilterComponent::param
     {"max_radius_m",
      {validate_positive_double,
       [this](const rclcpp::Parameter & p) { max_radius_m_ = p.as_double(); }}},
-    {"intensity_threshold",
+    {"low_visibility_intensity_threshold",
      {validate_intensity_threshold,
-      [this](const rclcpp::Parameter & p) { intensity_threshold_ = p.as_int(); }}},
+      [this](const rclcpp::Parameter & p) { low_visibility_intensity_threshold_ = p.as_int(); }}},
+    {"filter_ratio_intensity_threshold",
+     {validate_intensity_threshold,
+      [this](const rclcpp::Parameter & p) { filter_ratio_intensity_threshold_ = p.as_int(); }}},
     {"visibility_estimation_max_range_m",
      {validate_positive_double,
       [this](const rclcpp::Parameter & p) { visibility_estimation_max_range_m_ = p.as_double(); }}},
@@ -1302,9 +1319,16 @@ rcl_interfaces::msg::SetParametersResult PolarVoxelOutlierFilterComponent::param
     {"filter_secondary_returns",
      {nullptr,
       [this](const rclcpp::Parameter & p) { enable_secondary_return_filtering_ = p.as_bool(); }}},
-    {"secondary_noise_threshold",
+    {"low_visibility_secondary_returns_threshold",
      {validate_non_negative_int,
-      [this](const rclcpp::Parameter & p) { secondary_noise_threshold_ = p.as_int(); }}},
+      [this](const rclcpp::Parameter & p) {
+        low_visibility_secondary_returns_threshold_ = p.as_int();
+      }}},
+    {"filter_ratio_secondary_returns_threshold",
+     {validate_non_negative_int,
+      [this](const rclcpp::Parameter & p) {
+        filter_ratio_secondary_returns_threshold_ = p.as_int();
+      }}},
     {"low_visibility_entropy_threshold",
      {validate_normalized,
       [this](const rclcpp::Parameter & p) { low_visibility_entropy_threshold_ = p.as_double(); }}},
