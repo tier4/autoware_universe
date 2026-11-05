@@ -1458,11 +1458,6 @@ trajectory_modifier_params:
       default_value: false
       description: Set minimum speed during engage
       read_only: false
-    limit_speed:
-      type: bool
-      default_value: true
-      description: Enable speed limiting
-      read_only: false
     limit_lateral_acceleration:
       type: bool
       default_value: false
