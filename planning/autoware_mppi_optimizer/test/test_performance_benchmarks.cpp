@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 #include <rcutils/logging.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -134,7 +135,7 @@ std::vector<Segment> makeCorridor(double half_width)
   return borders;
 }
 
-enum class SceneChange { cached, obstacle_geometry, grid_crossing };
+enum class SceneChange { cached, obstacle_geometry, grid_crossing, reference_geometry };
 enum class ReferenceIssue { none, static_collision, border_near_collision };
 
 struct Scene
@@ -158,6 +159,8 @@ const char * changeName(SceneChange change)
       return "obstacle_geometry";
     case SceneChange::grid_crossing:
       return "grid_crossing";
+    case SceneChange::reference_geometry:
+      return "reference_geometry";
   }
   return "unknown";
 }
@@ -249,6 +252,7 @@ protected:
     interface_->setCostParams(profile_.cost);
     interface_->setRuntimeOptions(profile_.runtime);
     interface_->setPerformanceInstrumentationEnabled(settings_->phase_timing);
+    interface_->setProjectionPruningEnabled(settings_->projection_pruning);
   }
 
   void TearDown() override
@@ -319,6 +323,12 @@ protected:
       scene.trajectory.header.stamp.sec = 123 + cycle / 10;
       scene.trajectory.header.stamp.nanosec = static_cast<std::uint32_t>(cycle % 10) * 100000000U;
       for (auto & point : scene.trajectory.points) point.pose.position.x += offset;
+      if (base.change == SceneChange::reference_geometry) {
+        // Change path geometry without moving the ego/grid or changing point count.
+        for (auto & point : scene.trajectory.points) {
+          point.pose.position.y += cycle % 2 == 0 ? 0.0 : 0.03125;
+        }
+      }
       scene.objects.header = scene.trajectory.header;
       for (auto & object : scene.objects.objects)
         object.kinematics.pose_with_covariance.pose.position.x += offset;
@@ -363,7 +373,8 @@ protected:
       EXPECT_GE(wall_ms, 0.0);
       EXPECT_GE(cpu_ms, 0.0);
       const bool ran_full_workload =
-        result.optimized_point_count == kHorizon &&
+        configuration.horizon == static_cast<int>(kHorizon) &&
+        result.optimized_point_count == std::min(kHorizon, scene.trajectory.points.size()) &&
         result.trajectory.points.size() == scene.trajectory.points.size() &&
         result.debug.rollout_iteration_diagnostics.size() ==
           static_cast<std::size_t>(profile_.cost.max_iter);
@@ -394,11 +405,19 @@ protected:
         }
         if (cycle > 0) {
           const auto obstacle_rebuilds =
-            !scene.objects.objects.empty() && base.change != SceneChange::cached ? 1U : 0U;
+            !scene.objects.objects.empty() && (base.change == SceneChange::obstacle_geometry ||
+                                               base.change == SceneChange::grid_crossing)
+              ? 1U
+              : 0U;
           const auto grid_rebuilds = base.change == SceneChange::grid_crossing ? 1U : 0U;
           EXPECT_EQ(phaseCalls(configuration, "MPPI/distance_map_obstacle"), obstacle_rebuilds);
           EXPECT_EQ(phaseCalls(configuration, "MPPI/distance_map_static"), grid_rebuilds);
-          EXPECT_EQ(phaseCalls(configuration, "MPPI/distance_map_nearest_segment"), grid_rebuilds);
+          const auto projection_rebuilds =
+            base.change == SceneChange::reference_geometry ? 1U : grid_rebuilds;
+          EXPECT_EQ(
+            phaseCalls(configuration, "MPPI/distance_map_nearest_segment"), projection_rebuilds);
+          EXPECT_EQ(
+            phaseCalls(configuration, "MPPI/projection_corridor_bounds"), projection_rebuilds);
           const auto preferred_rebuilds =
             !scene.preferred.segments.empty() && !base.exact_centerline ? grid_rebuilds : 0U;
           EXPECT_EQ(
@@ -486,6 +505,12 @@ protected:
       {"dt_s", configuration.dt},
       {"seed", configuration.seed},
       {"rollout_kernel", configuration.kernel},
+      {"projection_pruning_enabled", configuration.projection_pruning_enabled},
+      {"projection_pruning_math_supported", configuration.projection_pruning_math_supported},
+      {"projection_group_size", configuration.projection_group_size},
+      {"projection_points", configuration.projection_points},
+      {"projection_bounds_valid", configuration.projection_bounds_valid},
+      {"scene_runtime_bytes", configuration.scene_runtime_bytes},
       {"resolved_input_profile", profile_.description},
       {"host", benchmark::hostInformation()},
       {"gpu", gpu_info_},
@@ -538,6 +563,37 @@ private:
 TEST_F(MppiPerformanceBenchmark, FreeSpaceCached)
 {
   runBenchmark(Scene{});
+}
+
+TEST_F(MppiPerformanceBenchmark, ReferenceGeometryUpdates)
+{
+  Scene scene;
+  scene.trajectory = makeHairpinBenchmarkTrajectory();
+  scene.change = SceneChange::reference_geometry;
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, ShortProjectionPath)
+{
+  Scene scene;
+  // Eight segments reach the exhaustive cutoff. The interface repeats the last
+  // reference sample for the remainder of the unchanged 80-step rollout horizon.
+  scene.trajectory.points.resize(9);
+  runBenchmark(scene);
+}
+
+TEST_F(MppiPerformanceBenchmark, OverlappingProjectionGroups)
+{
+  Scene scene;
+  scene.trajectory.points.resize(kProjectionPathPoints, scene.trajectory.points.back());
+  // Keep the initial horizon; the tail repeatedly crosses it so group boxes overlap.
+  for (std::size_t i = kHorizon; i < scene.trajectory.points.size(); ++i) {
+    auto & point = scene.trajectory.points[i];
+    point.pose.position.x = i % 2 == 0 ? 0.2 : 16.0;
+    point.time_from_start.sec = static_cast<std::int32_t>((i + 1U) / 10U);
+    point.time_from_start.nanosec = static_cast<std::uint32_t>(((i + 1U) % 10U) * 100000000U);
+  }
+  runBenchmark(scene);
 }
 
 TEST_F(MppiPerformanceBenchmark, StaticObstacles16Cached)

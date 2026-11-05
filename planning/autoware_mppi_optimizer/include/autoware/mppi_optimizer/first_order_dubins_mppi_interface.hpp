@@ -421,6 +421,12 @@ struct FirstOrderDubinsMppiPerformanceReport
 {
   bool instrumented{false};
   bool initialized{false};
+  bool projection_pruning_enabled{true};
+  bool projection_pruning_math_supported{false};
+  int projection_group_size{0};
+  int projection_points{0};
+  bool projection_bounds_valid{false};
+  std::size_t scene_runtime_bytes{0};
   int rollouts{0};
   int horizon{0};
   int iterations{0};
@@ -577,6 +583,9 @@ public:
 
   /** Opt-in profiling. Creates reusable CUDA events; call outside measured regions. */
   void setPerformanceInstrumentationEnabled(bool enabled);
+
+  /** Benchmark baseline switch. Configure before initialize/optimizeTrajectory. */
+  void setProjectionPruningEnabled(bool enabled);
 
   /**
    * Collect the last optimizeTrajectory call's ranges and effective workload configuration.

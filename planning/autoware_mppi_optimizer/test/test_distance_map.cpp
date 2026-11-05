@@ -24,9 +24,12 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <memory>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -269,11 +272,12 @@ struct DeviceProjectionSample
   mppi::cost::detail::PolylineProjection projection;
   int projection_status;
   int state_status;
+  mppi::cost::detail::PolylineSearchStats stats;
 };
 
 // Separate kernel instantiations keep the original device arithmetic independent of the
-// prepared projector. Both read identical uploaded vertices; only Prepared reads cached deltas.
-template <bool Prepared>
+// prepared and pruned projectors. All read identical uploaded vertices.
+template <int Mode>  // 0: original, 1: prepared exhaustive, 2: grouped pruning.
 __global__ void compareProjectionKernel(
   const TestCost * cost, const float2 * queries, const int query_count, const int hint_count,
   const bool use_shared, const float boundary_threshold, DeviceProjectionSample * output)
@@ -296,7 +300,15 @@ __global__ void compareProjectionKernel(
   const auto query = queries[index / hint_count];
   const int hint = index % hint_count - 2;
   auto & sample = output[index];
-  if constexpr (Prepared) {
+  sample.stats = {};
+  if constexpr (Mode == 2) {
+    sample.projection = mppi::cost::detail::projectPointToPrunedPolyline<true>(
+      query.x, query.y, x, y,
+      corridor ? data.lateral_corridor_segment_delta_ : data.ref_segment_delta_,
+      corridor ? data.lateral_corridor_group_bounds_ : data.ref_group_bounds_,
+      corridor ? data.lateral_corridor_group_bounds_valid_ : data.ref_group_bounds_valid_, count,
+      hint, &sample.stats);
+  } else if constexpr (Mode == 1) {
     const auto * deltas = corridor ? data.lateral_corridor_segment_delta_ : data.ref_segment_delta_;
     sample.projection = mppi::cost::detail::projectPointToPreparedPolyline(
       query.x, query.y, x, y, deltas, count, hint);
@@ -309,7 +321,7 @@ __global__ void compareProjectionKernel(
                                ? mppi::safety::event(1, timestep)
                                : 0;
   sample.state_status = 0;
-  if constexpr (Prepared) {
+  if constexpr (Mode != 0) {
     // Check the real state-cost safety path against the original device projection too.
     // The fixture has no obstacles/borders, so only lateral safety can contribute a flag.
     using Output = FirstOrderDubinsBicycleParams::OutputIndex;
@@ -318,6 +330,41 @@ __global__ void compareProjectionKernel(
     state[static_cast<int>(Output::BASELINK_POS_I_Y)] = query.y;
     *cost->projectionHintSlot(theta) = static_cast<float>(hint);
     cost->computeStateCost(state, timestep, use_shared ? theta : nullptr, &sample.state_status);
+  }
+}
+
+struct ProjectionBoundSample
+{
+  float lower_bound;
+  float minimum_distance;
+};
+
+__global__ void projectionGroupBoundsKernel(
+  const TestCost * cost, const float2 * queries, const int query_count,
+  ProjectionBoundSample * output)
+{
+  const int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  const auto & data = cost->runtimeData();
+  const bool corridor = data.num_lateral_corridor_points_ >= 2;
+  const int count = corridor ? data.num_lateral_corridor_points_ : kTestHorizon;
+  constexpr int group_size = mppi::cost::detail::kPolylineGroupSize;
+  const int groups = (count - 2) / group_size + 1;
+  if (index >= query_count * groups) return;
+  const auto query = queries[index / groups];
+  const int group = index % groups;
+  const auto * bounds = corridor ? data.lateral_corridor_group_bounds_ : data.ref_group_bounds_;
+  const auto * x = corridor ? data.lateral_corridor_x_ : data.ref_x_;
+  const auto * y = corridor ? data.lateral_corridor_y_ : data.ref_y_;
+  auto & sample = output[index];
+  sample.lower_bound =
+    mppi::cost::detail::distanceToPolylineGroupLowerBound(query.x, query.y, bounds[group]);
+  sample.minimum_distance = FLT_MAX;
+  for (int i = group * group_size; i < min(count - 1, (group + 1) * group_size); ++i) {
+    float distance = 0.0F;
+    float t_raw = 0.0F;
+    // Independent original arithmetic, including endpoint subtraction on device.
+    mppi::cost::detail::distanceToPolylineSegment(query.x, query.y, x, y, i, distance, t_raw);
+    sample.minimum_distance = fminf(sample.minimum_distance, distance);
   }
 }
 
@@ -336,44 +383,203 @@ void expectDeviceProjectionParity(
   const auto shared_bytes = mppi::kernels::calcClassSharedMemSize(&cost, block);
   DeviceBuffer<float2> device_queries(queries.size());
   device_queries.copyFromHost(queries.data(), stream);
-  DeviceBuffer<DeviceProjectionSample> original(sample_count), prepared(sample_count);
+  const bool valid_bounds = data.num_lateral_corridor_points_ >= 2
+                              ? data.lateral_corridor_group_bounds_valid_
+                              : data.ref_group_bounds_valid_;
+  if (valid_bounds && mppi::cost::detail::polylinePruningMathSupported()) {
+    const int groups = mppi::cost::detail::polylineGroupCount(count);
+    DeviceBuffer<ProjectionBoundSample> device_bounds(query_count * groups);
+    std::vector<ProjectionBoundSample> bounds(query_count * groups);
+    projectionGroupBoundsKernel<<<(bounds.size() + 127) / 128, 128, 0, stream>>>(
+      cost.cost_d_, device_queries.get(), query_count, device_bounds.get());
+    CUDA_CHECK(cudaGetLastError());
+    device_bounds.copyToHost(bounds.data(), stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    for (std::size_t i = 0; i < bounds.size(); ++i) {
+      SCOPED_TRACE("query=" + std::to_string(i / groups) + " group=" + std::to_string(i % groups));
+      ASSERT_TRUE(std::isfinite(bounds[i].lower_bound));
+      EXPECT_LE(bounds[i].lower_bound, bounds[i].minimum_distance);
+    }
+  }
+  DeviceBuffer<DeviceProjectionSample> original(sample_count), prepared(sample_count),
+    pruned(sample_count);
   std::vector<DeviceProjectionSample> expected(sample_count), actual(sample_count);
+  std::vector<DeviceProjectionSample> grouped(sample_count);
   for (bool texture : {true, false}) {
     SCOPED_TRACE(texture ? "texture seed" : "no texture");
     setProjectionTextureEnabled<<<1, 1, 0, stream>>>(cost.cost_d_, texture);
     CUDA_CHECK(cudaGetLastError());
     for (bool shared : {false, true}) {
       SCOPED_TRACE(shared ? "shared vertices" : "global vertices");
-      compareProjectionKernel<false><<<grid, block, shared_bytes, stream>>>(
+      compareProjectionKernel<0><<<grid, block, shared_bytes, stream>>>(
         cost.cost_d_, device_queries.get(), query_count, hint_count, shared,
         cost.getParams().boundary_threshold, original.get());
       CUDA_CHECK(cudaGetLastError());
-      compareProjectionKernel<true><<<grid, block, shared_bytes, stream>>>(
+      compareProjectionKernel<1><<<grid, block, shared_bytes, stream>>>(
         cost.cost_d_, device_queries.get(), query_count, hint_count, shared,
         cost.getParams().boundary_threshold, prepared.get());
       CUDA_CHECK(cudaGetLastError());
+      compareProjectionKernel<2><<<grid, block, shared_bytes, stream>>>(
+        cost.cost_d_, device_queries.get(), query_count, hint_count, shared,
+        cost.getParams().boundary_threshold, pruned.get());
+      CUDA_CHECK(cudaGetLastError());
       original.copyToHost(expected.data(), stream);
       prepared.copyToHost(actual.data(), stream);
+      pruned.copyToHost(grouped.data(), stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       for (int i = 0; i < sample_count; ++i) {
         SCOPED_TRACE(i / hint_count);
         SCOPED_TRACE(i % hint_count - 2);
         const auto & a = expected[i];
-        const auto & b = actual[i];
         ASSERT_TRUE(std::isfinite(a.projection.best_t_raw));
         ASSERT_TRUE(std::isfinite(a.projection.lateral_distance));
-        EXPECT_EQ(b.projection.best_i, a.projection.best_i);
-        // EXPECT_EQ deliberately allows no float/ULP tolerance for device-to-device parity.
-        EXPECT_EQ(b.projection.best_t_raw, a.projection.best_t_raw);
-        EXPECT_EQ(b.projection.lateral_distance, a.projection.lateral_distance);
-        EXPECT_EQ(b.projection_status, a.projection_status);
-        EXPECT_EQ(b.state_status, a.projection_status);
+        for (const auto * candidate : {&actual[i], &grouped[i]}) {
+          const auto & b = *candidate;
+          EXPECT_EQ(b.projection.best_i, a.projection.best_i);
+          // EXPECT_EQ deliberately allows no float/ULP tolerance for device-to-device parity.
+          EXPECT_EQ(b.projection.best_t_raw, a.projection.best_t_raw);
+          EXPECT_EQ(b.projection.lateral_distance, a.projection.lateral_distance);
+          EXPECT_EQ(b.projection_status, a.projection_status);
+          EXPECT_EQ(b.state_status, a.projection_status);
+        }
+        EXPECT_LE(grouped[i].stats.segments_evaluated, static_cast<unsigned int>(count - 1));
       }
     }
   }
   setProjectionTextureEnabled<<<1, 1, 0, stream>>>(cost.cost_d_, true);
   CUDA_CHECK(cudaGetLastError());
   CUDA_CHECK(cudaStreamSynchronize(stream));
+}
+
+struct RawProjectionSample
+{
+  mppi::cost::detail::PolylineProjection original;
+  mppi::cost::detail::PolylineProjection pruned;
+  mppi::cost::detail::PolylineSearchStats stats;
+  unsigned int bound_violations;
+};
+
+template <int GroupSize>
+__global__ void rawPrunedProjectionKernel(
+  const float * x, const float * y, const mppi::cost::detail::PolylineSegmentDelta * deltas,
+  const mppi::cost::detail::PolylineGroupBounds * bounds, const bool valid, const int count,
+  const float2 * queries, const int query_count, const int hint_count, RawProjectionSample * output)
+{
+  using namespace mppi::cost::detail;
+  const int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (index >= query_count * hint_count) return;
+  const auto query = queries[index / hint_count];
+  const int hint = index % hint_count - 2;
+  auto & result = output[index];
+  result.original = projectPointToPolyline(query.x, query.y, x, y, count, hint);
+  result.pruned = projectPointToPrunedPolyline<true, GroupSize>(
+    query.x, query.y, x, y, deltas, bounds, valid, count, hint, &result.stats);
+  result.bound_violations = 0;
+  if (
+    !valid || !polylinePruningMathSupported() ||
+    !(fabsf(query.x) <= kPolylinePruningCoordinateLimit) ||
+    !(fabsf(query.y) <= kPolylinePruningCoordinateLimit))
+    return;
+  for (int group = 0; group * GroupSize < count - 1; ++group) {
+    const float lower = distanceToPolylineGroupLowerBound(query.x, query.y, bounds[group]);
+    for (int i = group * GroupSize; i < min(count - 1, (group + 1) * GroupSize); ++i) {
+      float distance = 0.0F;
+      float t_raw = 0.0F;
+      distanceToPolylineSegment(query.x, query.y, x, y, i, distance, t_raw);
+      if (!(lower <= distance)) ++result.bound_violations;
+    }
+  }
+}
+
+template <int GroupSize = mppi::cost::detail::kPolylineGroupSize>
+void expectRawPruningParity(
+  std::vector<float> x, std::vector<float> y, const std::vector<float2> & queries,
+  const cudaStream_t stream, const bool force_invalid = false, const bool report_work = false,
+  const bool require_pruning = false)
+{
+  using namespace mppi::cost::detail;
+  ASSERT_EQ(x.size(), y.size());
+  ASSERT_FALSE(queries.empty());
+  const int count = static_cast<int>(x.size());
+  std::vector<PolylineSegmentDelta> deltas(std::max(1, count - 1));
+  std::vector<PolylineGroupBounds> bounds(std::max(1, polylineGroupCount(count, GroupSize)));
+  for (int i = 0; i < count - 1; ++i) {
+    deltas[i] = makePolylineSegmentDelta(x[i], y[i], x[i + 1], y[i + 1]);
+  }
+  const bool built =
+    buildPolylineGroupBounds<GroupSize>(x.data(), y.data(), deltas.data(), count, bounds.data());
+  bool expected_valid = count >= 2;
+  for (int i = 0; i < count; ++i) {
+    expected_valid &= std::fabs(x[i]) <= kPolylinePruningCoordinateLimit &&
+                      std::fabs(y[i]) <= kPolylinePruningCoordinateLimit;
+  }
+  ASSERT_EQ(built, expected_valid);
+  const bool valid = built && !force_invalid;
+  // Nonempty allocations allow the empty-polyline device case without dereferencing nullptr.
+  if (x.empty()) {
+    x.push_back(0.0F);
+    y.push_back(0.0F);
+  }
+  DeviceBuffer<float> device_x(x.size()), device_y(y.size());
+  DeviceBuffer<PolylineSegmentDelta> device_deltas(deltas.size());
+  DeviceBuffer<PolylineGroupBounds> device_bounds(bounds.size());
+  DeviceBuffer<float2> device_queries(queries.size());
+  const int hints = count + 4;
+  const int samples = static_cast<int>(queries.size()) * hints;
+  DeviceBuffer<RawProjectionSample> device_results(samples);
+  std::vector<RawProjectionSample> results(samples);
+  device_x.copyFromHost(x.data(), stream);
+  device_y.copyFromHost(y.data(), stream);
+  device_deltas.copyFromHost(deltas.data(), stream);
+  device_bounds.copyFromHost(bounds.data(), stream);
+  device_queries.copyFromHost(queries.data(), stream);
+  rawPrunedProjectionKernel<GroupSize><<<(samples + 127) / 128, 128, 0, stream>>>(
+    device_x.get(), device_y.get(), device_deltas.get(), device_bounds.get(), valid, count,
+    device_queries.get(), static_cast<int>(queries.size()), hints, device_results.get());
+  CUDA_CHECK(cudaGetLastError());
+  device_results.copyToHost(results.data(), stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  std::uint64_t examined = 0, pruned = 0, evaluated = 0, fallbacks = 0;
+  for (int i = 0; i < samples; ++i) {
+    SCOPED_TRACE("query=" + std::to_string(i / hints) + " hint=" + std::to_string(i % hints - 2));
+    const auto & result = results[i];
+    EXPECT_EQ(result.pruned.best_i, result.original.best_i);
+    if (std::isnan(result.original.best_t_raw)) {
+      EXPECT_TRUE(std::isnan(result.pruned.best_t_raw));
+    } else {
+      EXPECT_EQ(result.pruned.best_t_raw, result.original.best_t_raw);
+    }
+    if (std::isnan(result.original.lateral_distance)) {
+      EXPECT_TRUE(std::isnan(result.pruned.lateral_distance));
+    } else {
+      EXPECT_EQ(result.pruned.lateral_distance, result.original.lateral_distance);
+    }
+    EXPECT_EQ(result.bound_violations, 0U);
+    const auto query = queries[i / hints];
+    const bool fallback = !valid || !polylinePruningMathSupported() || count <= GroupSize + 1 ||
+                          !(std::fabs(query.x) <= kPolylinePruningCoordinateLimit) ||
+                          !(std::fabs(query.y) <= kPolylinePruningCoordinateLimit);
+    EXPECT_EQ(result.stats.exhaustive_fallbacks, fallback ? 1U : 0U);
+    EXPECT_LE(result.stats.segments_evaluated, static_cast<unsigned int>(std::max(0, count - 1)));
+    examined += result.stats.groups_examined;
+    pruned += result.stats.groups_pruned;
+    evaluated += result.stats.segments_evaluated;
+    fallbacks += result.stats.exhaustive_fallbacks;
+  }
+  if (require_pruning && polylinePruningMathSupported()) {
+    EXPECT_GT(pruned, 0U);
+    EXPECT_LT(evaluated, static_cast<std::uint64_t>(samples) * (count - 1));
+    EXPECT_EQ(fallbacks, 0U);
+  }
+  if (report_work) {
+    std::printf(
+      "[projection work] group_size=%d points=%d queries_with_hints=%d groups_examined=%llu "
+      "groups_pruned=%llu segments_evaluated=%llu exhaustive_segments=%llu fallbacks=%llu\n",
+      GroupSize, count, samples, static_cast<unsigned long long>(examined),
+      static_cast<unsigned long long>(pruned), static_cast<unsigned long long>(evaluated),
+      static_cast<unsigned long long>(samples) * std::max(0, count - 1),
+      static_cast<unsigned long long>(fallbacks));
+  }
 }
 
 __global__ void sampleProjectionSequenceKernel(
@@ -1093,9 +1299,9 @@ TEST_F(DistanceMapGpuTest, PreparedProjectionMatchesOriginalDeviceArithmeticAndS
   }
 
   // Exercise both signs immediately inside, on, and outside the hard lateral boundary.
-  const float line_x[] = {0, 10};
-  const float line_y[] = {0, 0};
-  cost_->setLateralCorridor(line_x, line_y, 2);
+  std::array<float, 33> line_x{}, line_y{};
+  for (std::size_t i = 0; i < line_x.size(); ++i) line_x[i] = static_cast<float>(i);
+  cost_->setLateralCorridor(line_x.data(), line_y.data(), static_cast<int>(line_x.size()));
   std::vector<float2> queries;
   for (float sign : {-1.0F, 1.0F}) {
     for (float offset : {std::nextafter(0.5F, 0.0F), 0.5F, std::nextafter(0.5F, 1.0F)}) {
@@ -1114,6 +1320,89 @@ TEST_F(DistanceMapGpuTest, PreparedProjectionMatchesOriginalDeviceArithmeticAndS
   cost_->commitDataUpdate();
   expectDeviceProjectionParity(
     *cost_, {make_float2(1.1F, 1.3F), make_float2(2.7F, -0.2F), make_float2(-1000, 9)}, stream());
+}
+
+TEST_F(DistanceMapGpuTest, PrunedProjectionPreservesDeviceResultsAcrossNumericRanges)
+{
+  using namespace mppi::cost::detail;
+  const float tiny = std::numeric_limits<float>::denorm_min();
+  const float limit = kPolylinePruningCoordinateLimit;
+  const std::vector<float2> queries{
+    make_float2(0, 0),
+    make_float2(tiny, -tiny),
+    make_float2(8, 0.5F),
+    make_float2(std::nextafter(8.0F, 0.0F), std::nextafter(0.5F, 0.0F)),
+    make_float2(std::nextafter(8.0F, 9.0F), std::nextafter(0.5F, 1.0F)),
+    make_float2(-1000, 9),
+    make_float2(limit, -limit),
+    make_float2(std::nextafter(limit, FLT_MAX), 0),
+    make_float2(std::numeric_limits<float>::infinity(), 0),
+    make_float2(std::numeric_limits<float>::quiet_NaN(), 0)};
+  expectRawPruningParity({}, {}, queries, stream());
+  expectRawPruningParity({1}, {2}, queries, stream());
+  std::mt19937 random(0x6d707069U);
+  std::uniform_int_distribution<int> coordinate(-10000, 10000);
+  for (int count : {2, 9, 10, 17, 80, 255, 256}) {
+    SCOPED_TRACE(count);
+    std::vector<float> x(count), y(count);
+    for (float scale : {0x1p-100F, 0x1p-20F, 1.0F, 0x1p16F}) {
+      SCOPED_TRACE(scale);
+      for (int i = 0; i < count; ++i) {
+        // Reproducible fractional, nonuniform, crossing and duplicate vertices.
+        x[i] = static_cast<float>(coordinate(random)) * 0.001F * scale;
+        y[i] = static_cast<float>(coordinate(random)) * 0.001F * scale;
+        if (i > 0 && i % 7 == 0) {
+          x[i] = x[i - 1];
+          y[i] = y[i - 1];
+        }
+      }
+      auto random_queries = queries;
+      for (int i = 0; i < 16; ++i) {
+        random_queries.push_back(make_float2(
+          static_cast<float>(coordinate(random)) * 0.001F * scale,
+          static_cast<float>(coordinate(random)) * 0.001F * scale));
+      }
+      expectRawPruningParity(x, y, random_queries, stream());
+    }
+  }
+  std::vector<float> x(34, 1), y(34, -1);
+  x.front() = 100000000.0F;
+  y.front() = -100000000.0F;
+  expectRawPruningParity(x, y, queries, stream());        // Rounded endpoint leaves the ideal AABB.
+  expectRawPruningParity(x, y, queries, stream(), true);  // Explicit invalid-bounds fallback.
+  x.front() = std::nextafter(limit, FLT_MAX);
+  expectRawPruningParity(x, y, queries, stream());  // Unsupported geometry, still finite.
+  x.assign(34, 0.0F);
+  y.assign(34, 0.0F);
+  expectRawPruningParity(x, y, queries, stream());  // Entirely degenerate groups.
+  x.resize(256);
+  y.assign(256, 0.0F);
+  for (int i = 0; i < 256; ++i) x[i] = static_cast<float>(i);
+  expectRawPruningParity(x, y, {make_float2(80.5F, 0.5F)}, stream(), false, false, true);
+}
+
+// Deliberately disabled: work counts are diagnostic, never part of a default test/benchmark run.
+// These synthetic queries/all hints are not a trace of the adaptive optimizer workload.
+TEST_F(DistanceMapGpuTest, DISABLED_ProjectionPruningWorkCounts)
+{
+  using namespace mppi::cost::detail;
+  ASSERT_TRUE(polylinePruningMathSupported()) << "Rebuild with standard IEEE CUDA math flags";
+  std::vector<float> x(256), y(256);
+  std::vector<float2> queries;
+  for (int i = 0; i < 256; ++i) {
+    x[i] = static_cast<float>(i);
+    y[i] = 0.0F;
+    if (i % 16 == 0) queries.push_back(make_float2(x[i] + 0.25F, 0.5F));
+  }
+  std::puts("[projection work] scene=separated_straight_groups");
+  expectRawPruningParity<4>(x, y, queries, stream(), false, true);
+  expectRawPruningParity<8>(x, y, queries, stream(), false, true);
+  expectRawPruningParity<16>(x, y, queries, stream(), false, true);
+  for (int i = 0; i < 256; ++i) x[i] = i % 2 == 0 ? -10.0F : 10.0F;
+  std::puts("[projection work] scene=overlapping_groups");
+  expectRawPruningParity<4>(x, y, {make_float2(0, 0)}, stream(), false, true);
+  expectRawPruningParity<8>(x, y, {make_float2(0, 0)}, stream(), false, true);
+  expectRawPruningParity<16>(x, y, {make_float2(0, 0)}, stream(), false, true);
 }
 
 TEST_F(DistanceMapGpuTest, PreparedProjectionTracksReferenceCorridorAndTranslatedVertices)
@@ -1175,6 +1464,67 @@ TEST_F(DistanceMapGpuTest, PreparedProjectionTracksReferenceCorridorAndTranslate
   expectDeviceProjectionParity(*cost_, translated_queries, stream());
   cost_->clearLateralCorridor();
   expectProjectionSequence(*cost_, {make_float2(118, 51), make_float2(101, 59)}, stream());
+}
+
+TEST_F(DistanceMapGpuTest, PrunedProjectionBoundsFollowGeometryLifecycle)
+{
+  using namespace mppi::cost::detail;
+  std::array<float, 256> x{}, y{}, velocity{};
+  velocity.fill(2.0F);
+  for (int i = 0; i < 256; ++i) x[i] = static_cast<float>(i);
+  cost_->beginDataUpdate();
+  cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon);
+  cost_->setLateralCorridor(x.data(), y.data(), 256, nullptr, velocity.data());
+  cost_->commitDataUpdate();
+  ASSERT_TRUE(cost_->runtimeData().ref_group_bounds_valid_);
+  ASSERT_TRUE(cost_->runtimeData().lateral_corridor_group_bounds_valid_);
+  const auto & data = cost_->runtimeData();
+  const std::vector<PolylineGroupBounds> reference_bounds(
+    std::begin(data.ref_group_bounds_), std::end(data.ref_group_bounds_));
+  const std::vector<PolylineGroupBounds> corridor_bounds(
+    std::begin(data.lateral_corridor_group_bounds_), std::end(data.lateral_corridor_group_bounds_));
+  velocity.fill(3.0F);
+  cost_->beginDataUpdate();
+  cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon);
+  cost_->setLateralCorridor(x.data(), y.data(), 256, nullptr, velocity.data());
+  cost_->commitDataUpdate();
+  const auto equal_bounds = [](const auto & before, const auto & after) {
+    for (std::size_t i = 0; i < before.size(); ++i) {
+      EXPECT_EQ(before[i].min_x, after[i].min_x);
+      EXPECT_EQ(before[i].min_y, after[i].min_y);
+      EXPECT_EQ(before[i].max_x, after[i].max_x);
+      EXPECT_EQ(before[i].max_y, after[i].max_y);
+    }
+  };
+  equal_bounds(reference_bounds, data.ref_group_bounds_);
+  equal_bounds(corridor_bounds, data.lateral_corridor_group_bounds_);
+  expectProjectionSequence(*cost_, {make_float2(8, 0.5F), make_float2(200, 0)}, stream());
+  // Shrink, grow, replace vertices, remove, and recreate after a local-frame translation.
+  for (int count : {10, 17, 256}) {
+    SCOPED_TRACE(count);
+    for (int i = 0; i < 256; ++i) {
+      x[i] = 100.0F + 0.25F * i;
+      y[i] = 50.0F + (i % 9 == 0 ? 0.125F : 0.0F);
+    }
+    cost_->beginDataUpdate();
+    cost_->setReferenceTrajectory(x.data(), y.data(), velocity.data(), kTestHorizon);
+    cost_->setLateralCorridor(x.data(), y.data(), count, nullptr, velocity.data());
+    cost_->commitDataUpdate();
+    const std::vector<float2> queries{make_float2(101, 50.5F), make_float2(150, 50.25F)};
+    expectDeviceProjectionParity(*cost_, queries, stream());
+    expectProjectionSequence(*cost_, queries, stream());
+    cost_->clearLateralCorridor();
+    EXPECT_FALSE(data.lateral_corridor_group_bounds_valid_);
+    // The reference was changed while a corridor was active, and is now the projection path.
+    expectDeviceProjectionParity(*cost_, queries, stream());
+    expectProjectionSequence(*cost_, queries, stream());
+  }
+  cost_->setLateralCorridor(x.data(), y.data(), 1);
+  EXPECT_FALSE(data.lateral_corridor_group_bounds_valid_);
+  cost_->setLateralCorridor(x.data(), y.data(), 256);
+  cost_->freeCudaMem();
+  cost_->GPUSetup();
+  expectDeviceProjectionParity(*cost_, {make_float2(101, 50.5F)}, stream());
 }
 
 TEST_F(DistanceMapGpuTest, EgoSpineSubtractsTheConservativeSliceRadius)

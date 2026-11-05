@@ -1043,9 +1043,15 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjectionAndSafetyFl
   params.lateral_distance_coeff = 1.0F;
   params.boundary_threshold = 0.5F;  // Safety still applies with a zero lateral barrier weight.
   apply();
-  const float x[] = {0, 10, 10, 0};
-  const float y[] = {0, 0, 10, 10};
-  cost->setLateralCorridor(x, y, 4);
+  // A long U with the winning branch in the last group exercises real pruning
+  // in both launchers; the old four-point fixture only reaches the short-path fallback.
+  std::array<float, 34> x{}, y{};
+  for (int i = 1; i <= 32; ++i) {
+    x[i] = 10.0F;
+    y[i] = i == 1 ? 0.0F : 10.0F;
+  }
+  y.back() = 10.0F;
+  cost->setLateralCorridor(x.data(), y.data(), static_cast<int>(x.size()));
   auto state = model.getZeroState();
   state(static_cast<int>(S::POS_X)) = 1.0F;
   state(static_cast<int>(S::POS_Y)) = 9.0F;
@@ -1054,33 +1060,38 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjectionAndSafetyFl
   DeviceBuffer<int> safety(rollouts);
   HANDLE_ERROR(cudaMemcpy(
     initial.data, state.data(), Model::STATE_DIM * sizeof(float), cudaMemcpyHostToDevice));
-  for (bool texture : {true, false}) {
-    enableProjectionTexture<<<1, 1>>>(cost->cost_d_, texture);
-    HANDLE_ERROR(cudaGetLastError());
-    for (bool split : {false, true}) {
-      SCOPED_TRACE(texture);
-      SCOPED_TRACE(split);
-      if (split) {
-        mppi::kernels::launchSplitRolloutKernel(
-          &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
-          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true, safety.data);
-      } else {
-        mppi::kernels::launchRolloutKernel(
-          &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
-          dim3(32, 2, 1), 0, true, safety.data);
-      }
-      std::array<int, rollouts> statuses{};
-      HANDLE_ERROR(
-        cudaMemcpy(statuses.data(), safety.data, sizeof(statuses), cudaMemcpyDeviceToHost));
-      for (const auto status : statuses) {
-        EXPECT_NE(status & mppi::safety::kLateral, 0);
-        EXPECT_EQ(mppi::safety::timestep(status), 0);
-      }
-      std::array<float, rollouts> actual{};
-      HANDLE_ERROR(cudaMemcpy(actual.data(), totals.data, sizeof(actual), cudaMemcpyDeviceToHost));
-      for (float total : actual) {
-        // Stationary at (1,9): lateral error is 1 m for H running stages and terminal.
-        EXPECT_NEAR(total, 1.0F + 1.0F / H, 1.0E-4F);
+  for (bool pruning : {false, true}) {
+    cost->setProjectionPruningEnabled(pruning);
+    SCOPED_TRACE(pruning);
+    for (bool texture : {true, false}) {
+      enableProjectionTexture<<<1, 1>>>(cost->cost_d_, texture);
+      HANDLE_ERROR(cudaGetLastError());
+      for (bool split : {false, true}) {
+        SCOPED_TRACE(texture);
+        SCOPED_TRACE(split);
+        if (split) {
+          mppi::kernels::launchSplitRolloutKernel(
+            &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
+            totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true, safety.data);
+        } else {
+          mppi::kernels::launchRolloutKernel(
+            &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
+            dim3(32, 2, 1), 0, true, safety.data);
+        }
+        std::array<int, rollouts> statuses{};
+        HANDLE_ERROR(
+          cudaMemcpy(statuses.data(), safety.data, sizeof(statuses), cudaMemcpyDeviceToHost));
+        for (const auto status : statuses) {
+          EXPECT_NE(status & mppi::safety::kLateral, 0);
+          EXPECT_EQ(mppi::safety::timestep(status), 0);
+        }
+        std::array<float, rollouts> actual{};
+        HANDLE_ERROR(
+          cudaMemcpy(actual.data(), totals.data, sizeof(actual), cudaMemcpyDeviceToHost));
+        for (float total : actual) {
+          // Stationary at (1,9): lateral error is 1 m for H running stages and terminal.
+          EXPECT_NEAR(total, 1.0F + 1.0F / H, 1.0E-4F);
+        }
       }
     }
   }

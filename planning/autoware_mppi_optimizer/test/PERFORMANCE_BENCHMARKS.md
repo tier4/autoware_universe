@@ -34,8 +34,8 @@ The initial runs have completed; their results and comparison limits are recorde
 [GPU_PERFORMANCE_REVIEW.md](../GPU_PERFORMANCE_REVIEW.md#validation-and-timing-follow-up-2026-11-04).
 The subsequent review added direct original/prepared device comparisons with exact numerical
 equality for segment selection, raw projection parameter, and lateral distance, plus production
-safety-status checks. These additions and the corrected representable near-tie inputs have not
-yet been run. The translated-vertex cost test does not exercise the interface's frame lifecycle;
+safety-status checks. These additions and the corrected representable near-tie inputs passed in
+the user's 2026-11-05 pruning-validation run. The translated-vertex cost test does not exercise the interface's frame lifecycle;
 the interface test below crosses the actual recentering threshold.
 
 ```bash
@@ -85,17 +85,18 @@ and JSON `measurements_valid` before using measurements as a baseline.
 
 ## Configuration
 
-| Environment variable             | Default                                            | Meaning                                                                                 |
-| -------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `MPPI_BENCHMARK_WARMUP`          | `10`                                               | Unmeasured stabilization calls, including the separately recorded first call; minimum 1 |
-| `MPPI_BENCHMARK_SAMPLES`         | `100`                                              | Warm measured calls; minimum 1                                                          |
-| `MPPI_BENCHMARK_PHASE_TIMING`    | `0`                                                | `1` enables optional host ranges, CUDA events, and rebuild assertions                   |
-| `MPPI_BENCHMARK_ITERATIONS`      | `0`                                                | `0` uses the YAML value; otherwise 1–100 optimizer iterations                           |
-| `MPPI_BENCHMARK_DEVICE`          | `0`                                                | Device index after `CUDA_VISIBLE_DEVICES` remapping                                     |
-| `MPPI_BENCHMARK_COST_PROFILE`    | Build copy of `config/mppi_optimizer.param.yaml`   | Cost/runtime YAML with `/**.ros__parameters.mppi_optimizer` structure                   |
-| `MPPI_BENCHMARK_VEHICLE_PROFILE` | Build copy of `test/data/performance_vehicle.yaml` | Explicit vehicle parameters under a `vehicle` map                                       |
-| `MPPI_BENCHMARK_OUTPUT_DIR`      | `mppi_benchmark_results`                           | JSON output directory                                                                   |
-| `MPPI_BENCHMARK_ENVIRONMENT`     | Empty                                              | Free-text run conditions: clocks, power mode, competing workloads, run label, etc.      |
+| Environment variable                | Default                                            | Meaning                                                                                   |
+| ----------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `MPPI_BENCHMARK_WARMUP`             | `10`                                               | Unmeasured stabilization calls, including the separately recorded first call; minimum 1   |
+| `MPPI_BENCHMARK_SAMPLES`            | `100`                                              | Warm measured calls; minimum 1                                                            |
+| `MPPI_BENCHMARK_PHASE_TIMING`       | `0`                                                | `1` enables optional host ranges, CUDA events, and rebuild assertions                     |
+| `MPPI_BENCHMARK_PROJECTION_PRUNING` | `1`                                                | `0` selects the prepared exhaustive GPU projector; `1` enables conservative group pruning |
+| `MPPI_BENCHMARK_ITERATIONS`         | `0`                                                | `0` uses the YAML value; otherwise 1–100 optimizer iterations                             |
+| `MPPI_BENCHMARK_DEVICE`             | `0`                                                | Device index after `CUDA_VISIBLE_DEVICES` remapping                                       |
+| `MPPI_BENCHMARK_COST_PROFILE`       | Build copy of `config/mppi_optimizer.param.yaml`   | Cost/runtime YAML with `/**.ros__parameters.mppi_optimizer` structure                     |
+| `MPPI_BENCHMARK_VEHICLE_PROFILE`    | Build copy of `test/data/performance_vehicle.yaml` | Explicit vehicle parameters under a `vehicle` map                                         |
+| `MPPI_BENCHMARK_OUTPUT_DIR`         | `mppi_benchmark_results`                           | JSON output directory                                                                     |
+| `MPPI_BENCHMARK_ENVIRONMENT`        | Empty                                              | Free-text run conditions: clocks, power mode, competing workloads, run label, etc.        |
 
 The default **optimizer cost profile** is the shipped YAML, currently 10 iterations. The default
 **vehicle profile** is an explicitly versioned synthetic small-vehicle fixture, not a claim about a
@@ -120,21 +121,91 @@ The optional iteration override can measure 20 iterations, but it does not repro
 different default cost parameters and state lifecycle. Fixed rollout/horizon dimensions remain
 16,384 × 80, with a 0.1 s model timestep; changing those dimensions is outside this harness.
 
+## Exact spatial pruning validation
+
+The user ran the selected validation and first off/on benchmark comparison on 2026-11-05: all
+18 selected tests/diagnostics and all 32 benchmark runs passed. Results and limits are recorded in
+the [review](../GPU_PERFORMANCE_REVIEW.md#grouped-pruning-validation-and-timing-results-2026-11-05).
+The assistant did not run builds, tests, benchmarks, or profiling. For another environment, reconfigure
+and rebuild the optimizer with the opt-in benchmark enabled using the build command above; this
+change does not require a new vendor modification. Run these checks before collecting timings:
+
+```bash
+build/autoware_mppi_optimizer/test_path_tracking_geometry
+build/autoware_mppi_optimizer/test_distance_map \
+  --gtest_filter='DistanceMapGpuTest.*Projection*'
+build/autoware_mppi_optimizer/test_costs \
+  --gtest_filter='GpuCostEvaluation.*Projection*:GpuCostEvaluation.ZeroSoftWeightsStillReportExactSafetyViolations'
+build/autoware_mppi_optimizer/test_first_order_dubins_mppi_interface \
+  --gtest_filter='FirstOrderDubinsMppiInterfaceGpuTest.PublishesPreciseMapPositionsAcrossOriginChange'
+```
+
+The projection tests compare original/prepared/pruned device arithmetic with exact numerical
+equality, verify conservative bounds against independent segment distances, and cover geometry
+lifecycle and safety decisions. The disabled work-count diagnostic is a separate, explicit run:
+
+```bash
+build/autoware_mppi_optimizer/test_distance_map --gtest_also_run_disabled_tests \
+  --gtest_filter='DistanceMapGpuTest.DISABLED_ProjectionPruningWorkCounts'
+```
+
+It prints groups examined/pruned, segment evaluations, and exhaustive fallbacks for group sizes
+4, 8, and 16 on synthetic separated/overlapping paths, across all hints. It also checks parity and
+bounds. It does not measure optimizer latency or record the actual optimizer query distribution.
+The production group size is eight, and production instantiations contain no counter updates.
+
+Use separate processes to compare exhaustive (`0`) and grouped (`1`) searches in the same binary:
+
+```bash
+mppi_filter='MppiPerformanceBenchmark.FreeSpaceCached:MppiPerformanceBenchmark.Hairpin256Cached:MppiPerformanceBenchmark.StaticObstacles64Cached:MppiPerformanceBenchmark.StaticObstacleGeometryUpdates:MppiPerformanceBenchmark.GridBoundaryCrossings:MppiPerformanceBenchmark.ReferenceGeometryUpdates:MppiPerformanceBenchmark.ShortProjectionPath:MppiPerformanceBenchmark.OverlappingProjectionGroups'
+for mppi_phase in 0 1; do
+  for mppi_pruning in 0 1; do
+    MPPI_BENCHMARK_PHASE_TIMING="$mppi_phase" \
+      MPPI_BENCHMARK_PROJECTION_PRUNING="$mppi_pruning" \
+      MPPI_BENCHMARK_OUTPUT_DIR="mppi_benchmark_results/pruning_${mppi_pruning}_phase_${mppi_phase}" \
+      build/autoware_mppi_optimizer/test_performance_benchmarks \
+      --gtest_filter="$mppi_filter"
+  done
+done
+```
+
+Repeat with the pruning order reversed, under the same GPU conditions. Require valid measurements,
+zero unexpected outcomes, matching workload/profile/kernel, and `projection_pruning_math_supported`
+and `projection_bounds_valid` both true before attributing a result to pruning. `projection_points`
+and `projection_group_size` identify the active path/cutoff; the short scene intentionally remains
+exhaustive in both modes. The bounds are cached in both modes and included in both runtime uploads,
+so this switch isolates search savings. Compare matching original scenes against revision
+`afab67af33` as well to measure net preprocessing/upload overhead and compiler effects.
+
+Compare complete-call median/p95 and process CPU time in latency mode, then cost GPU time and
+`MPPI/projection_reference_bounds`, `MPPI/projection_corridor_bounds`, and
+`MPPI/scene_runtime_upload` in phase mode. The two bounds phases are host-only and nested inside
+data preparation; do not add them to inclusive parent timings. `scene_runtime_bytes` records the
+uploaded snapshot size. CMake disables pruning when configured math flags violate its precision
+contract; reconfigure after changing flags, including NVCC environment flags. The
+[review](../GPU_PERFORMANCE_REVIEW.md#floating-point-bound-contract) documents that contract and
+the conservative rounding argument. The first supplied comparison shows substantial gains on the
+hairpin and reference-update scenes; reverse-order repetitions and a comparison against the earlier
+revision are still needed to quantify variability and net preparation/upload overhead.
+
 ## Scenarios and workload checks
 
-| Scenario                                                             | Workload                                                                               |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `FreeSpaceCached`                                                    | Straight reference, no obstacles or borders                                            |
-| `StaticObstacles16Cached`, `StaticObstacles64Cached`                 | Parked objects outside the clear reference corridor                                    |
-| `StaticObstacleReferenceCollision`                                   | Shallow hard-margin overlap with one stationary object, leaving room for avoidance     |
-| `RoadBorderReferenceNearCollision`                                   | Reference within the soft border margin but outside the hard margin                    |
-| `TightCorridor256Cached`                                             | Maximum-capacity road-border geometry                                                  |
-| `StaticObstacleGeometryUpdates`                                      | Alternate one stationary object's reported pose; rebuild obstacle maps                 |
-| `GridBoundaryCrossings`                                              | Translate reference, ego, objects, and borders together by alternating 0/0.6 m offsets |
-| `Hairpin256Cached`                                                   | 256-point corridor with a nearby returning branch; 80 optimized steps                  |
-| `NoEligibleRollouts`                                                 | An obstacle encloses the initial state; require explicit no-eligible-rollout rejection |
-| `PreferredCenterlineTextureCached`, `PreferredCenterlineExactCached` | One centerline segment, texture/exact comparison                                       |
-| `PreferredCenterline256GridCrossings`                                | 256 centerline segments and alternating grid positions                                 |
+| Scenario                                                             | Workload                                                                                     |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `FreeSpaceCached`                                                    | Straight reference, no obstacles or borders                                                  |
+| `StaticObstacles16Cached`, `StaticObstacles64Cached`                 | Parked objects outside the clear reference corridor                                          |
+| `StaticObstacleReferenceCollision`                                   | Shallow hard-margin overlap with one stationary object, leaving room for avoidance           |
+| `RoadBorderReferenceNearCollision`                                   | Reference within the soft border margin but outside the hard margin                          |
+| `TightCorridor256Cached`                                             | Maximum-capacity road-border geometry                                                        |
+| `StaticObstacleGeometryUpdates`                                      | Alternate one stationary object's reported pose; rebuild obstacle maps                       |
+| `GridBoundaryCrossings`                                              | Translate reference, ego, objects, and borders together by alternating 0/0.6 m offsets       |
+| `Hairpin256Cached`                                                   | 256-point corridor with a nearby returning branch; 80 optimized steps                        |
+| `ReferenceGeometryUpdates`                                           | Alternate a 0/0.03125 m lateral shift of the hairpin; rebuild bounds and nearest-segment map |
+| `ShortProjectionPath`                                                | First nine straight samples; padded 80-step reference, eight-segment projection cutoff       |
+| `OverlappingProjectionGroups`                                        | Straight initial horizon with repeatedly overlapping tail segments; weak pruning             |
+| `NoEligibleRollouts`                                                 | An obstacle encloses the initial state; require explicit no-eligible-rollout rejection       |
+| `PreferredCenterlineTextureCached`, `PreferredCenterlineExactCached` | One centerline segment, texture/exact comparison                                             |
+| `PreferredCenterline256GridCrossings`                                | 256 centerline segments and alternating grid positions                                       |
 
 The bounded grid offsets cross snapped grid boundaries without triggering local-frame recentering.
 They preserve relative scene geometry. Object-update cases change geometry rather than merely
@@ -145,6 +216,8 @@ closed-loop history are not covered by this initial matrix.
 Before timing, the reference-collision cases check their stated hard/soft input condition. Every
 optimization must process the full horizon and requested iteration count. Successful cases must
 return a validated, unrejected candidate; the infeasible case must report the expected rejection.
+The short-path scene publishes nine optimized points while retaining 80 rollout steps; the
+interface pads its time-aligned reference with the last sample. Other scenes publish 80 points.
 Unexpected results remain in the JSON and fail GTest, marking the report invalid for comparison.
 Custom profiles may legitimately fail these quality gates; such a failure is not a timing result.
 
@@ -152,8 +225,9 @@ With phase timing enabled, sampling/rollout/weight/reduction range and CUDA even
 equal the requested iterations. When `rollout_kernel` is `split`, the dynamics and cost subphases
 must each have the same counts, including on the first optimizer call. Startup kernel-selection
 trials are excluded from these subphase counts. The combined kernel must have neither subphase.
-After initialization, cached scenes must have no map rebuilds. Geometry updates must
-rebuild only the obstacle map; grid crossings must rebuild static and nearest-segment maps, plus
+After initialization, cached scenes must have no map or corridor-bound rebuilds. Obstacle updates must
+rebuild only the obstacle map; reference updates rebuild corridor bounds and the nearest-segment map.
+Grid crossings must rebuild corridor bounds, static and nearest-segment maps, plus
 nonempty obstacle/active centerline maps. Counters are the observed instrumented rebuild-range
 invocations, not inferred from timestamps. Instrumentation-off runs omit these counters/checks.
 

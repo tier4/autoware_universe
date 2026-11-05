@@ -62,6 +62,29 @@ inline std::vector<Case> cases()
     dense.y.push_back(0.0F);
   }
   result.push_back(dense);
+  // Equal-distance branches are in different groups, including when the hint is
+  // on the later branch. Repeated vertices also exercise degenerate group bounds.
+  Case grouped_tie{"tie across groups", {0, 10}, {0, 0}, 1, 1, 0, 0.1F, 1};
+  for (int i = 2; i <= 16; ++i) {
+    grouped_tie.x.push_back(10);
+    grouped_tie.y.push_back(2);
+  }
+  grouped_tie.x.push_back(0);
+  grouped_tie.y.push_back(2);
+  result.push_back(grouped_tie);
+  grouped_tie.name = "next branch across groups";
+  grouped_tie.query_y = 1.000001F;
+  grouped_tie.segment = 16;
+  grouped_tie.t_raw = 0.9F;
+  grouped_tie.lateral = 0.999999F;
+  result.push_back(grouped_tie);
+  dense.name = "group boundary shared vertex";
+  dense.query_x = 8.0F;
+  dense.query_y = 0.0F;
+  dense.segment = 7;
+  dense.t_raw = 1.0F;
+  dense.lateral = 0.0F;
+  result.push_back(dense);
   return result;
 }
 }  // namespace autoware::mppi_optimizer::projection_test

@@ -113,8 +113,13 @@ struct alignas(16) FirstOrderDubinsRuntimeData
 
   float ref_x_[NUM_TIMESTEPS] = {};
   float ref_y_[NUM_TIMESTEPS] = {};
-  /** Local-frame endpoint differences for exhaustive reference projection. */
+  /** Local-frame endpoint differences and conservative projection group bounds. */
   mppi::cost::detail::PolylineSegmentDelta ref_segment_delta_[NUM_TIMESTEPS] = {};
+  mppi::cost::detail::PolylineGroupBounds ref_group_bounds_
+    [(NUM_TIMESTEPS + mppi::cost::detail::kPolylineGroupSize - 1) /
+     mppi::cost::detail::kPolylineGroupSize] = {};
+  bool ref_group_bounds_valid_ = false;
+  bool projection_pruning_enabled_ = true;
   /** Cumulative reference chord length [m], allowing O(1) projected path-length lookup. */
   float ref_s_[NUM_TIMESTEPS] = {};
   float ref_v_[NUM_TIMESTEPS] = {};
@@ -128,6 +133,10 @@ struct alignas(16) FirstOrderDubinsRuntimeData
   int num_lateral_corridor_points_ = 0;
   float lateral_corridor_x_[kMaxLateralCorridorPoints] = {};
   float lateral_corridor_y_[kMaxLateralCorridorPoints] = {};
+  mppi::cost::detail::PolylineGroupBounds
+    lateral_corridor_group_bounds_[mppi::cost::detail::polylineGroupCount(
+      kMaxLateralCorridorPoints)] = {};
+  bool lateral_corridor_group_bounds_valid_ = false;
   /** Local-frame endpoint differences for exhaustive corridor projection. */
   mppi::cost::detail::PolylineSegmentDelta
     lateral_corridor_segment_delta_[kMaxLateralCorridorPoints - 1] = {};
@@ -322,6 +331,13 @@ public:
   /** Exact-only mode for validation and backend benchmarks. */
   void setPreferredLaneCenterTextureEnabled(bool enabled);
 
+  /** Diagnostic baseline switch; no ROS parameter. Call with exclusive access. */
+  void setProjectionPruningEnabled(bool enabled)
+  {
+    runtimeData().projection_pruning_enabled_ = enabled;
+    dataToDevice();
+  }
+
   /** Limit moving-object costs and validation to horizon_s; zero uses the full horizon. */
   void setDynamicObstacleHorizon(float horizon_s, float dt);
 
@@ -380,7 +396,8 @@ public:
    * Also stores path length along the corridor chord-length array and remaining distance
    * to the polyline end (used by remaining_distance_coeff).
    * On device, a texture fetch or per-sample theta_c hint supplies an optional first candidate.
-   * Both host and device scan every segment and select the lowest index on equal distances.
+   * Host scans every segment; device skips only groups proven farther than the best candidate.
+   * Both select the lowest index on equal computed distances.
    */
   struct LateralPathMetrics
   {

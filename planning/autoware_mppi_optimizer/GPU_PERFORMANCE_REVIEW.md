@@ -159,9 +159,167 @@ The hairpin's observed cost reduction is about 1.043 ms per call, and its comple
 
 The selected tests establish projection parity across the listed fixtures and lifecycle transitions, not bitwise equality of complete MPPI output over every cycle. Some per-cycle baseline-cost and adaptive-temperature values diverge after multiple cycles; the grid-crossing run also differs in eligible-rollout count by as many as 80 in 20 samples. The two post-change modes show the same grid-crossing divergence, so it cannot be attributed to the projection change from these reports. All runs still passed their outcome and workload assertions. Repeated independent processes with alternating revisions and controlled GPU conditions would tighten the speedup estimate. No new Nsight capture or deployment-latency measurement was made.
 
-### Review follow-up: 2026-11-05 (validation pending)
+### Review follow-up: 2026-11-05
 
 The review added a direct device-to-device projection regression test. Separate CUDA kernel instantiations run the original exhaustive projector and the prepared projector on identical uploaded vertices, including shared/global access, all valid and invalid hint indices in the tested range, oblique segments, adjacent representable boundary queries, and reference-only fallback. Segment selection, raw projection parameter, and signed lateral distance require exact numerical equality; the production state-cost safety status is also compared against the original device projection's lateral decision. The translated near-tie fixture now uses `std::nextafter` on both sides of 51 m and asserts segment indices 0, 0, and 2. Its name now describes translated vertices rather than actual frame recentering; the [validation commands](test/PERFORMANCE_BENCHMARKS.md#explicit-build-and-execution) additionally select the existing interface test that crosses the recentering threshold. These changes have not been built or run by the assistant and are not covered by the earlier passing results or timing measurements.
+
+The user subsequently ran these tests successfully as part of the grouped-pruning validation below.
+
+### Exact grouped spatial pruning: 2026-11-05
+
+The next implementation groups consecutive segments in sets of eight and stores a conservative
+XY box for each group. The deployed 80-point reference and 256-point corridor need 10 and 32 boxes,
+respectively: 672 bytes of bounds, plus validity/control flags and any structure alignment. These
+are part of the existing pinned runtime snapshot and ordered upload; no shared-memory allocation,
+device allocation per query, traversal stack, or reordered segment storage is added. Bounds are
+rebuilt when local vertices/counts change, including reference changes while a corridor is active.
+Velocity-only updates reuse them. Corridor removal selects the maintained reference bounds.
+
+On the GPU, a valid hint is evaluated first. Groups are visited in original segment order, with
+exact candidate evaluation for each retained group and no duplicate hint evaluation. A group is
+skipped only when its lower bound is **strictly greater** than the current computed distance.
+Equality remains eligible, preserving the lowest-index tie rule. The original candidate distance,
+division, square root, projection finalization, and downstream safety/progress/velocity code remain
+unchanged. The CPU retains the prepared exhaustive search. This is still linear in the number of
+groups; overlapping groups can require all segment evaluations and add overhead.
+
+#### Floating-point bound contract
+
+An ideal endpoint AABB is insufficient: for example, float endpoints `1e8` and `1` have cached delta
+`-1e8`, so the computed endpoint `x0 + dx` is `0`, outside the ideal `[1, 1e8]` interval. Each box
+therefore encloses `x0` and the rounded `x0 + dx`, expanded outward by one representable float via
+`nextafter`; the same construction applies to Y. For any clamped float parameter in `[0,1]`,
+monotonic multiplication/addition keeps both the fused and unfused interpolation inside this
+interval. Degenerate-segment distances use the starting vertex, also enclosed. The outward step is
+a rounding enclosure, not a geometric tolerance or a change to candidate arithmetic.
+
+For a query outside a box, the positive axis gaps are computed with downward-rounded subtraction.
+Each is at most the absolute rounded residual to any computed footpoint inside the box. Squaring,
+adding, and taking the square root with explicit downward-rounded CUDA intrinsics then gives a
+lower bound on the original computed norm, including either FMA contraction choice for its sum of
+squares. Comparing this bound directly to `best_dist` avoids introducing squared-distance rounding
+ties. The relevant rounding operations are specified in NVIDIA's
+[single-precision intrinsic documentation](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-math-api/cuda_math_api/group__CUDA__MATH__INTRINSIC__SINGLE.html).
+
+The supported domain requires finite vertices and queries with each coordinate magnitude at most
+`2^30`, with deltas prepared from those same vertices. Residuals, squared lengths, and projection
+numerators then stay far below float overflow; a nondegenerate divisor is at least `1e-8`.
+Out-of-domain queries, invalid bounds, and paths with at most eight segments use exhaustive search.
+The proof assumes standard IEEE arithmetic, gradual underflow, and correctly rounded square roots.
+CMake conservatively disables pruning for configured fast-math/FTZ/approximate arithmetic flags;
+consumers without its precision definition also fall back. Reconfigure if compiler/environment
+flags change, and do not assert `MPPI_PROJECTION_PRECISE_MATH` in an external build without this
+contract. NVIDIA documents the relevant switches in its
+[NVCC precision options](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-compiler-driver-nvcc/index.html#use-fast-math-use-fast-math).
+
+#### Validation and measurement additions
+
+The GTests now compare original, prepared exhaustive, and grouped device projections with exact
+numerical equality, plus production lateral safety status. They check the lower-bound property
+against independent original device segment distances, ties crossing group boundaries, adjacent
+representable safety queries on a long path, rounded endpoints, seeded fractional/random paths,
+degenerate groups, small/large coordinates, all hints, numeric fallback, and geometry lifecycle.
+The combined/split rollout fixture now uses a long U-shaped path and runs with pruning off/on.
+The existing interface recentering test remains part of the validation commands.
+
+An explicitly disabled GTest reports groups examined/pruned, exact segment evaluations, and
+exhaustive fallbacks for synthetic separated/overlapping groups at group sizes 4, 8, and 16. Its
+counters are compiled out of the production projector; these are diagnostic workloads, not a trace
+of optimizer rollouts. Production uses groups of eight. The opt-in standalone benchmark adds a
+pruning switch, active geometry/build metadata, host bounds-preparation phases, and changing-reference,
+short-path, and overlapping-group scenes. See the
+[commands and comparison limits](test/PERFORMANCE_BENCHMARKS.md#exact-spatial-pruning-validation).
+
+No build, test, benchmark, or profiler was run by the assistant for this change. The user subsequently
+ran the validation and benchmark commands; the results below replace the initial pending status.
+
+#### Grouped pruning validation and timing results: 2026-11-05
+
+The user's output shows all 18 selected tests passing: five host geometry tests, seven GPU projection
+tests, four cost/safety/rollout tests, one interface recentering test, and the explicitly enabled
+work-count diagnostic. This includes the exact original/prepared/pruned device comparisons and
+lower-bound checks. The earlier review's direct-parity and translated near-tie additions are also
+covered by this run. No test fix was indicated by the supplied output.
+
+All 32 saved benchmark reports are valid, with zero unexpected outcomes and complete measured
+workloads: eight scenes, pruning off/on, each in latency-only and phase-timing modes. Each report
+contains 100 measured calls after ten warmups, with 16,384 rollouts, 80 steps, ten iterations,
+seed 1, and the split kernel on the RTX 4090 / CUDA 12.8. The active projection has 80 points in
+the normal straight scenes, 256 in the hairpin/update/overlap scenes, and nine in the short scene.
+The recorded profiles, hardware, compiler flags, revision strings, and workload metadata match
+within every off/on pair. All reports enable the required precision contract and contain valid
+bounds; the pruning switch is correctly recorded. The package revision is
+`x2/v4.4.0-552-gafab67af33-dirty`, so that string alone does not identify the modified source snapshot.
+
+The table compares the [exhaustive latency reports](../../../../../mppi_benchmark_results/pruning_0_phase_0/)
+with the [pruned latency reports](../../../../../mppi_benchmark_results/pruning_1_phase_0/), and separately
+the [exhaustive phase reports](../../../../../mppi_benchmark_results/pruning_0_phase_1/) with the
+[pruned phase reports](../../../../../mppi_benchmark_results/pruning_1_phase_1/). All times are per
+complete ten-iteration call. Wall columns are latency-only statistics; cost GPU is the mean of
+the instrumented `MPPI/rollout_cost` phase, not an Nsight measurement.
+
+| Scene                         | Wall median off → on (ms) | Median reduction | Wall p95 off → on (ms) | Cost GPU mean off → on (ms) |
+| ----------------------------- | ------------------------: | ---------------: | ---------------------: | --------------------------: |
+| FreeSpaceCached               |           20.244 → 18.271 |             9.7% |        20.946 → 18.473 |               6.160 → 4.098 |
+| Hairpin256Cached              |           28.495 → 19.129 |            32.9% |        28.623 → 19.283 |              14.286 → 4.762 |
+| StaticObstacles64Cached       |           24.709 → 22.746 |             7.9% |        24.935 → 22.925 |              10.235 → 8.117 |
+| StaticObstacleGeometryUpdates |           22.054 → 20.318 |             7.9% |        22.161 → 20.487 |               7.464 → 5.611 |
+| GridBoundaryCrossings         |           26.533 → 24.491 |             7.7% |        26.653 → 24.757 |              11.496 → 9.369 |
+| ReferenceGeometryUpdates      |           28.529 → 19.151 |            32.9% |        28.856 → 19.396 |              14.281 → 4.722 |
+| ShortProjectionPath           |           16.773 → 16.948 |            −1.0% |        16.979 → 17.143 |               3.031 → 3.041 |
+| OverlappingProjectionGroups   |           30.281 → 30.248 |             0.1% |        30.531 → 30.390 |             16.194 → 15.979 |
+
+The hairpin saves an observed 9.366 ms in median complete-call latency and 9.524 ms (66.7%) in
+mean cost GPU time. The changing-reference scene retains the same approximate benefit, despite
+rebuilding both bounds arrays every call. Its instrumented host bounds-preparation means with
+pruning enabled are 0.002725 ms for the reference and 0.007586 ms for the corridor, totaling about
+10.3 microseconds; runtime-upload GPU mean is 0.008095 ms. Cached scenes have no measured bounds
+rebuild ranges. Across scenes, dynamics remains approximately 6.56–6.69 ms. Process CPU means also
+fall (hairpin 28.531 → 19.123 ms), but this does not establish a faster CPU projection algorithm:
+the CPU projector is unchanged and process CPU measurements include driver/wait work.
+
+The short path uses exhaustive fallback in both modes, so no projection acceleration is expected.
+Its 0.175 ms median increase and the overlap scene's 0.033 ms decrease need repeated processes
+before being treated as a regression or a gain. The short scene also has small numerical differences
+between runs even though no groups are pruned.
+
+The separate synthetic work diagnostic reports 1,060,800 possible segment evaluations across
+4,160 query/hint combinations on a 256-point straight path:
+
+| Group size | Groups examined | Groups pruned | Segments evaluated | Segment reduction |
+| ---------: | --------------: | ------------: | -----------------: | ----------------: |
+|          4 |         266,240 |       197,280 |            277,936 |             73.8% |
+|          8 |         133,120 |        95,824 |            300,400 |             71.7% |
+|         16 |          66,560 |        45,096 |            345,069 |             67.5% |
+
+All three sizes have zero exhaustive fallbacks in that diagnostic. For fully overlapping segments,
+all three prune zero groups and evaluate all 66,300 possible candidates. This confirms both useful
+rejection and the expected worst case on these inputs. Four-segment groups evaluate fewer segments
+but twice as many boxes as eight-segment groups; counts alone do not establish a faster group size.
+Keep eight as the measured production configuration pending kernel-time comparisons.
+
+The tests and successful validation outcomes do not prove bitwise equality of complete optimizer
+output across adaptive cycles. Most per-cycle differences are small. The largest exception is the
+instrumented grid scene: pruning off/on differs in eligible-rollout count in 93/100 measured calls
+(maximum absolute difference 231), and baseline cost in 91 calls (maximum difference 51.925).
+However, the two latency-only grid runs match all recorded baseline-cost, eligibility and temperature
+values, and the pruned instrumented run matches those values too. The exhaustive instrumented run
+therefore also differs from the exhaustive latency-only run. These reports do not isolate pruning
+as the cause, and they do not establish the source of the run-to-run variability. Rejection,
+validation, output-point count, and iteration count match in every paired scene.
+
+This is one ordered pass (off then on) per timing mode. GPU clocks/power conditions were not recorded,
+and independent reverse-order repetitions have not been supplied. The same-binary exhaustive switch
+retains the new runtime layout (83,872 bytes) and bounds preparation, so it isolates search savings.
+A matched comparison against baseline Universe revision `afab67af33` is still needed to include
+their net overhead and compiler effects. The results measure GPU elapsed work, not power or
+whole-system GPU utilization.
+
+Next, repeat the matched runs in reversed order, concentrating on the short-path result and grid
+numerical variability. Once confirmed, capture fresh profiling data for the pruned kernels before
+choosing another optimization. In the instrumented hairpin, dynamics is now 6.592 ms versus 4.762 ms
+for cost, with random sampling at 3.619 ms: the previous projection-dominated profile no longer
+describes the measured phase balance. No new profile was captured in this follow-up.
 
 ## Prioritized recommendations
 

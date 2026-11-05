@@ -63,6 +63,7 @@ struct Settings
   int iterations{integerOption("MPPI_BENCHMARK_ITERATIONS", 0, 0, kMaxMppiIterations)};
   int device{integerOption("MPPI_BENCHMARK_DEVICE", 0, 0, 1024)};
   bool phase_timing{integerOption("MPPI_BENCHMARK_PHASE_TIMING", 0, 0, 1) != 0};
+  bool projection_pruning{integerOption("MPPI_BENCHMARK_PROJECTION_PRUNING", 1, 0, 1) != 0};
   std::string cost_profile{environment("MPPI_BENCHMARK_COST_PROFILE", kDefaultCostProfile)};
   std::string vehicle_profile{
     environment("MPPI_BENCHMARK_VEHICLE_PROFILE", kDefaultVehicleProfile)};

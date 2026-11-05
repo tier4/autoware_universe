@@ -2517,12 +2517,28 @@ void FirstOrderDubinsMppiInterface::setPerformanceInstrumentationEnabled(const b
   }
 }
 
+void FirstOrderDubinsMppiInterface::setProjectionPruningEnabled(const bool enabled)
+{
+  if (!impl_) throw std::logic_error("MPPI interface has been moved from");
+  if (impl_->initialized) throw std::logic_error("Configure projection pruning before initialize");
+  impl_->cost.setProjectionPruningEnabled(enabled);
+}
+
 FirstOrderDubinsMppiPerformanceReport FirstOrderDubinsMppiInterface::performanceReport() const
 {
   if (!impl_) throw std::logic_error("MPPI interface has been moved from");
   FirstOrderDubinsMppiPerformanceReport report;
   report.instrumented = static_cast<bool>(impl_->performance_recorder);
   report.initialized = impl_->initialized;
+  report.projection_pruning_enabled = impl_->cost.runtimeData().projection_pruning_enabled_;
+  report.projection_pruning_math_supported = mppi::cost::detail::polylinePruningMathSupported();
+  report.projection_group_size = mppi::cost::detail::kPolylineGroupSize;
+  const auto & data = impl_->cost.runtimeData();
+  const bool corridor = data.num_lateral_corridor_points_ >= 2;
+  report.projection_points = corridor ? data.num_lateral_corridor_points_ : kRefHorizon;
+  report.projection_bounds_valid =
+    corridor ? data.lateral_corridor_group_bounds_valid_ : data.ref_group_bounds_valid_;
+  report.scene_runtime_bytes = sizeof(COST::RuntimeData);
   report.rollouts = kNumRollouts;
   report.horizon = kMppiHorizon;
   report.iterations = impl_->user_cost_params_.max_iter;

@@ -125,6 +125,73 @@ struct PolylineSegmentDelta
   float dy = 0.0F;
 };
 
+inline constexpr int kPolylineGroupSize = 8;
+// With both vertices and queries in this range, residuals, squared lengths and the
+// numerator/divisor in the original projector cannot overflow (len_sq >= 1e-8).
+inline constexpr float kPolylinePruningCoordinateLimit = 0x1p30F;
+
+struct PolylineGroupBounds
+{
+  float min_x = 0.0F;
+  float min_y = 0.0F;
+  float max_x = 0.0F;
+  float max_y = 0.0F;
+};
+
+constexpr int polylineGroupCount(const int n_pts, const int group_size = kPolylineGroupSize)
+{
+  return n_pts < 2 ? 0 : (n_pts - 2) / group_size + 1;
+}
+
+/** Host preparation; output has room for polylineGroupCount(n_pts) entries.
+ *
+ * Bound the COMPUTED footpoint, not just the ideal segment. For t in [0,1], both
+ * RN(x0 + RN(t*dx)) and RN(x0 + t*dx) lie between x0 and RN(x0 + dx), by monotonicity.
+ * One outward nextafter also encloses the unrounded endpoint sum. This covers
+ * cached subtraction roundoff and either FMA setting without changing the candidate
+ * calculation. Degenerate segments return the distance to x0, also inside the box.
+ * A false return invalidates the entire array; callers must use exhaustive search.
+ */
+template <int GroupSize = kPolylineGroupSize>
+inline bool buildPolylineGroupBounds(
+  const float * x, const float * y, const PolylineSegmentDelta * deltas, const int n_pts,
+  PolylineGroupBounds * bounds)
+{
+  static_assert(GroupSize > 0, "A group must contain at least one segment");
+  if (n_pts < 2) return false;
+  for (int i = 0; i < n_pts; ++i) {
+    if (
+      !(std::fabs(x[i]) <= kPolylinePruningCoordinateLimit) ||
+      !(std::fabs(y[i]) <= kPolylinePruningCoordinateLimit)) {
+      return false;
+    }
+  }
+  for (int group = 0; group < polylineGroupCount(n_pts, GroupSize); ++group) {
+    auto & box = bounds[group];
+    box = {FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX};
+    const int end = std::min(n_pts - 1, (group + 1) * GroupSize);
+    for (int i = group * GroupSize; i < end; ++i) {
+      const float end_x = x[i] + deltas[i].dx;
+      const float end_y = y[i] + deltas[i].dy;
+      if (!std::isfinite(end_x) || !std::isfinite(end_y)) return false;
+      box.min_x = std::min(box.min_x, std::min(x[i], std::nextafter(end_x, -FLT_MAX)));
+      box.min_y = std::min(box.min_y, std::min(y[i], std::nextafter(end_y, -FLT_MAX)));
+      box.max_x = std::max(box.max_x, std::max(x[i], std::nextafter(end_x, FLT_MAX)));
+      box.max_y = std::max(box.max_y, std::max(y[i], std::nextafter(end_y, FLT_MAX)));
+    }
+  }
+  return true;
+}
+
+/** Per-query diagnostic counters; production instantiations compile out all updates. */
+struct PolylineSearchStats
+{
+  unsigned int groups_examined = 0;
+  unsigned int groups_pruned = 0;
+  unsigned int segments_evaluated = 0;
+  unsigned int exhaustive_fallbacks = 0;
+};
+
 __host__ __device__ inline PolylineSegmentDelta makePolylineSegmentDelta(
   const float x0, const float y0, const float x1, const float y1)
 {
@@ -320,6 +387,91 @@ __host__ __device__ inline PolylineProjection projectPointToPreparedPolyline(
   finalizePolylineProjection(result, px, py, poly_x, poly_y, n_pts, best_i, best_t_raw, best_dist);
   return result;
 }
+
+#ifdef __CUDACC__
+/** Round each nonnegative operation down, including sqrt: this bounds the computed
+ * distance, even when the candidate's squared norm uses a fused multiply-add.
+ * Comparing squared distances to best_dist*best_dist would not preserve sqrt ties.
+ */
+__device__ inline float distanceToPolylineGroupLowerBound(
+  const float px, const float py, const PolylineGroupBounds & box)
+{
+  const float dx = fmaxf(0.0F, fmaxf(__fsub_rd(box.min_x, px), __fsub_rd(px, box.max_x)));
+  const float dy = fmaxf(0.0F, fmaxf(__fsub_rd(box.min_y, py), __fsub_rd(py, box.max_y)));
+  return __fsqrt_rd(__fadd_rd(__fmul_rd(dx, dx), __fmul_rd(dy, dy)));
+}
+
+/** CMake certifies the math flags for this translation unit; external consumers
+ * without that contract use exhaustive search. Fast/FTZ/approximate sqrt builds
+ * cannot use the directed-rounding proof above.
+ */
+__host__ __device__ constexpr bool polylinePruningMathSupported()
+{
+#if defined(MPPI_PROJECTION_PRECISE_MATH) && MPPI_PROJECTION_PRECISE_MATH && \
+  !defined(__FAST_MATH__) && !defined(__USE_FAST_MATH__)
+  return true;
+#else
+  return false;
+#endif
+}
+
+template <bool CollectStats = false, int GroupSize = kPolylineGroupSize>
+__device__ inline PolylineProjection projectPointToPrunedPolyline(
+  const float px, const float py, const float * poly_x, const float * poly_y,
+  const PolylineSegmentDelta * deltas, const PolylineGroupBounds * bounds, const bool bounds_valid,
+  const int n_pts, const int hint_i = -1, PolylineSearchStats * stats = nullptr)
+{
+  static_assert(GroupSize > 0, "A group must contain at least one segment");
+  if constexpr (CollectStats) *stats = {};
+  if (
+    !polylinePruningMathSupported() || !bounds_valid || bounds == nullptr ||
+    n_pts <= GroupSize + 1 || !(fabsf(px) <= kPolylinePruningCoordinateLimit) ||
+    !(fabsf(py) <= kPolylinePruningCoordinateLimit)) {
+    if constexpr (CollectStats) {
+      stats->exhaustive_fallbacks = 1;
+      stats->segments_evaluated = n_pts > 1 ? n_pts - 1 : 0;
+    }
+    return projectPointToPreparedPolyline(px, py, poly_x, poly_y, deltas, n_pts, hint_i);
+  }
+
+  const int n_seg = n_pts - 1;
+  float best_dist = FLT_MAX;
+  int best_i = 0;
+  float best_t_raw = 0.5F;
+  const bool valid_hint = hint_i >= 0 && hint_i < n_seg;
+  if (valid_hint) {
+    best_i = hint_i;
+    distanceToPreparedPolylineSegment(
+      px, py, poly_x, poly_y, deltas, best_i, best_dist, best_t_raw);
+    if constexpr (CollectStats) ++stats->segments_evaluated;
+  }
+  for (int group = 0; group * GroupSize < n_seg; ++group) {
+    if constexpr (CollectStats) ++stats->groups_examined;
+    // Strict comparison preserves equal computed distances and lowest-index ties,
+    // even when the hint belongs to a later group. NaN best_dist never prunes.
+    if (distanceToPolylineGroupLowerBound(px, py, bounds[group]) > best_dist) {
+      if constexpr (CollectStats) ++stats->groups_pruned;
+      continue;
+    }
+    const int end = min(n_seg, (group + 1) * GroupSize);
+    for (int i = group * GroupSize; i < end; ++i) {
+      if (valid_hint && i == hint_i) continue;
+      float dist = 0.0F;
+      float t_raw = 0.0F;
+      distanceToPreparedPolylineSegment(px, py, poly_x, poly_y, deltas, i, dist, t_raw);
+      if constexpr (CollectStats) ++stats->segments_evaluated;
+      if (dist < best_dist || (dist == best_dist && i < best_i)) {
+        best_dist = dist;
+        best_i = i;
+        best_t_raw = t_raw;
+      }
+    }
+  }
+  PolylineProjection result;
+  finalizePolylineProjection(result, px, py, poly_x, poly_y, n_pts, best_i, best_t_raw, best_dist);
+  return result;
+}
+#endif  // __CUDACC__
 
 __host__ __device__ inline float crossTrackDistanceToPolyline(
   const float px, const float py, const float * poly_x, const float * poly_y, const int n_pts)

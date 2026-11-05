@@ -185,6 +185,22 @@ if(CUDA_AVAIL)
   list(APPEND CUDA_NVCC_FLAGS "-lineinfo")
   list(APPEND CUDA_NVCC_FLAGS "--maxrregcount=64")
 
+  # Group bounds require IEEE arithmetic, gradual underflow and correctly rounded sqrt.
+  # NVCC does not expose every precision switch as a preprocessor macro. Conservatively
+  # disable pruning for nonstandard math flags, including flags injected through the env.
+  set(_mppi_projection_math_flags "${CUDA_NVCC_FLAGS};${CMAKE_CXX_FLAGS};$ENV{NVCC_PREPEND_FLAGS};$ENV{NVCC_APPEND_FLAGS}")
+  foreach(_mppi_config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    string(APPEND _mppi_projection_math_flags ";${CUDA_NVCC_FLAGS_${_mppi_config}};${CMAKE_CXX_FLAGS_${_mppi_config}}")
+  endforeach()
+  string(REPLACE "\"" "" _mppi_projection_math_flags "${_mppi_projection_math_flags}")
+  string(REPLACE "'" "" _mppi_projection_math_flags "${_mppi_projection_math_flags}")
+  set(_mppi_projection_precise_math 1)
+  if(_mppi_projection_math_flags MATCHES "use_fast_math|ftz[= ;]+(true|1)|prec-(sqrt|div)[= ;]+(false|0)|-Ofast|-ffast-math|-funsafe-math|-ffinite-math|-fassociative-math|-freciprocal-math|/fp:fast")
+    set(_mppi_projection_precise_math 0)
+    message(STATUS "MPPI spatial pruning disabled: nonstandard floating-point flags")
+  endif()
+  add_definitions(-DMPPI_PROJECTION_PRECISE_MATH=${_mppi_projection_precise_math})
+
   # CUDA architectures to build device code for.
   #   Default : the portable gencode list shared with the perception/sensing CUDA
   #             packages. Needs no GPU at configure time, so it also works on

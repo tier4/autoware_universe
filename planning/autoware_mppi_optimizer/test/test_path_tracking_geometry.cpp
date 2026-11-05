@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <limits>
 #include <vector>
 
 // This translation unit tests the shared geometry with an ordinary C++17 compiler,
@@ -34,6 +35,37 @@ using mppi::cost::detail::pathLengthAtProjection;
 using mppi::cost::detail::PolylineSegmentDelta;
 using mppi::cost::detail::projectPointToPolyline;
 using mppi::cost::detail::projectPointToPreparedPolyline;
+
+TEST(PathTrackingGeometry, GroupBoundsEncloseRoundedEndpointsAndRejectUnsupportedGeometry)
+{
+  using namespace mppi::cost::detail;
+  std::array<float, 18> x{}, y{};
+  std::array<PolylineSegmentDelta, 17> deltas{};
+  std::array<PolylineGroupBounds, polylineGroupCount(18)> bounds{};
+  x.fill(1.0F);
+  x[0] = 100000000.0F;
+  y.fill(-1.0F);
+  y[0] = -100000000.0F;
+  for (int i = 0; i < 17; ++i) {
+    deltas[i] = makePolylineSegmentDelta(x[i], y[i], x[i + 1], y[i + 1]);
+  }
+  ASSERT_TRUE(buildPolylineGroupBounds(x.data(), y.data(), deltas.data(), 18, bounds.data()));
+  // x0 + RN(x1 - x0) is zero, outside the ideal [1, 1e8] segment box.
+  EXPECT_LE(bounds[0].min_x, 0.0F);
+  EXPECT_GE(bounds[0].max_y, 0.0F);
+  EXPECT_EQ(polylineGroupCount(0), 0);
+  EXPECT_EQ(polylineGroupCount(1), 0);
+  EXPECT_EQ(polylineGroupCount(9), 1);
+  EXPECT_EQ(polylineGroupCount(10), 2);
+  EXPECT_EQ(polylineGroupCount(256), 32);
+  EXPECT_FALSE(buildPolylineGroupBounds(nullptr, nullptr, nullptr, 0, nullptr));
+  for (const float invalid :
+       {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN(),
+        std::nextafter(kPolylinePruningCoordinateLimit, FLT_MAX)}) {
+    x[0] = invalid;
+    EXPECT_FALSE(buildPolylineGroupBounds(x.data(), y.data(), deltas.data(), 18, bounds.data()));
+  }
+}
 
 TEST(PathTrackingGeometry, PreparedProjectionMatchesIndependentExhaustiveSearch)
 {

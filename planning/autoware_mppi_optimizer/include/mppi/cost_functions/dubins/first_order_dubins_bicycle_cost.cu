@@ -549,6 +549,13 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
         runtimeData().ref_y_[i + 1]);
     }
   }
+  if (reference_geometry_changed || !runtimeData().ref_group_bounds_valid_) {
+    mppi::instrumentation::ScopedNvtxRange range(
+      "MPPI/projection_reference_bounds", mppi::instrumentation::NvtxColor::DATA_TRANSFER);
+    runtimeData().ref_group_bounds_valid_ = buildPolylineGroupBounds(
+      runtimeData().ref_x_, runtimeData().ref_y_, runtimeData().ref_segment_delta_, NUM_TIMESTEPS,
+      runtimeData().ref_group_bounds_);
+  }
   if (runtimeData().num_lateral_corridor_points_ < 2) {
     projection_geometry_changed |= reference_geometry_changed;
   }
@@ -599,7 +606,14 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
         runtimeData().lateral_corridor_x_[i], runtimeData().lateral_corridor_y_[i],
         runtimeData().lateral_corridor_x_[i + 1], runtimeData().lateral_corridor_y_[i + 1]);
     }
+    mppi::instrumentation::ScopedNvtxRange range(
+      "MPPI/projection_corridor_bounds", mppi::instrumentation::NvtxColor::DATA_TRANSFER);
+    runtimeData().lateral_corridor_group_bounds_valid_ = buildPolylineGroupBounds(
+      runtimeData().lateral_corridor_x_, runtimeData().lateral_corridor_y_,
+      runtimeData().lateral_corridor_segment_delta_, n,
+      runtimeData().lateral_corridor_group_bounds_);
   }
+  if (n < 2) runtimeData().lateral_corridor_group_bounds_valid_ = false;
   if (!runtimeData().lateral_corridor_has_s_ && n > 0) {
     runtimeData().lateral_corridor_s_[0] = 0.0F;
     for (int i = 1; i < n; ++i) {
@@ -624,6 +638,7 @@ void FirstOrderDubinsBicycleCostImpl<
   const bool projection_geometry_changed = runtimeData().num_lateral_corridor_points_ >= 2 ||
                                            !texture_state_.nearest_segment_texture_valid_;
   runtimeData().num_lateral_corridor_points_ = 0;
+  runtimeData().lateral_corridor_group_bounds_valid_ = false;
   runtimeData().lateral_corridor_has_s_ = false;
   runtimeData().lateral_corridor_total_length_s_ = 0.0F;
   dataToDevice();
@@ -997,13 +1012,22 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
     }
   }
 #endif
-  // Seeds affect evaluation order only; every query verifies the global nearest segment.
-  const auto proj =
-    projectPointToPreparedPolyline(x, y, poly_x, poly_y, segment_delta, n_pts, hint_i);
 #ifdef __CUDA_ARCH__
+  // Bounds stay in global memory; shared-memory capacity and hint semantics are unchanged.
+  const auto & data = runtimeData();
+  const auto * bounds =
+    buf.num_corridor >= 2 ? data.lateral_corridor_group_bounds_ : data.ref_group_bounds_;
+  const bool valid = buf.num_corridor >= 2 ? data.lateral_corridor_group_bounds_valid_
+                                           : data.ref_group_bounds_valid_;
+  const auto proj = projectPointToPrunedPolyline(
+    x, y, poly_x, poly_y, segment_delta, bounds, valid && data.projection_pruning_enabled_, n_pts,
+    hint_i);
   if (hint_slot != nullptr) {
     *hint_slot = static_cast<float>(proj.best_i);
   }
+#else
+  const auto proj =
+    projectPointToPreparedPolyline(x, y, poly_x, poly_y, segment_delta, n_pts, hint_i);
 #endif
   metrics.lateral_distance = proj.lateral_distance;
   metrics.best_segment_i = proj.best_i;
