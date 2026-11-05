@@ -19,6 +19,8 @@
 
 #include <autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp>
 
+#include <geometry_msgs/msg/point.hpp>
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,6 +43,7 @@ private:
   std::optional<CollisionPoint> get_nearest_collision_point() const;
 
   std::vector<CollisionPoint> collision_points_buffer_;
+  std::optional<geometry_msgs::msg::Point> clamped_stop_point_;
 };
 
 }  // namespace autoware::safety_planner::experimental

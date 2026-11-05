@@ -16,6 +16,7 @@
 
 #include "autoware/avoidance_target_detector/rtree_filtering.hpp"
 
+#include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
 
 #include <autoware_planning_msgs/msg/path_point.hpp>
@@ -37,6 +38,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -155,6 +157,13 @@ namespace
 bool exists_in_map(const lanelet::LaneletMap & map, const lanelet::Id id)
 {
   return map.laneletLayer.exists(id);
+}
+
+bool same_route_content(const LaneletRoute & lhs, const LaneletRoute & rhs)
+{
+  return lhs.header.frame_id == rhs.header.frame_id && lhs.start_pose == rhs.start_pose &&
+         lhs.goal_pose == rhs.goal_pose && lhs.segments == rhs.segments && lhs.uuid == rhs.uuid &&
+         lhs.allow_modification == rhs.allow_modification;
 }
 
 bool are_laterally_connected(
@@ -486,20 +495,66 @@ void ExtendedLaneletSegments::build(
   }
 }
 
+ExtendedMapContext::ExtendedMapContext(
+  lanelet::LaneletMapPtr map, LaneletMapBin::ConstSharedPtr binary_map)
+: map_{std::move(map)}, binary_map_{std::move(binary_map)}
+{
+  if (!map_) {
+    throw std::invalid_argument("ExtendedMapContext requires a lanelet map");
+  }
+  routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map_);
+}
+
 ExtendedRouteHandler::ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route)
 : route_{route},
   route_map_{std::make_shared<lanelet::LaneletMap>()},
-  extended_lanelet_segments_{route},
-  original_route_handler_{std::make_shared<RouteHandler>()}
+  extended_lanelet_segments_{route}
 {
+  original_route_handler_ = std::make_shared<RouteHandler>();
   original_route_handler_->setMap(map);
   original_route_handler_->setRoute(route);
+  map_context_ = std::make_shared<ExtendedMapContext>(original_route_handler_->getLaneletMapPtr());
+}
+
+ExtendedRouteHandler::ExtendedRouteHandler(
+  std::shared_ptr<const ExtendedMapContext> map, const LaneletRoute & route)
+: route_{route},
+  route_map_{std::make_shared<lanelet::LaneletMap>()},
+  extended_lanelet_segments_{route},
+  map_context_{std::move(map)}
+{
+  if (!map_context_) {
+    throw std::invalid_argument("ExtendedRouteHandler requires a map context");
+  }
+}
+
+const std::shared_ptr<RouteHandler> & ExtendedRouteHandler::getOriginalRouteHandler() const
+{
+  if (!original_route_handler_) {
+    if (!map_context_->binary_map()) {
+      throw std::logic_error("The original route handler requires a binary map");
+    }
+    auto handler = std::make_shared<RouteHandler>();
+    handler->setMap(*map_context_->binary_map());
+    handler->setRoute(route_);
+    original_route_handler_ = std::move(handler);
+  }
+  return original_route_handler_;
 }
 
 void ExtendedRouteHandler::create_map()
 {
-  const auto map = original_route_handler_->getLaneletMapPtr();
-  extended_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map);
+  create_velocity_map();
+  create_boundary_map();
+}
+
+void ExtendedRouteHandler::create_velocity_map()
+{
+  if (velocity_map_ready_) {
+    return;
+  }
+  const auto & map = map_context_->map();
+  extended_routing_graph_ = map_context_->routing_graph();
   extended_lanelet_segments_.build(*map, *extended_routing_graph_);
 
   lanelet_to_segment_index_.clear();
@@ -516,32 +571,47 @@ void ExtendedRouteHandler::create_map()
     }
   }
 
-  std::set<lanelet::Id> lanelet_ids;
+  route_lanelet_ids_.clear();
   for (const auto & segment : extended_lanelet_segments_.segments()) {
     for (const auto id : segment.siblings_included_primitives) {
-      lanelet_ids.insert(id);
+      route_lanelet_ids_.insert(id);
     }
     for (const auto id : segment.floating_primitives) {
-      lanelet_ids.insert(id);
+      route_lanelet_ids_.insert(id);
     }
   }
 
   route_map_ = std::make_shared<lanelet::LaneletMap>();
-  for (const auto lanelet_id : lanelet_ids) {
+  for (const auto lanelet_id : route_lanelet_ids_) {
     if (!map->laneletLayer.exists(lanelet_id)) {
       continue;
     }
-    lanelet::Lanelet lanelet = map->laneletLayer.get(lanelet_id);
-    const auto reg_elements = lanelet.regulatoryElements();
-    for (const auto & elem : reg_elements) {
-      lanelet.removeRegulatoryElement(elem);
+    lanelet::Lanelet source = map->laneletLayer.get(lanelet_id);
+    // Lanelet handles share their data. Make a distinct lanelet before dropping regulatory
+    // elements so a route update cannot alter the map shared by the other plugins.
+    lanelet::Lanelet isolated(
+      source.id(), source.leftBound(), source.rightBound(), source.attributes());
+    if (source.hasCustomCenterline()) {
+      isolated.setCenterline(
+        lanelet::LineString3d(lanelet::utils::removeConst(source.centerline().constData())));
     }
-    route_map_->add(lanelet);
+    route_map_->add(isolated);
   }
+
+  velocity_map_ready_ = true;
+}
+
+void ExtendedRouteHandler::create_boundary_map()
+{
+  if (boundary_map_ready_) {
+    return;
+  }
+  create_velocity_map();
+  const auto & map = map_context_->map();
 
   constexpr double k_road_border_near_distance_m = 10.0;
   std::set<lanelet::Id> road_border_ids;
-  for (const auto lanelet_id : lanelet_ids) {
+  for (const auto lanelet_id : route_lanelet_ids_) {
     if (!map->laneletLayer.exists(lanelet_id)) {
       continue;
     }
@@ -578,6 +648,45 @@ void ExtendedRouteHandler::create_map()
   extended_bounds_rtree_ = prepare_drivable_area_rtree(extended_route_bounds_);
 
   route_map_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*route_map_);
+  boundary_map_ready_ = true;
+}
+
+std::shared_ptr<ExtendedRouteHandler> ExtendedRouteCache::get_or_create(
+  const lanelet::LaneletMapPtr & map, const LaneletMapBin::ConstSharedPtr & binary_map,
+  const LaneletRoute & route, const bool include_boundaries)
+{
+  if (!binary_map) {
+    return nullptr;
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  const bool map_changed =
+    !map_context_ || current_binary_map_ != binary_map || current_map_ != map;
+  auto next_context = map_context_;
+  if (map_changed) {
+    auto decoded_map = map;
+    if (!decoded_map) {
+      decoded_map = autoware::experimental::lanelet2_utils::remove_const(
+        autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*binary_map));
+    }
+    next_context = std::make_shared<ExtendedMapContext>(decoded_map, binary_map);
+  }
+  if (
+    map_changed || !current_handler_ || !current_route_ ||
+    !same_route_content(*current_route_, route)) {
+    auto next_handler = std::make_shared<ExtendedRouteHandler>(next_context, route);
+    next_handler->create_velocity_map();
+    if (include_boundaries) {
+      next_handler->create_boundary_map();
+    }
+    map_context_ = std::move(next_context);
+    current_map_ = map;
+    current_binary_map_ = binary_map;
+    current_handler_ = std::move(next_handler);
+    current_route_ = route;
+  } else if (include_boundaries) {
+    current_handler_->create_boundary_map();
+  }
+  return current_handler_;
 }
 
 std::vector<lanelet::LineString2d> ExtendedRouteHandler::get_road_borders() const
@@ -792,9 +901,14 @@ std::optional<double> ExtendedRouteHandler::get_velocity_limit(
     // If the lanelet has no speed limit attribute, but is a road_shoulder or pedestrian_lane, get
     // the speed limit from the left and right lanelets.
     if (is_road_shoulder(lanelet) || is_pedestrian_lane(lanelet)) {
-      const auto left_lanelet = traffic_rules::get_left_lanelet(*extended_routing_graph_, lanelet);
+      if (!map_context_->map()->laneletLayer.exists(lanelet.id())) {
+        continue;
+      }
+      const auto original_lanelet = map_context_->map()->laneletLayer.get(lanelet.id());
+      const auto left_lanelet =
+        traffic_rules::get_left_lanelet(*extended_routing_graph_, original_lanelet);
       const auto right_lanelet =
-        traffic_rules::get_right_lanelet(*extended_routing_graph_, lanelet);
+        traffic_rules::get_right_lanelet(*extended_routing_graph_, original_lanelet);
       if (right_lanelet) {
         const auto right_speed_limit = read_velocity_limit(*right_lanelet);
         if (right_speed_limit) {

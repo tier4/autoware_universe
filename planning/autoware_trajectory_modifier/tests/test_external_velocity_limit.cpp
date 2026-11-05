@@ -15,18 +15,27 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_context.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/external_velocity_limit.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/velocity_limits.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_utils/set_max_velocity.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware_test_utils/autoware_test_utils.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <rclcpp/duration.hpp>
+
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit_clear_command.hpp>
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -283,6 +292,193 @@ TEST(ExternalVelocityLimit, RespectsMaximumJerkFromCurrentEgoAcceleration)
     EXPECT_GT(points[i].longitudinal_velocity_mps, previous_velocity) << i;
     previous_velocity = points[i].longitudinal_velocity_mps;
   }
+}
+
+using autoware::trajectory_modifier::TrajectoryModifierContext;
+using autoware::trajectory_modifier::TrajectoryModifierData;
+using autoware::trajectory_modifier::TrajectoryModifierParams;
+using autoware::trajectory_modifier::plugin::ExternalVelocityLimit;
+
+TrajectoryPoints make_clamp_trajectory()
+{
+  const std::vector<float> velocities{3.0F, 10.0F, 10.0F, 10.0F, 4.0F};
+  TrajectoryPoints points(velocities.size());
+  for (std::size_t i = 0; i < velocities.size(); ++i) {
+    points[i].pose.position.x = static_cast<double>(i);
+    points[i].pose.orientation.w = 1.0;
+    points[i].longitudinal_velocity_mps = velocities[i];
+    points[i].acceleration_mps2 = 1.0F;
+    points[i].time_from_start = rclcpp::Duration::from_seconds(0.2 * static_cast<double>(i));
+  }
+  return points;
+}
+
+void expect_same_speed_profile(const TrajectoryPoints & actual, const TrajectoryPoints & expected)
+{
+  ASSERT_EQ(actual.size(), expected.size());
+  for (std::size_t i = 0; i < actual.size(); ++i) {
+    EXPECT_FLOAT_EQ(actual[i].longitudinal_velocity_mps, expected[i].longitudinal_velocity_mps)
+      << i;
+    EXPECT_FLOAT_EQ(actual[i].acceleration_mps2, expected[i].acceleration_mps2) << i;
+  }
+}
+
+/// @brief Drives ExternalVelocityLimit through the scenario and external limit topics.
+class ExternalVelocityLimitScenarioCap : public ::testing::Test
+{
+protected:
+  void SetUp() override
+  {
+    rclcpp::init(0, nullptr);
+    rclcpp::NodeOptions options;
+    const auto test_utils_dir = ament_index_cpp::get_package_share_directory("autoware_test_utils");
+    autoware::test_utils::updateNodeOptions(
+      options, {test_utils_dir + "/config/test_vehicle_info.param.yaml"});
+    node_ = std::make_shared<rclcpp::Node>("external_velocity_limit_scenario_cap", options);
+    context_ = std::make_shared<TrajectoryModifierContext>(node_.get());
+    time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>();
+    TrajectoryModifierParams params;
+    params.use_external_velocity_limit = true;
+    params.velocity_limits.max_acceleration = 1.0;
+    params.velocity_limits.max_deceleration = 1.0;
+    params.velocity_limits.max_jerk = 0.5;
+    plugin_.emplace();
+    plugin_->initialize(
+      "autoware::trajectory_modifier::plugin::ExternalVelocityLimit", node_.get(), time_keeper_,
+      context_, params);
+    scenario_pub_ =
+      node_->create_publisher<VelocityLimit>("~/input/scenario_max_velocity_mps", rclcpp::QoS{1});
+    external_pub_ =
+      node_->create_publisher<VelocityLimit>("~/input/external_velocity_limit_mps", rclcpp::QoS{1});
+    wait_for_subscriber(scenario_pub_);
+    wait_for_subscriber(external_pub_);
+  }
+
+  void TearDown() override
+  {
+    plugin_.reset();
+    context_.reset();
+    node_.reset();
+    rclcpp::shutdown();
+  }
+
+  static void wait_for_subscriber(const rclcpp::Publisher<VelocityLimit>::SharedPtr & publisher)
+  {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (publisher->get_subscription_count() == 0U &&
+           std::chrono::steady_clock::now() < deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_GT(publisher->get_subscription_count(), 0U);
+  }
+
+  TrajectoryModifierData make_data() const
+  {
+    TrajectoryModifierData data;
+    auto odometry = std::make_shared<nav_msgs::msg::Odometry>();
+    odometry->header.stamp = node_->now();
+    odometry->pose.pose.orientation.w = 1.0;
+    odometry->twist.twist.linear.x = 10.0;
+    data.current_odometry = odometry;
+    auto acceleration = std::make_shared<geometry_msgs::msg::AccelWithCovarianceStamped>();
+    data.current_acceleration = acceleration;
+    return data;
+  }
+
+  void publish_limit(
+    const rclcpp::Publisher<VelocityLimit>::SharedPtr & publisher, const float speed,
+    const std::string & sender) const
+  {
+    auto msg = std::make_unique<VelocityLimit>();
+    msg->stamp = node_->now();
+    msg->max_velocity = speed;
+    msg->sender = sender;
+    publisher->publish(std::move(msg));
+  }
+
+  bool scenario_is(const float speed) const
+  {
+    context_->refresh_scenario_max_velocity();
+    const auto limit = context_->scenario_max_velocity();
+    return limit && limit->max_velocity == speed;
+  }
+
+  bool external_is(const float speed) const
+  {
+    context_->refresh_external_velocity_limit();
+    const auto limit = context_->external_velocity_limit.active_limit();
+    return limit && limit->max_velocity == speed;
+  }
+
+  [[nodiscard]] bool wait_for_speeds(
+    const std::optional<float> scenario, const std::optional<float> external)
+  {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+      const bool scenario_ready = !scenario || scenario_is(*scenario);
+      const bool external_ready = !external || external_is(*external);
+      if (scenario_ready && external_ready) {
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return false;
+  }
+
+  std::shared_ptr<rclcpp::Node> node_;
+  std::shared_ptr<TrajectoryModifierContext> context_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
+  std::optional<ExternalVelocityLimit> plugin_;
+  rclcpp::Publisher<VelocityLimit>::SharedPtr scenario_pub_;
+  rclcpp::Publisher<VelocityLimit>::SharedPtr external_pub_;
+};
+
+TEST_F(ExternalVelocityLimitScenarioCap, ScenarioLimitReclampsLikeSetMaxVelocity)
+{
+  publish_limit(external_pub_, 8.0F, "external");
+  publish_limit(scenario_pub_, 5.0F, "scenario");
+  ASSERT_TRUE(wait_for_speeds(5.0F, 8.0F));
+
+  auto points = make_clamp_trajectory();
+  auto data = make_data();
+  EXPECT_EQ(plugin_->process(points, data), ProcessingResult::Modified);
+
+  auto expected = make_clamp_trajectory();
+  autoware::trajectory_modifier::utils::set_max_velocity(expected, 5.0F);
+  expect_same_speed_profile(points, expected);
+}
+
+TEST_F(ExternalVelocityLimitScenarioCap, TiedLimitUsesTheScenarioReclamp)
+{
+  publish_limit(external_pub_, 5.0F, "external");
+  publish_limit(scenario_pub_, 5.0F, "scenario");
+  ASSERT_TRUE(wait_for_speeds(5.0F, 5.0F));
+
+  auto points = make_clamp_trajectory();
+  auto data = make_data();
+  EXPECT_EQ(plugin_->process(points, data), ProcessingResult::Modified);
+
+  auto expected = make_clamp_trajectory();
+  autoware::trajectory_modifier::utils::set_max_velocity(expected, 5.0F);
+  expect_same_speed_profile(points, expected);
+}
+
+TEST_F(ExternalVelocityLimitScenarioCap, LowerExternalLimitKeepsTheJerkProfile)
+{
+  publish_limit(external_pub_, 4.0F, "external");
+  publish_limit(scenario_pub_, 8.0F, "scenario");
+  ASSERT_TRUE(wait_for_speeds(8.0F, 4.0F));
+
+  const std::vector<double> times{0.1, 0.25, 1.0, 2.5, 3.0, 3.5, 5.0, 8.0};
+  auto points = make_constant_speed_trajectory(times, 10.0);
+  auto data = make_data();
+  EXPECT_EQ(plugin_->process(points, data), ProcessingResult::Modified);
+
+  auto clamped = make_constant_speed_trajectory(times, 10.0);
+  autoware::trajectory_modifier::utils::set_max_velocity(clamped, 4.0F);
+  ASSERT_EQ(points.size(), clamped.size());
+  EXPECT_FLOAT_EQ(clamped.front().longitudinal_velocity_mps, 4.0F);
+  EXPECT_GT(points.front().longitudinal_velocity_mps, 4.5F);
 }
 
 }  // namespace
