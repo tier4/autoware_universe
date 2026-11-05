@@ -38,6 +38,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -115,6 +116,36 @@ bool validateIsolatedLaneletLength(
     object.kinematics.twist_with_covariance.twist.linear.y);
   const double min_length = abs_speed * prediction_time;
   return approx_distance > min_length;
+}
+
+void removeLaneChangePathsWithoutEnoughTimeBeforeTurn(
+  lanelet::routing::LaneletPaths & paths, const geometry_msgs::msg::Pose & object_pose,
+  const double object_speed, const double lane_change_duration)
+{
+  const auto is_turn_lanelet = [](const auto & lanelet) {
+    const std::string turn_direction = lanelet.attributeOr("turn_direction", "else");
+    return turn_direction == "left" || turn_direction == "right";
+  };
+  const auto should_remove = [&](const lanelet::routing::LaneletPath & path) {
+    const auto turn_lanelet_it = std::find_if(path.begin(), path.end(), is_turn_lanelet);
+    if (turn_lanelet_it == path.end()) return false;
+    if (turn_lanelet_it == path.begin()) return true;
+
+    const auto & first_lanelet = path.front();
+    const double object_arc =
+      autoware::experimental::lanelet2_utils::get_arc_coordinates({first_lanelet}, object_pose)
+        .length;
+    const double distance_to_turn =
+      std::max(lanelet::geometry::length2d(first_lanelet) - object_arc, 0.0) +
+      std::accumulate(
+        std::next(path.begin()), turn_lanelet_it, 0.0, [](const double sum, const auto & lanelet) {
+          return sum + lanelet::geometry::length2d(lanelet);
+        });
+
+    return distance_to_turn < object_speed * lane_change_duration;
+  };
+
+  paths.erase(std::remove_if(paths.begin(), paths.end(), should_remove), paths.end());
 }
 
 void replaceObjectYawWithLaneletsYaw(
@@ -514,6 +545,8 @@ std::vector<LaneletPathWithPathInfo> PathProcessor::getPredictedReferencePath(
       const auto left_lanelet = getLeftOrRightLanelets(current_lanelet_data.lanelet, true);
       if (!!left_lanelet) {
         left_paths = getPathsForNormalOrIsolatedLanelet(left_lanelet.value());
+        removeLaneChangePathsWithoutEnoughTimeBeforeTurn(
+          left_paths, object_pose, obj_vel, params_.lateral_control_time_horizon);
         left_paths_exists = !left_paths.empty();
       }
       ref_path_info.speed_limit = target_speed_limit;
@@ -527,6 +560,8 @@ std::vector<LaneletPathWithPathInfo> PathProcessor::getPredictedReferencePath(
       const auto right_lanelet = getLeftOrRightLanelets(current_lanelet_data.lanelet, false);
       if (!!right_lanelet) {
         right_paths = getPathsForNormalOrIsolatedLanelet(right_lanelet.value());
+        removeLaneChangePathsWithoutEnoughTimeBeforeTurn(
+          right_paths, object_pose, obj_vel, params_.lateral_control_time_horizon);
         right_paths_exists = !right_paths.empty();
       }
       ref_path_info.speed_limit = target_speed_limit;
