@@ -30,7 +30,7 @@ public:
   {
     corrector_utils::CorrectionBBParameters params;
     params.min_width = 1.2;
-    params.max_width = 2.5;
+    params.max_width = 3.0;
     params.default_width = (params.min_width + params.max_width) * 0.5;
     params.min_length = 3.0;
     params.max_length = 5.8;
