@@ -553,14 +553,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::STALE;
     return skip_optimization(level, "MPPI disabled", data.candidate_header);
   }
-  if (
-    params_.optimize_only_on_input_collision && !params_.trigger_on_road_border_collision &&
-    !params_.trigger_on_static_object_collision) {
-    constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-    return skip_optimization(
-      level, "MPPI skipped: no input collision conditions enabled", data.candidate_header);
-  }
-
   if (!data.current_odometry || !data.tracked_objects || !data.route || !data.lanelet_map_bin) {
     constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
     RCLCPP_WARN_THROTTLE(
@@ -572,6 +564,15 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   try {
     update_route_context(data);
     prepare_scene_parameters();
+    ensure_optimizer();
+
+    if (
+      params_.optimize_only_on_input_collision && !params_.trigger_on_road_border_collision &&
+      !params_.trigger_on_static_object_collision) {
+      constexpr auto level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+      return skip_optimization(
+        level, "MPPI skipped: no input collision conditions enabled", data.candidate_header);
+    }
 
     Trajectory input;
     input.header = data.candidate_header;
@@ -631,7 +632,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       detail::hasZeroPlanarExtent(input) &&
       object_selector_.status() == SelectionStatus::invalid_reference) {
       selection_result_ = object_selector_.evaluate(*data.tracked_objects, {}, {});
-      ensure_optimizer();
       const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration =
         data.current_acceleration ? std::make_optional(*data.current_acceleration) : std::nullopt;
       const std::optional<autoware_vehicle_msgs::msg::SteeringReport> steering =
@@ -727,7 +727,6 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       }
     }
 
-    ensure_optimizer();
     const auto drivable_area =
       extended_route_handler_->get_drivable_area_around_trajectory(input, boundary_query_margin);
 
@@ -983,6 +982,7 @@ void TrajectoryMppiOptimizer::ensure_optimizer()
   optimizer->setRuntimeOptions(make_runtime_options(params_));
   optimizer_ = std::move(optimizer);
   preferred_lane_max_acceleration_ = std::max(0.0F, vehicle_params.max_accel());
+  optimizer_->initialize();
 }
 
 void TrajectoryMppiOptimizer::prepare_scene_parameters()
