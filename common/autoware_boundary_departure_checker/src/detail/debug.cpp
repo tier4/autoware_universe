@@ -24,6 +24,7 @@
 
 #include <std_msgs/msg/detail/color_rgba__struct.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -215,9 +216,36 @@ MarkerArray create_virtual_wall_marker(
   return marker_array;
 }
 
+MarkerArray create_pose_alignment_markers(
+  const footprints::Footprints & aligned_footprints, const size_t aligned_count,
+  const builtin_interfaces::msg::Time & curr_time, const double base_link_z)
+{
+  MarkerArray marker_array;
+  const auto count = std::min(aligned_count, aligned_footprints.size());
+  if (count == 0) {
+    return marker_array;
+  }
+
+  auto marker = autoware_utils_visualization::create_default_marker(
+    "map", curr_time, "aligned_footprint", 0, Marker::LINE_LIST,
+    autoware_utils_visualization::create_marker_scale(0.05, 0.0, 0.0), color::aqua());
+
+  for (size_t idx = 0; idx < count; ++idx) {
+    const auto & footprint = aligned_footprints.at(idx);
+    for (size_t i = 0; i + 1 < footprint.size(); ++i) {
+      marker.points.push_back(autoware_utils_geometry::to_msg(footprint.at(i).to_3d(base_link_z)));
+      marker.points.push_back(
+        autoware_utils_geometry::to_msg(footprint.at(i + 1).to_3d(base_link_z)));
+    }
+  }
+  marker_array.markers.push_back(marker);
+
+  return marker_array;
+}
+
 MarkerArray create_debug_markers(
   const HysteresisState & hysteresis_state, const footprints::Footprints & footprints,
-  const EgoDynamicState & ego_state, const bool enable_developer_marker)
+  const size_t aligned_count, const EgoDynamicState & ego_state, const bool enable_developer_marker)
 {
   builtin_interfaces::msg::Time curr_time = std::invoke([&ego_state]() {
     const auto current_time_s = ego_state.current_time_s;
@@ -254,6 +282,10 @@ MarkerArray create_debug_markers(
       marker_array.markers.push_back(
         create_projected_segment_bound_marker(side_value, side_str, curr_time, base_link_z));
     });
+
+  autoware_utils_visualization::append_marker_array(
+    create_pose_alignment_markers(footprints, aligned_count, curr_time, base_link_z),
+    &marker_array);
 
   return marker_array;
 }
