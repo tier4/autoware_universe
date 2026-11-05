@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__INFERENCE__ONNXRUNTIME_INFERENCE_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__INFERENCE__ONNXRUNTIME_INFERENCE_HPP_
 
+#include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/guidance/guidance.hpp"
 #include "autoware/diffusion_planner/inference/inference.hpp"
 #include "autoware/diffusion_planner/inference/solver/dpm_solver.hpp"
@@ -40,18 +41,36 @@ class OrtModel
 public:
   OrtModel(
     const std::string & model_path, OnnxruntimeExecutionProvider execution_provider,
-    const std::string & plugins_path = "");
+    const std::string & plugins_path);
 
+  /**
+   * @brief Feed the named inputs and read the named outputs.
+   *
+   * Shapes and element types come from the graph's own declarations, so a caller only supplies
+   * the payload. Every declared dimension except the leading batch is fixed; the batch is
+   * recovered from the payload size. Byte payloads cover both the BOOL and the UINT8 inputs -
+   * which of the two a name is, is again what the graph declares.
+   */
   std::unordered_map<std::string, std::vector<float>> run(
     const std::unordered_map<std::string, std::vector<float>> & float_inputs,
-    const std::unordered_map<std::string, std::vector<uint8_t>> & bool_inputs,
+    const std::unordered_map<std::string, std::vector<uint8_t>> & byte_inputs,
     const std::vector<std::string> & output_names);
 
 private:
+  struct InputSpec
+  {
+    std::vector<int64_t> shape;  // as declared, with the batch dimension left as -1
+    ONNXTensorElementDataType element_type;
+  };
+
+  const InputSpec & input_spec(const std::string & name) const;
+  std::vector<int64_t> shape_for(const std::string & name, size_t element_count) const;
+
   Ort::Env env_;
   Ort::SessionOptions session_options_;
   Ort::Session session_;
   Ort::MemoryInfo memory_info_;
+  std::unordered_map<std::string, InputSpec> input_specs_;
 };
 
 class OnnxruntimeSingleStepInference : public Inference
@@ -59,11 +78,14 @@ class OnnxruntimeSingleStepInference : public Inference
 public:
   OnnxruntimeSingleStepInference(
     const std::string & model_path, const std::string & execution_provider,
-    const std::string & plugins_path, int batch_size);
+    const std::string & plugins_path, int batch_size, ModelInputType input_type);
 
-  InferenceResult infer(const preprocess::InputDataMap & input_data_map) override;
+  InferenceResult infer(
+    const preprocess::InputDataMap & input_data_map,
+    const std::vector<uint8_t> & bev_image) override;
 
 private:
+  ModelInputType input_type_{ModelInputType::VECTOR};
   OrtModel model_;
 };
 
@@ -73,13 +95,17 @@ public:
   OnnxruntimeMultiStepInference(
     const std::string & encoder_model_path, const std::string & decoder_model_path,
     const std::string & turn_indicator_model_path, const std::string & execution_provider,
-    const std::string & plugins_path, int batch_size, int dpm_solver_steps = 10,
-    std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances = {});
+    const std::string & plugins_path, int batch_size, int dpm_solver_steps,
+    std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances,
+    ModelInputType input_type);
 
-  InferenceResult infer(const preprocess::InputDataMap & input_data_map) override;
+  InferenceResult infer(
+    const preprocess::InputDataMap & input_data_map,
+    const std::vector<uint8_t> & bev_image) override;
 
 private:
   int batch_size_{1};
+  ModelInputType input_type_{ModelInputType::VECTOR};
   int dpm_solver_steps_{10};
   std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances_;
   OrtModel encoder_model_;

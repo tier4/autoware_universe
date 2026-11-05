@@ -40,6 +40,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_srvs/srv/set_bool.hpp>
@@ -72,6 +73,9 @@ struct DiffusionPlannerDebugParams
   bool publish_debug_route{true};
   bool publish_debug_map{false};
   bool publish_debug_linestrings{true};
+  // Publish the rendered BEV stack the image encoder sees, as one colorized preview per scale.
+  // Only meaningful for a model that takes image input.
+  bool publish_debug_bev_image{false};
 };
 
 struct DiffusionPlannerPlanningFactorParams
@@ -155,6 +159,15 @@ private:
    * @param input_data_map Input data used for inference.
    * @param ego_to_map_transform Transform from ego to map frame for visualization.
    */
+  /**
+   * @brief Publish the rendered BEV stack as a colorized preview, one image per scale.
+   *
+   * @param bev_image Output of DiffusionPlannerCore::create_bev_image; nothing is published when
+   *                  it is empty, i.e. when the loaded model takes vector input.
+   */
+  void publish_debug_bev_image(
+    const std::vector<uint8_t> & bev_image, const rclcpp::Time & timestamp);
+
   void publish_debug_markers(
     const InputDataMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform,
     const rclcpp::Time & timestamp) const;
@@ -244,6 +257,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pub_denoising_steps_{nullptr};
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     pub_guidance_status_{nullptr};
+  // One publisher per BEV scale, in BEV_VIEW_EXTENTS_M order.
+  std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> pub_bev_images_;
   rclcpp::Service<SetBool>::SharedPtr set_start_guidance_enabled_service_{nullptr};
   rclcpp::Service<SetBool>::SharedPtr set_stop_guidance_enabled_service_{nullptr};
   rclcpp::Service<SetBool>::SharedPtr set_centerline_guidance_enabled_service_{nullptr};
