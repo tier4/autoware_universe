@@ -21,6 +21,7 @@
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
@@ -35,6 +36,7 @@
  */
 namespace autoware::steer_offset_estimator
 {
+using autoware_internal_debug_msgs::msg::Float32MultiArrayStamped;
 using autoware_internal_debug_msgs::msg::Float32Stamped;
 using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_vehicle_msgs::msg::SteeringReport;
@@ -118,6 +120,18 @@ private:
    */
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_steer_offset_update_;
 
+  /**
+   * @brief Publisher for metrics collected by the metric_agent
+   *
+   * Packs the following values into a single Float32MultiArrayStamped:
+   *   [0] steering offset recorded in the calibration file
+   *   [1] latest reliable estimated offset
+   *   [2] latest reliable estimated covariance
+   *   [3] last registered offset update
+   *   [4] mean of the steering angles used in the current cycle
+   */
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr pub_metrics_;
+
   // Timer
   /**
    * @brief Timer for periodic processing
@@ -175,10 +189,20 @@ private:
     const bool accumulate = false) const;
 
   /**
+   * @brief Read a double parameter value from a YAML file
+   * @param file_path Path to the YAML file
+   * @param param_name Name of the parameter under the ros__parameters node
+   * @return The value on success, or an error message on failure
+   */
+  tl::expected<double, std::string> read_from_yaml(
+    const std::string & file_path, const std::string & param_name) const;
+
+  /**
    * @brief Publish steering offset estimation results
    * @param result steer offset estimation result
+   * @param steer_mean mean of the steering angles used in the current cycle [rad]
    */
-  void publish_data(const SteerOffsetEstimationUpdated & result);
+  void publish_data(const SteerOffsetEstimationUpdated & result, double steer_mean);
 };
 
 }  // namespace autoware::steer_offset_estimator
