@@ -32,6 +32,8 @@ struct SafetyPlannerInput
   SteeringReport steering;
   Pose goal_pose;
   PredictedObjects::ConstSharedPtr predicted_objects;
+  PointCloud2::ConstSharedPtr obstacle_pointcloud;
+  TransformStamped obstacle_sensor_to_base_link;
   //! [m/s] the speed limit given from outside; empty while none has arrived
   std::optional<double> external_velocity_limit_mps;
 };
@@ -46,6 +48,8 @@ struct PlannerContext
     steering(input.steering),
     goal_pose(input.goal_pose),
     predicted_objects(input.predicted_objects),
+    obstacle_pointcloud(input.obstacle_pointcloud),
+    obstacle_sensor_to_base_link(input.obstacle_sensor_to_base_link),
     external_velocity_limit_mps(input.external_velocity_limit_mps),
     reference_path(std::move(reference_path))
   {
@@ -58,6 +62,8 @@ struct PlannerContext
   const SteeringReport & steering;
   const Pose & goal_pose;
   const PredictedObjects::ConstSharedPtr & predicted_objects;
+  const PointCloud2::ConstSharedPtr & obstacle_pointcloud;
+  const TransformStamped & obstacle_sensor_to_base_link;
   const std::optional<double> & external_velocity_limit_mps;
   PathPointTrajectory reference_path;
 };

@@ -39,6 +39,7 @@
       - "autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator"
       - "autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator"
       - "autoware::safety_planner::experimental::ObstacleStopConstraintGenerator"
+      - "autoware::safety_planner::experimental::SurroundObstacleStopConstraintGenerator"
 
     # "autoware::safety_planner::experimental::FrenetSamplingBasedPlanner"
     # "autoware::safety_planner::experimental::MppiPlanner"
