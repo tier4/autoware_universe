@@ -28,6 +28,7 @@ ament_auto_add_library(${PROJECT_NAME}_constraint_plugins SHARED
   src/constraint_generator/external_velocity_limit.cpp
   src/constraint_generator/lane_following_drivable_area.cpp
   src/constraint_generator/lanelet_speed_limit.cpp
+  src/constraint_generator/map_based_stop.cpp
   src/constraint_generator/obstacle_stop.cpp
   src/constraint_generator/vehicle_kinematics.cpp
 )

@@ -87,6 +87,7 @@ Scenario load_scenario(const std::string & yaml_filename)
        {"safety_planner.param.yaml", "constraint_generator/vehicle_kinematics.param.yaml",
         "constraint_generator/external_velocity_limit.param.yaml",
         "constraint_generator/lane_following_drivable_area.param.yaml",
+        "constraint_generator/map_based_stop.param.yaml",
         "constraint_generator/obstacle_stop.param.yaml",
         "trajectory_planner/frenet_sampling_based_planner.param.yaml",
         "trajectory_planner/reference_path_following_planner.param.yaml",
