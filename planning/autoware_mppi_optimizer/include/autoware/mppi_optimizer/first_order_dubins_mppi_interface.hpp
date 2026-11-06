@@ -433,6 +433,7 @@ struct FirstOrderDubinsMppiPerformanceReport
   float dt{0.0F};
   unsigned int seed{0};
   std::string kernel{"uninitialized"};
+  std::string dynamics_output_store{"uninitialized"};
   std::vector<FirstOrderDubinsMppiPerformancePhase> phases;
 };
 
@@ -586,6 +587,9 @@ public:
 
   /** Benchmark baseline switch. Configure before initialize/optimizeTrajectory. */
   void setProjectionPruningEnabled(bool enabled);
+
+  /** Benchmark-only selection: force split rollouts; configure before initialize/optimize. */
+  void setCooperativeDynamicsOutputStoresForBenchmark(bool enabled);
 
   /**
    * Collect the last optimizeTrajectory call's ranges and effective workload configuration.

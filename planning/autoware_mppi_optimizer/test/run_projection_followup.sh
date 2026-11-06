@@ -5,12 +5,17 @@
 # Explicitly invoked only; never registered with CTest or the build.
 set -euo pipefail
 
-if [[ $# != 1 || ! $1 =~ ^(repeat|nsys|ncu)$ ]]; then
-    echo "Usage: bash $0 {repeat|nsys|ncu}" >&2
+if [[ $# != 1 || ! $1 =~ ^(repeat|stores|nsys|ncu|handoff)$ ]]; then
+    echo "Usage: bash $0 {repeat|stores|nsys|ncu|handoff}" >&2
     echo "Run from the workspace root after sourcing its runtime environment." >&2
     exit 2
 fi
 mppi_mode=$1
+mppi_stores=${MPPI_BENCHMARK_COOPERATIVE_OUTPUT_STORES:-1}
+if [[ ! $mppi_stores =~ ^[01]$ ]]; then
+    echo "MPPI_BENCHMARK_COOPERATIVE_OUTPUT_STORES must be 0 or 1" >&2
+    exit 2
+fi
 mppi_workspace=$PWD
 mppi_binary="$mppi_workspace/build/autoware_mppi_optimizer/test_performance_benchmarks"
 if [[ ! -x $mppi_binary ]]; then
@@ -22,7 +27,7 @@ command -v python3 >/dev/null
 mppi_tool=""
 if [[ $mppi_mode == nsys ]]; then
     mppi_tool=${MPPI_NSYS:-$(command -v nsys || true)}
-elif [[ $mppi_mode == ncu ]]; then
+elif [[ $mppi_mode == ncu || $mppi_mode == handoff ]]; then
     mppi_tool=${MPPI_NCU:-$(command -v ncu || true)}
     if [[ -z $mppi_tool ]]; then
         # NVIDIA's standalone Linux installer does not always add ncu to PATH.
@@ -34,7 +39,7 @@ elif [[ $mppi_mode == ncu ]]; then
         fi
     fi
 fi
-if [[ $mppi_mode != repeat ]]; then
+if [[ $mppi_mode != repeat && $mppi_mode != stores ]]; then
     mppi_tool=$(command -v "$mppi_tool" || true)
     if [[ ! -x $mppi_tool ]]; then
         echo "Profiler not found. Set MPPI_NCU or MPPI_NSYS to its executable path." >&2
@@ -50,6 +55,7 @@ exec > >(tee "$mppi_output/run.log") 2>&1
 {
     date -u --iso-8601=seconds
     printf 'mode=%s\nworkspace=%s\nbinary=%s\n' "$mppi_mode" "$mppi_workspace" "$mppi_binary"
+    printf 'cooperative_output_stores=%s (stores mode overrides this with balanced pairs)\n' "$mppi_stores"
     sha256sum "$mppi_binary"
     # Checkout state supplements the configure-time revisions in benchmark JSON;
     # it does not establish which shared libraries were compiled from this state.
@@ -118,15 +124,17 @@ snapshot_gpu() {
 }
 
 check_reports() {
-    python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
+    python3 - "$1" "$2" "$3" "$4" "$5" "$mppi_stores" <<'PY'
 import json
 import pathlib
 import sys
 
-directory, count, pruning, phase, samples = sys.argv[1:]
-reports = list(pathlib.Path(directory).glob("*.json"))
-if len(reports) != int(count):
+directory, count, pruning, phase, samples, stores = sys.argv[1:]
+replay = count == "replay"
+reports = sorted(pathlib.Path(directory).glob("**/*.json" if replay else "*.json"))
+if not reports or (not replay and len(reports) != int(count)):
     sys.exit(f"Expected {count} benchmark reports in {directory}, got {len(reports)}")
+reference = None
 for path in reports:
     report = json.loads(path.read_text())
     expected = {
@@ -136,6 +144,7 @@ for path in reports:
         "measured_calls": int(samples),
         "iterations": 10,
         "rollout_kernel": "split",
+        "dynamics_output_store": "cooperative" if int(stores) else "legacy",
         "projection_pruning_enabled": bool(int(pruning)),
         "projection_pruning_math_supported": True,
         "projection_bounds_valid": True,
@@ -144,27 +153,61 @@ for path in reports:
     for key, value in expected.items():
         if report.get(key) != value:
             sys.exit(f"{path}: {key}={report.get(key)!r}; expected {value!r}")
+    if replay:
+        # Application replay emits one uniquely named report per application run.
+        # Check the first call and the call containing the selected launch. Later
+        # calls cannot affect that launch. These diagnostics are NOT input hashes.
+        if len(report["samples"]) != int(samples):
+            sys.exit(f"{path}: incomplete sample diagnostics")
+        signature = {key: report[key] for key in (
+            "schema_version", "build", "gpu", "scenario", "seed", "rollouts", "horizon",
+            "dt_s", "resolved_input_profile", "scene_change", "scene_runtime_bytes",
+            "objects", "hypotheses", "reference_points", "projection_points",
+            "projection_group_size", "road_border_segments", "preferred_centerline_segments",
+            "input_hard_collision", "input_soft_collision",
+            "dynamics_output_store",
+        )}
+        for key, sample in (("first_optimizer_call", report["first_optimizer_call"]),
+                            ("profiled_call", report["samples"][0])):
+            signature[key] = {k: v for k, v in sample.items()
+                              if k not in ("wall_ms", "process_cpu_ms", "phases")}
+        if reference is None:
+            reference = (path, signature)
+        else:
+            changed = [key for key in signature if signature[key] != reference[1][key]]
+            if changed:
+                sys.exit(f"{path}: replay/comparison diagnostics differ from {reference[0]}: "
+                         f"{', '.join(changed)}. Retain reports, but do not interpret merged "
+                         "counters as a matched-input cache comparison.")
 print(f"Validated {len(reports)} reports in {directory}")
 PY
 }
 
-if [[ $mppi_mode == repeat ]]; then
-    # Four independent off/on pairs per timing mode, with balanced order.
-    # Start with pruning enabled, reversing the first supplied comparison.
+if [[ $mppi_mode == repeat || $mppi_mode == stores ]]; then
+    # Four independent variant pairs per timing mode, with balanced order.
+    # Repeat toggles pruning; stores keeps pruning enabled and toggles the copy.
     for mppi_pair in 1 2 3 4; do
         mppi_order=(1 0)
         if ((mppi_pair % 2 == 0)); then
             mppi_order=(0 1)
         fi
         for mppi_phase in 0 1; do
-            for mppi_pruning in "${mppi_order[@]}"; do
-                mppi_label="pair_${mppi_pair}_phase_${mppi_phase}_pruning_${mppi_pruning}"
+            for mppi_variant in "${mppi_order[@]}"; do
+                if [[ $mppi_mode == stores ]]; then
+                    mppi_pruning=1
+                    mppi_stores=$mppi_variant
+                    mppi_label="pair_${mppi_pair}_phase_${mppi_phase}_stores_${mppi_stores}"
+                else
+                    mppi_pruning=$mppi_variant
+                    mppi_label="pair_${mppi_pair}_phase_${mppi_phase}_pruning_${mppi_pruning}"
+                fi
                 mppi_run="$mppi_output/$mppi_label"
                 mkdir "$mppi_run"
                 snapshot_gpu "$mppi_run/gpu_before.txt"
                 env "${mppi_environment[@]}" MPPI_BENCHMARK_SAMPLES=100 \
                     MPPI_BENCHMARK_PHASE_TIMING="$mppi_phase" \
                     MPPI_BENCHMARK_PROJECTION_PRUNING="$mppi_pruning" \
+                    MPPI_BENCHMARK_COOPERATIVE_OUTPUT_STORES="$mppi_stores" \
                     MPPI_BENCHMARK_OUTPUT_DIR="$mppi_run" \
                     MPPI_BENCHMARK_ENVIRONMENT="${MPPI_BENCHMARK_ENVIRONMENT:-}; $mppi_label; no profiler" \
                     "$mppi_binary" "${mppi_gtest[@]}" --gtest_filter="$mppi_filter" \
@@ -174,10 +217,29 @@ if [[ $mppi_mode == repeat ]]; then
             done
         done
     done
+    if [[ $mppi_mode == stores ]]; then
+        python3 "$(dirname -- "${BASH_SOURCE[0]}")/compare_dynamics_output_stores.py" "$mppi_output"
+    fi
 else
     mppi_privilege=()
-    if [[ $mppi_mode == ncu && $EUID != 0 ]]; then
+    if [[ $mppi_mode != nsys && $EUID != 0 ]]; then
         mppi_privilege=(sudo)
+    fi
+    if [[ $mppi_mode == handoff ]]; then
+        # Hardware counters only: avoid the full set's software instrumentation.
+        # These metrics are present in the saved Nsight Compute 2025.1.1 reports.
+        mppi_metrics=(gpu__time_duration.sum sm__cycles_elapsed.avg.per_second
+            l1tex__t_sector_hit_rate.pct lts__t_sector_hit_rate.pct
+            l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum
+            lts__t_sectors_srcunit_tex_op_read.sum
+            lts__t_sectors_srcunit_tex_op_read_lookup_miss.sum
+            dram__bytes_read.sum dram__bytes_write.sum)
+        mppi_metric_list=$(
+            IFS=,
+            echo "${mppi_metrics[*]}"
+        )
+        printf '\nreplay=application; match=all; mode=strict; clock_control=none\ncache_order=all,none,none,all; launch_skip=100; launch_count=1\nmetrics=%s\n' \
+            "$mppi_metric_list" >>"$mppi_output/manifest.txt"
     fi
     for mppi_scene in FreeSpaceCached Hairpin256Cached StaticObstacles64Cached; do
         mppi_run="$mppi_output/$mppi_scene"
@@ -185,6 +247,7 @@ else
         snapshot_gpu "$mppi_run/gpu_before.txt"
         mppi_profile_environment=("${mppi_environment[@]}" MPPI_BENCHMARK_PHASE_TIMING=0
             MPPI_BENCHMARK_PROJECTION_PRUNING=1
+            MPPI_BENCHMARK_COOPERATIVE_OUTPUT_STORES="$mppi_stores"
             "MPPI_BENCHMARK_ENVIRONMENT=${MPPI_BENCHMARK_ENVIRONMENT:-}; $mppi_mode profiler; not a latency baseline")
         if [[ $mppi_mode == nsys ]]; then
             env "${mppi_profile_environment[@]}" MPPI_BENCHMARK_SAMPLES=20 \
@@ -195,6 +258,38 @@ else
             check_reports "$mppi_run/benchmark_json" 1 1 0 20
             "$mppi_tool" stats --report cuda_gpu_kern_sum,cuda_api_sum,nvtx_sum \
                 "$mppi_run/timeline.nsys-rep" >"$mppi_run/timeline.txt" 2>&1
+        elif [[ $mppi_mode == handoff ]]; then
+            # One selected cost launch per replay, with its producer unprofiled.
+            # Replay the full application for BOTH cache policies; kernel replay
+            # with cache-control none can warm the cache with the target itself.
+            for mppi_pair in 1 2; do
+                mppi_cache_order=(all none)
+                if ((mppi_pair == 2)); then
+                    mppi_cache_order=(none all)
+                fi
+                for mppi_cache in "${mppi_cache_order[@]}"; do
+                    mppi_capture="$mppi_run/pair_${mppi_pair}/cache_${mppi_cache}"
+                    mkdir -p "$mppi_capture"
+                    snapshot_gpu "$mppi_capture/gpu_before.txt"
+                    echo "$mppi_scene pair=$mppi_pair application replay cache-control=$mppi_cache"
+                    "${mppi_privilege[@]}" env "${mppi_profile_environment[@]}" MPPI_BENCHMARK_SAMPLES=3 \
+                        MPPI_BENCHMARK_OUTPUT_DIR="$mppi_capture/benchmark_json" \
+                        "MPPI_BENCHMARK_ENVIRONMENT=${MPPI_BENCHMARK_ENVIRONMENT:-}; handoff profiler; application replay; cache_control=$mppi_cache; pair=$mppi_pair; not a latency baseline" \
+                        "$mppi_tool" --config-file off --metrics "$mppi_metric_list" \
+                        --replay-mode application --app-replay-match all --app-replay-mode strict \
+                        --clock-control none --cache-control "$mppi_cache" --import-source yes \
+                        --nvtx --nvtx-include 'MPPI\/rollout_cost/' \
+                        --kernel-name 'regex:rolloutCostKernel' --launch-skip 100 --launch-count 1 \
+                        --export "$mppi_capture/cost" \
+                        "$mppi_binary" "${mppi_gtest[@]}" --gtest_filter="MppiPerformanceBenchmark.$mppi_scene"
+                    snapshot_gpu "$mppi_capture/gpu_after.txt"
+                    "$mppi_tool" --config-file off --import "$mppi_capture/cost.ncu-rep" \
+                        --page raw >"$mppi_capture/cost.txt"
+                    check_reports "$mppi_capture/benchmark_json" replay 1 0 3
+                done
+            done
+            # Also compare the diagnostics across cache policies and pair order.
+            check_reports "$mppi_run" replay 1 0 3
         else
             for mppi_kernel in dynamics cost; do
                 mppi_kernel_name=rolloutDynamicsKernel

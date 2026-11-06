@@ -926,6 +926,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::vector<float> drivable_area_y1;
 
   bool initialized{false};
+  std::optional<bool> benchmark_cooperative_output_stores;
   bool road_border_capacity_warning_emitted{false};
   bool drivable_area_capacity_warning_emitted{false};
   int step_count{0};
@@ -1196,6 +1197,12 @@ struct FirstOrderDubinsMppiInterface::Impl
     // rollout kernels before returning. Setting these dimensions afterward would benchmark the
     // default dim3(1, 1, 1) configuration during initialization.
     controller = std::make_unique<MppiWithHistoryAccess>(&model, &cost, &feedback, &sampler, cp);
+    if (benchmark_cooperative_output_stores.has_value()) {
+      // Startup selection trials are unchanged and excluded from steady-state measurements.
+      // Both benchmark variants explicitly use the same split pipeline after construction.
+      controller->setCooperativeDynamicsOutputStores(*benchmark_cooperative_output_stores);
+      controller->setKernelChoice(kernelType::USE_SPLIT_KERNELS);
+    }
     controller->configureEssLambdaAdaptation(
       user_cost_params_.target_ess_ratio, user_cost_params_.lambda_adaptation_gain,
       user_cost_params_.lambda_min, user_cost_params_.lambda_max,
@@ -2524,6 +2531,15 @@ void FirstOrderDubinsMppiInterface::setProjectionPruningEnabled(const bool enabl
   impl_->cost.setProjectionPruningEnabled(enabled);
 }
 
+void FirstOrderDubinsMppiInterface::setCooperativeDynamicsOutputStoresForBenchmark(
+  const bool enabled)
+{
+  if (!impl_) throw std::logic_error("MPPI interface has been moved from");
+  if (impl_->initialized)
+    throw std::logic_error("Configure dynamics output stores before initialize");
+  impl_->benchmark_cooperative_output_stores = enabled;
+}
+
 FirstOrderDubinsMppiPerformanceReport FirstOrderDubinsMppiInterface::performanceReport() const
 {
   if (!impl_) throw std::logic_error("MPPI interface has been moved from");
@@ -2548,6 +2564,10 @@ FirstOrderDubinsMppiPerformanceReport FirstOrderDubinsMppiInterface::performance
     report.kernel = impl_->controller->getKernelChoiceAsEnum() == kernelType::USE_SPLIT_KERNELS
                       ? "split"
                       : "combined";
+    report.dynamics_output_store =
+      report.kernel == "split"
+        ? (impl_->controller->getCooperativeDynamicsOutputStores() ? "cooperative" : "legacy")
+        : "not_applicable";
   }
   if (impl_->performance_recorder) {
     for (const auto & phase : impl_->performance_recorder->collect()) {

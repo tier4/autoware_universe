@@ -253,6 +253,8 @@ protected:
     interface_->setRuntimeOptions(profile_.runtime);
     interface_->setPerformanceInstrumentationEnabled(settings_->phase_timing);
     interface_->setProjectionPruningEnabled(settings_->projection_pruning);
+    interface_->setCooperativeDynamicsOutputStoresForBenchmark(
+      settings_->cooperative_output_stores);
   }
 
   void TearDown() override
@@ -372,6 +374,10 @@ protected:
       ASSERT_TRUE(configuration.initialized);
       EXPECT_GE(wall_ms, 0.0);
       EXPECT_GE(cpu_ms, 0.0);
+      EXPECT_EQ(configuration.kernel, "split");
+      EXPECT_EQ(
+        configuration.dynamics_output_store,
+        settings_->cooperative_output_stores ? "cooperative" : "legacy");
       const bool ran_full_workload =
         configuration.horizon == static_cast<int>(kHorizon) &&
         result.optimized_point_count == std::min(kHorizon, scene.trajectory.points.size()) &&
@@ -505,6 +511,7 @@ protected:
       {"dt_s", configuration.dt},
       {"seed", configuration.seed},
       {"rollout_kernel", configuration.kernel},
+      {"dynamics_output_store", configuration.dynamics_output_store},
       {"projection_pruning_enabled", configuration.projection_pruning_enabled},
       {"projection_pruning_math_supported", configuration.projection_pruning_math_supported},
       {"projection_group_size", configuration.projection_group_size},
