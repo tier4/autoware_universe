@@ -404,14 +404,19 @@ __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::enforceConstrain
   float * state, float * control)
 {
   PARENT_CLASS::enforceConstraints(state, control);
-  if (threadIdx.y != 0) {
+  // Keep each state-aware filter on the Y worker that performed its parent clamp.
+  // Steering and acceleration read immutable state and only their own control component;
+  // no cross-worker read is needed before the caller publishes the constrained controls.
+  const int steer_idx = static_cast<int>(C::STEER_CMD);
+  if (threadIdx.y == steer_idx % blockDim.y) {
+    enforceSteeringCommandContinuity(this->params_, state, control);
+  }
+  const int acceleration_idx = static_cast<int>(C::ACCELERATION_CMD);
+  if (threadIdx.y != acceleration_idx % blockDim.y || !this->params_.prevent_reverse_velocity) {
     return;
   }
-  enforceSteeringCommandContinuity(this->params_, state, control);
-  if (!this->params_.prevent_reverse_velocity) return;
 
   const int velocity_idx = static_cast<int>(S::VEL_X);
-  const int acceleration_idx = static_cast<int>(C::ACCELERATION_CMD);
   const float velocity = state[velocity_idx];
   const float acceleration_command = control[acceleration_idx];
   if (velocity >= 0.0F && velocity + acceleration_command * PARAMS_T::kControlDt < 0.0F) {

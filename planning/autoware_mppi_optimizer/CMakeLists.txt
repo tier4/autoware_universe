@@ -555,6 +555,26 @@ if(CUDA_AVAIL)
     )
     set_tests_properties(test_dynamics_derivative_gpu PROPERTIES LABELS "dynamics;gpu;gtest")
 
+    # A separate CUDA translation unit/executable also avoids the RiskMeasure ODR issue above.
+    cuda_add_executable(test_dynamics_output
+      test/test_dynamics_output.cu
+      OPTIONS --diag-suppress=177
+    )
+    target_link_libraries(test_dynamics_output
+      first_order_dubins_mppi
+      ${GTEST_LIBRARIES}
+      ${GTEST_MAIN_LIBRARIES}
+    )
+    target_include_directories(test_dynamics_output SYSTEM PRIVATE
+      ${GTEST_INCLUDE_DIRS}
+    )
+    set_target_properties(test_dynamics_output PROPERTIES
+      CXX_STANDARD 17
+      CUDA_STANDARD 17
+    )
+    ament_add_gtest_test(test_dynamics_output)
+    set_tests_properties(test_dynamics_output PROPERTIES LABELS "dynamics;gpu;gtest" TIMEOUT 120)
+
     # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
     # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
     set_source_files_properties(test/test_distance_map.cpp PROPERTIES

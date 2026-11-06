@@ -209,7 +209,10 @@ public:
   /** Host state-aware control filtering with prevent_reverse_velocity. */
   void enforceConstraints(Eigen::Ref<state_array> state, Eigen::Ref<control_array> control);
 
-  /** Device state-aware control filtering. */
+  /**
+   * Device state-aware control filtering, partitioned by control component across Y workers.
+   * Call collectively with published state/controls; synchronize before consuming the result.
+   */
   __device__ void enforceConstraints(float * state, float * control);
 
   void stateToOutput(const Eigen::Ref<const state_array> & state, Eigen::Ref<output_array> output);

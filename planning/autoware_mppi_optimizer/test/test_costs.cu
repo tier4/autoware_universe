@@ -1066,13 +1066,14 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjectionAndSafetyFl
     for (bool texture : {true, false}) {
       enableProjectionTexture<<<1, 1>>>(cost->cost_d_, texture);
       HANDLE_ERROR(cudaGetLastError());
-      for (bool split : {false, true}) {
+      // Combined, split with legacy stores, split with cooperative stores.
+      for (const int variant : {0, 1, 2}) {
         SCOPED_TRACE(texture);
-        SCOPED_TRACE(split);
-        if (split) {
+        SCOPED_TRACE(variant);
+        if (variant != 0) {
           mppi::kernels::launchSplitRolloutKernel(
             &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
-            totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true, safety.data);
+            totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true, safety.data, false, variant == 2);
         } else {
           mppi::kernels::launchRolloutKernel(
             &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
@@ -1132,13 +1133,13 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUsePreferredLaneCenter)
   for (bool texture : {true, false}) {
     cost->setPreferredLaneCenterTextureEnabled(texture);
     HANDLE_ERROR(cudaGetLastError());
-    for (bool split : {false, true}) {
+    for (const int variant : {0, 1, 2}) {
       SCOPED_TRACE(texture);
-      SCOPED_TRACE(split);
-      if (split) {
+      SCOPED_TRACE(variant);
+      if (variant != 0) {
         mppi::kernels::launchSplitRolloutKernel(
           &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
-          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true);
+          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true, nullptr, false, variant == 2);
       } else {
         mppi::kernels::launchRolloutKernel(
           &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
