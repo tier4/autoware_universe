@@ -83,7 +83,7 @@ private:
   /** @brief Updates route-dependent boundary indexes when their inputs change. */
   void update_route_context(const autoware::trajectory_modifier::TrajectoryModifierData & data);
 
-  /** @brief Creates and configures the GPU optimizer on first use. */
+  /** @brief Creates and initializes the GPU optimizer before checking activation. */
   void ensure_optimizer();
 
   /** @brief Cache vehicle, cost, and object-filter parameters without creating a GPU optimizer. */
