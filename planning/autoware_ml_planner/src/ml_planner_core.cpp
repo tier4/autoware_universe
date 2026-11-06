@@ -316,7 +316,6 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   auto builder_output = std::move(single_input_result.value());
   selected_agents_ = std::move(builder_output.selected_agents);
   TensorMap single_input_data_map = std::move(builder_output.tensors);
-  utils::drop_steering_and_wheel_base(single_input_data_map);
 
   // Replicate for batch
   TensorMap input_data_map;
