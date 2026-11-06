@@ -482,6 +482,44 @@ TEST(ActiveVelocityLimitProfile, SettlesAtNonzeroLimitInsteadOfStopping)
   EXPECT_FLOAT_EQ(trajectory.points.back().acceleration_mps2, 0.0F);
 }
 
+TEST(ActiveVelocityLimitProfile, DoesNotRaiseASlowerExistingVelocityOrAcceleration)
+{
+  const std::vector<FirstOrderDubinsMppiControl> controls(40U);
+  InitialState ego;
+  ego.velocity = 4.0F;
+  FirstOrderDubinsMppiVehicleParams vehicle;
+  vehicle.acc_time_constant = 0.1F;
+  FirstOrderDubinsMppiKinematicLimits limits;
+  limits.max_velocity = 2.0F;
+  limits.min_longitudinal_acceleration = -2.0F;
+  limits.max_longitudinal_acceleration = 1.0F;
+  limits.min_longitudinal_jerk = -10.0F;
+  limits.max_longitudinal_jerk = 10.0F;
+
+  const auto profile = buildActiveVelocityLimitProfile(controls, ego, limits, vehicle);
+  ASSERT_TRUE(profile.active);
+  ASSERT_GT(profile.velocities.front(), 0.0F);
+
+  auto trajectory = makeTrajectory(45U, 1.0, 9.0F);
+  trajectory.points[0].longitudinal_velocity_mps = 0.0F;
+  trajectory.points[0].acceleration_mps2 = -4.0F;
+  trajectory.points[10].longitudinal_velocity_mps = 0.0F;
+  trajectory.points[10].acceleration_mps2 = profile.accelerations[10] - 1.0F;
+  trajectory.points.back().longitudinal_velocity_mps = 0.0F;
+  trajectory.points.back().acceleration_mps2 = -1.5F;
+  const float kept_mid_acceleration = trajectory.points[10].acceleration_mps2;
+
+  applyActiveVelocityLimitProfile(trajectory, profile);
+
+  EXPECT_FLOAT_EQ(trajectory.points[0].longitudinal_velocity_mps, 0.0F);
+  EXPECT_FLOAT_EQ(trajectory.points[0].acceleration_mps2, -4.0F);
+  EXPECT_FLOAT_EQ(trajectory.points[10].longitudinal_velocity_mps, 0.0F);
+  EXPECT_FLOAT_EQ(trajectory.points[10].acceleration_mps2, kept_mid_acceleration);
+  EXPECT_FLOAT_EQ(trajectory.points.back().longitudinal_velocity_mps, 0.0F);
+  EXPECT_FLOAT_EQ(trajectory.points.back().acceleration_mps2, -1.5F);
+  EXPECT_NEAR(trajectory.points[39].longitudinal_velocity_mps, 2.0F, 0.05F);
+}
+
 TEST(ActiveVelocityLimitProfile, AnticipatesADecreasingPointwiseLimit)
 {
   const std::vector<FirstOrderDubinsMppiControl> controls(30U);
