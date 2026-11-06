@@ -85,18 +85,19 @@ and JSON `measurements_valid` before using measurements as a baseline.
 
 ## Configuration
 
-| Environment variable                | Default                                            | Meaning                                                                                   |
-| ----------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `MPPI_BENCHMARK_WARMUP`             | `10`                                               | Unmeasured stabilization calls, including the separately recorded first call; minimum 1   |
-| `MPPI_BENCHMARK_SAMPLES`            | `100`                                              | Warm measured calls; minimum 1                                                            |
-| `MPPI_BENCHMARK_PHASE_TIMING`       | `0`                                                | `1` enables optional host ranges, CUDA events, and rebuild assertions                     |
-| `MPPI_BENCHMARK_PROJECTION_PRUNING` | `1`                                                | `0` selects the prepared exhaustive GPU projector; `1` enables conservative group pruning |
-| `MPPI_BENCHMARK_ITERATIONS`         | `0`                                                | `0` uses the YAML value; otherwise 1–100 optimizer iterations                             |
-| `MPPI_BENCHMARK_DEVICE`             | `0`                                                | Device index after `CUDA_VISIBLE_DEVICES` remapping                                       |
-| `MPPI_BENCHMARK_COST_PROFILE`       | Build copy of `config/mppi_optimizer.param.yaml`   | Cost/runtime YAML with `/**.ros__parameters.mppi_optimizer` structure                     |
-| `MPPI_BENCHMARK_VEHICLE_PROFILE`    | Build copy of `test/data/performance_vehicle.yaml` | Explicit vehicle parameters under a `vehicle` map                                         |
-| `MPPI_BENCHMARK_OUTPUT_DIR`         | `mppi_benchmark_results`                           | JSON output directory                                                                     |
-| `MPPI_BENCHMARK_ENVIRONMENT`        | Empty                                              | Free-text run conditions: clocks, power mode, competing workloads, run label, etc.        |
+| Environment variable                       | Default                                            | Meaning                                                                                                                 |
+| ------------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `MPPI_BENCHMARK_WARMUP`                    | `10`                                               | Unmeasured stabilization calls, including the separately recorded first call; minimum 1                                 |
+| `MPPI_BENCHMARK_SAMPLES`                   | `100`                                              | Warm measured calls; minimum 1                                                                                          |
+| `MPPI_BENCHMARK_PHASE_TIMING`              | `0`                                                | `1` enables optional host ranges, CUDA events, and rebuild assertions                                                   |
+| `MPPI_BENCHMARK_PROJECTION_PRUNING`        | `1`                                                | `0` selects the prepared exhaustive GPU projector; `1` enables conservative group pruning                               |
+| `MPPI_BENCHMARK_COOPERATIVE_OUTPUT_STORES` | `1`                                                | `0` selects legacy dynamics output stores; `1` selects cooperative stores; both benchmark variants force split rollouts |
+| `MPPI_BENCHMARK_ITERATIONS`                | `0`                                                | `0` uses the YAML value; otherwise 1–100 optimizer iterations                                                           |
+| `MPPI_BENCHMARK_DEVICE`                    | `0`                                                | Device index after `CUDA_VISIBLE_DEVICES` remapping                                                                     |
+| `MPPI_BENCHMARK_COST_PROFILE`              | Build copy of `config/mppi_optimizer.param.yaml`   | Cost/runtime YAML with `/**.ros__parameters.mppi_optimizer` structure                                                   |
+| `MPPI_BENCHMARK_VEHICLE_PROFILE`           | Build copy of `test/data/performance_vehicle.yaml` | Explicit vehicle parameters under a `vehicle` map                                                                       |
+| `MPPI_BENCHMARK_OUTPUT_DIR`                | `mppi_benchmark_results`                           | JSON output directory                                                                                                   |
+| `MPPI_BENCHMARK_ENVIRONMENT`               | Empty                                              | Free-text run conditions: clocks, power mode, competing workloads, run label, etc.                                      |
 
 The default **optimizer cost profile** is the shipped YAML, currently 10 iterations. The default
 **vehicle profile** is an explicitly versioned synthetic small-vehicle fixture, not a claim about a
@@ -113,7 +114,7 @@ the proposed command. This keeps delay/history assumptions consistent and avoids
 subsequent samples with unapplied commands. The RNG sequence and ESS temperature adaptation persist
 across warmup and measurement. Each scenario starts with a fresh interface and fixed seed 1.
 
-All resolved parameter inputs, overrides, input profile text, and selected rollout kernel appear in
+All resolved parameter inputs, overrides, input profile text, selected rollout kernel and dynamics output-store mode appear in
 the report. Internal barrier weights are derived by the optimizer; `resolved_input_profile` records
 the supplied inputs rather than replacing that derivation. Use the same profiles, warmup/sample
 counts, scene, and instrumentation mode for comparisons.
@@ -270,14 +271,238 @@ are disabled, its wall/CPU times are perturbed by tracing or replay and are **no
 Use the fresh profile to choose between dynamics, sampling, remaining projection work, and other
 cost terms. No new optimization should be justified solely by the old exhaustive-projection profile.
 
+### Dynamics-to-cost cache handoff
+
+Use the explicit `handoff` mode to measure cost with and without the cache state created by its
+preceding dynamics kernel:
+
+```bash
+source install/setup.zsh
+mppi_followup=src/autoware/universe/planning/autoware_mppi_optimizer/test/run_projection_followup.sh
+export MPPI_BENCHMARK_ENVIRONMENT='scalar derivatives; describe actual clock policy and background load'
+bash "$mppi_followup" handoff
+```
+
+First rebuild the intended implementation yourself, and retain the matching source during capture.
+At the initial 2026-11-06 investigation, the installed library still contained the reverted array
+code despite a restored scalar checkout; the subsequent `projection_handoff_20261106_060707_WcpvOW`
+collection uses the rebuilt scalar library. The environment note labels your intended build; the executable
+and resolved optimizer-library hashes identify what actually ran. For an array/scalar comparison,
+collect this mode once from each verified build under similar conditions, changing the note.
+
+This mode uses **application replay for both cache policies**, with strict kernel matching,
+no profiler clock control, and nine explicit hardware metrics instead of the full metric set.
+For each of free space, hairpin and static-64, it runs two pairs in order `all, none` then
+`none, all`: **12 `.ncu-rep` files** under `projection_handoff_*`, with raw-metric `.txt` exports.
+Each report profiles just one cost launch: `--launch-skip 100 --launch-count 1`, the first
+iteration after 10 warmup calls. The producer is not profiled. Each application execution completes
+three measured calls, with phase events disabled; its latency figures are profiler-perturbed.
+
+Application replay re-executes preceding GPU work for each pass. The `all` policy flushes caches
+before the selected kernel; `none` preserves the inherited state subject to profiler/background
+interference. Kernel replay with `none` is unsuitable for this comparison because successive
+passes can reuse cache contents from the selected kernel itself. See NVIDIA's
+[application replay](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#application-replay)
+and [cache control](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#cache-control)
+documentation.
+
+Keep **every** companion JSON: there can be several per capture, one for each application run.
+The runner validates all reports and checks identical workload metadata and numerical diagnostics
+for the first optimizer call and the first measured call, both within each capture and across its
+scene's cache policies. It stops on discrepancies. These checks and strict kernel matching do not
+prove identical input bytes. If they fail, share the retained results before interpreting merged
+counters; a fixed-input fixture may be needed to separate cache effects from optimizer variability.
+Later-cycle diagnostic differences are outside the selected launch and are not a matching gate.
+
+Inspect each raw export for exactly one cost kernel and valid duration, SM frequency, L1/L2 hit
+rates, global-load sectors, L2 read sectors/misses, and DRAM read/write bytes. Check the console for
+replay/collection warnings. Compare `none` versus `all` within each build before comparing those
+effects across builds; the old kernel-replay/full-set captures are not the control for this mode.
+Aggregate hit rates do not isolate the output allocation. Retain unprofiled and Systems results
+for latency conclusions. Findings and the proposed producer-only store experiment are recorded in
+the [performance review](../GPU_PERFORMANCE_REVIEW.md#dynamics-output-handoff-and-cost-cache-investigation-2026-11-06).
+
+The first [cache-policy results](../GPU_PERFORMANCE_REVIEW.md#first-cache-policy-results-2026-11-06-0607-utc)
+used one hardware pass per capture, so **one companion JSON per capture is correct**. Disabling
+cache flushing did not improve cost time or materially reduce L2 read misses in that scalar-build
+collection. This does not establish identical cache behavior in unprofiled execution.
+
+### Cooperative dynamics output-store validation
+
+The split dynamics kernel now distributes each shared output tile across X/Y copy workers for
+odd output dimensions, including the bicycle's 13 components. The global layout stays
+`[distribution][rollout][time][component]`, and Z distributions remain independent. The barriers
+before the copy and before shared storage reuse are unchanged. Even-sized outputs retain the
+previous vectorized path; no additional buffer, kernel launch or synchronization is introduced.
+The documented correctness checks and the first performance collection of the constraint-fixed
+build have completed. The subsequent same-build comparison support expands the tests to both
+production store specializations and requires a fresh validation after rebuilding.
+
+The initial November 6 user-run validation exposed 12 racecheck errors and 18 warnings in the
+bicycle's control-constraint handling. After the ownership fix, the user reran all ten selected
+regression tests successfully: three output/constraint tests, three derivative tests and four
+cost/rollout tests. All three output/constraint tests also passed memcheck, racecheck and
+synccheck, with zero errors and zero racecheck hazards/warnings. The `112*` November 6 captures
+then showed small dynamics improvements, essentially unchanged cost time and no consistent
+cache-handoff latency benefit. See the
+[constraint-fixed performance analysis](../GPU_PERFORMANCE_REVIEW.md#constraint-fixed-performance-and-next-experiment-2026-11-07),
+[constraint fix and validation](../GPU_PERFORMANCE_REVIEW.md#constraint-ownership-fix-and-validation-2026-11-06)
+and the earlier
+[results and constraint-race analysis](../GPU_PERFORMANCE_REVIEW.md#cooperative-output-store-results-and-constraint-race-2026-11-06)
+for capture identities, comparison limits and the next validation steps.
+
+The new `test_dynamics_output` executable contains GPU correctness tests, registered with the
+`dynamics;gpu;gtest` CTest labels. It is separate from other CUDA test translation units to avoid
+the vendor RiskMeasure multiple-definition issue. Performance benchmarks remain opt-in and are
+never registered with CTest.
+
+Run these commands yourself from the workspace root after sourcing your usual build environment:
+
+```bash
+colcon build --packages-select MPPI-Generic autoware_mppi_optimizer --cmake-force-configure \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+  -DMPPI_BUILD_PERFORMANCE_BENCHMARKS=ON
+source install/setup.zsh
+
+build/autoware_mppi_optimizer/test_dynamics_output
+build/autoware_mppi_optimizer/test_dynamics_derivative
+build/autoware_mppi_optimizer/test_costs \
+  --gtest_filter='GpuCostEvaluation.CombinedAndSplitRollouts*:GpuCostEvaluation.VelocityDependentSteeringRatePropagationMatchesHost:GpuCostEvaluation.DelayedSteadyTurnAndCommandStepReplayMatchesHost'
+```
+
+`MPPI-Generic` is the package name for `src/vendor/mppi_generic_vendor`. Include it in the rebuild
+so the installed headers and configure-time metadata agree with the source, including environments
+that copy headers rather than symlinking them.
+
+`GpuDynamicsOutput.CooperativeStorePreservesBitsAndLayout` checks eight output dimensions
+(1, 2, 3, 4, 7, 13, 16, 33), seven block shapes, three horizons (1, 3, 80), and both consecutive and
+alternate timestep writes. It compares every destination bit against a host reference, including
+signed zero, subnormals, infinities and NaN payloads. It also checks guards, unchanged inputs and
+untouched timesteps, using deliberately unaligned base pointers. Shapes cover `(32,2,1)`, partial
+warps, non-power-of-two Y, multiple X blocks/Z distributions, and workers with no copy work.
+
+`GpuDynamicsOutput.ProductionRolloutMatchesLegacyStoresBits` compares both production split dynamics
+specializations (legacy and cooperative stores) against a test-only frozen loop from vendor
+`56e4b48`, retaining the old output stores. All use the production scalar bicycle model and colored-noise sampler with identical uploaded
+controls; random generation is not invoked. All 13 outputs at every one of 80 timesteps and all
+constrained controls must match bit for bit. The test checks seven block shapes, three delay
+configurations, forward/reverse constraints, distinct distributions, guards and immutable initial
+states. The reference uses the existing model arithmetic so it specifically isolates the copy
+change; the separate derivative tests retain their independent arithmetic reference.
+
+`GpuDynamicsOutput.ControlConstraintsMatchHostAcrossWorkers` checks the production device
+constraint method against serial host evaluation for 22 command/state cases, eight parameter
+configurations and the same seven block shapes. It covers positive/negative range clipping,
+deadbands and their boundaries, nonzero zero-control values, hold/release and short-reference
+behavior, restart rate/acceleration limits, disabled restart blending and reverse prevention
+enabled/disabled. A parent steering range narrower than the held command makes constraint ordering
+observable. Known range/hold/reverse outcomes also anchor the host fixture independently.
+Host comparisons allow 2e-6 absolute error for floating-point contraction; all GPU shapes must
+match the Y=1 GPU result bit for bit. Per-record guards, shared state and global inputs must remain
+unchanged. The kernel repeatedly reuses shared storage with the rollout's caller barriers and
+adds no synchronization inside the constraint method.
+
+There are three tests in `test_dynamics_output`. The legacy-store reference and both production
+variants use the corrected model: their parity check isolates the copy change, while the
+serial-host comparison separately checks the constraint behavior. Both combined/split tests in
+`test_costs` also exercise the production launcher's two store selections and retain their
+independent cost/safety expectations.
+
+Then check memory and synchronization explicitly:
+
+```bash
+(
+  set -e
+  mppi_sanitizer=/usr/local/cuda-12.8/bin/compute-sanitizer
+  for mppi_check in memcheck racecheck synccheck; do
+    "$mppi_sanitizer" --tool "$mppi_check" --error-exitcode 1 \
+      build/autoware_mppi_optimizer/test_dynamics_output
+  done
+)
+```
+
+The subshell stops with a nonzero status on the first failure. Require all three sanitizer
+summaries to be clean; a GTest PASS line alone does not establish sanitizer success.
+
+### Matched store comparison from one build
+
+The first user-run matrix completed successfully on 2026-11-07 in
+`projection_stores_20261106_212505_4n792O`: all 128 reports are valid and all stored call diagnostics
+match, including across timing modes. Cooperative stores reduce complete-call medians by
+7.69–12.87% and dynamics GPU means by 34.79–39.94%, with essentially unchanged cost time.
+All 32 latency pairs improve in both median and p95. See the
+[controlled comparison analysis](../GPU_PERFORMANCE_REVIEW.md#controlled-store-comparison-results-2026-11-07)
+for build hashes, per-scene results and limits. This establishes the performance benefit on the
+measured RTX 4090 workload; the collection does not include fresh output from the expanded
+correctness/sanitizer checks. Retain cooperative stores as the default. Repeat the matrix after
+relevant implementation changes or on another target environment using these instructions.
+
+After rebuilding both packages and passing the correctness/sanitizer commands above, collect the
+two store variants from that same build:
+
+```bash
+source install/setup.zsh
+mppi_followup=src/autoware/universe/planning/autoware_mppi_optimizer/test/run_projection_followup.sh
+export MPPI_BENCHMARK_ENVIRONMENT='constraint-fixed stores comparison; describe actual clocks and background load'
+bash "$mppi_followup" stores
+```
+
+The `stores` mode keeps projection pruning enabled and alternates legacy/cooperative output
+stores over four balanced pairs in each timing mode, across all eight scenes: **128 JSON reports**.
+Each process uses 10 warmups, 100 measured calls and 10 optimizer iterations. It creates
+`projection_stores_<timestamp>_*` with per-process reports, GPU snapshots and the executable and
+resolved-library hashes. The new benchmark field `dynamics_output_store` must match the requested
+variant. The ordinary `repeat` mode still toggles pruning only and keeps the selected store mode.
+
+Both store choices explicitly use the split pipeline. Startup kernel-selection trials remain
+identical for both variants; the store choice and split override are applied after controller
+construction, before any optimize call. Initialization is recorded separately and excluded from
+the steady-state comparison. The production interface keeps its normal kernel selection unless
+its benchmark-only setter is explicitly called. There is no new ROS parameter, device runtime
+branch, buffer or barrier; selection dispatches two compile-time dynamics specializations on
+the host. Cooperative stores remain the default.
+
+The runner invokes [compare_dynamics_output_stores.py](compare_dynamics_output_stores.py) after
+collection. This offline script requires all 128 eligible reports, matching metadata and all
+stored first/measured-call diagnostics across the eight processes per scene/timing mode. It
+exits with an error on missing, invalid or divergent data, retaining the raw reports. A successful
+comparison writes `store_comparison.json` and prints complete-call median results. The JSON
+includes each process's statistics and paired differences for wall median/p95, CPU mean, dynamics
+GPU, cost GPU and their sum. Values summarize four independent processes; GPU phase results come
+from separate instrumented runs. Diagnostics agreement is not proof of full-trajectory bit parity;
+the correctness tests supply independent evidence for the covered inputs.
+
+For focused profiling after that comparison, the existing modes accept the same store selection.
+For example, collect both full-set profiles from the unchanged build:
+
+```bash
+for mppi_stores in 0 1; do
+  MPPI_BENCHMARK_COOPERATIVE_OUTPUT_STORES="$mppi_stores" bash "$mppi_followup" ncu
+done
+```
+
+Use `nsys` or `handoff` in place of `ncu` when the timing comparison indicates a launch-gap or
+cache question. Keep source matching the build during source import and keep the same clock
+policy/background load throughout. The historical `012*`, `060707*` and `08*` collections predate
+the constraint fix; the `112*` collections use cooperative stores after the fix. None substitutes
+for the new same-build legacy/cooperative comparison.
+
+Check that dynamics output-store excessive sectors fall from the previous **14,909,440 per launch**,
+without reintroducing local loads/stores. Inspect registers, shared memory and instruction count
+alongside duration. Preserve cost-output correctness and assess dynamics **plus cost**, followed
+by complete-call medians/p95 and CPU time. Fewer store sectors alone do not establish a latency
+benefit, and the preceding handoff experiment did not demonstrate a cost-cache speedup.
+
 ### Scalar dynamics derivative validation
 
 The derivative-storage change computes six named scalar values and writes each Y worker's owned
 entries directly. The integration and rollout barriers are unchanged. The November 6 user-run
 results confirm passing isolated exact-parity tests and elimination of the sampled dynamics kernel's
-local loads/stores. Complete-call performance acceptance remains open: most medians and all p95s
-increased, and GPU clocks/background clients differ from the earlier collection. See the
-[measured follow-up](../GPU_PERFORMANCE_REVIEW.md#measured-scalar-derivative-follow-up-2026-11-06).
+local loads/stores. A later reverted-build comparison under similar measured clocks/background
+clients confirms a 12.8–18.9% reduction in dynamics phase time. Pruning-enabled complete-call means
+improve in all eight scenes, but medians and pruning-disabled results remain mixed; the overall
+benefit is modest and scene-dependent. See the
+[reverted-build comparison](../GPU_PERFORMANCE_REVIEW.md#reverted-build-comparison-under-similar-conditions-2026-11-06).
 The original array-based calculation is retained only in `test/dynamics_derivative_reference.cuh`
 as an independent numerical reference; it is not linked into the production optimizer or benchmark.
 
@@ -340,9 +565,12 @@ independent process-level statistics; the paired switch still toggles projection
 derivative implementation. New manifests hash the resolved optimizer library as well as the
 executable. Source revisions in JSON remain configure-time metadata.
 
-For the next acceptance comparison, alternate known old/new binaries under the same clock policy
-and comparable background GPU load. The new `projection_*_20261106_012*` captures establish the
-local-memory change, but do not supply that controlled complete-call comparison.
+The `projection_*_20261106_025*` captures contain the reverted array binary and provide a closer
+baseline for the scalar `projection_*_20261106_012*` captures. These are separate collection periods;
+alternating known old/new binaries remains preferable when resolving small latency differences.
+Keep clock policy and background GPU load comparable, and preserve the source matching each compiled
+library until profiling is finished. The reverted capture embedded the restored scalar source text;
+its binary identity was established from machine code and counters, not its source-line display.
 
 Check the production `rolloutDynamicsKernel` source/SASS for elimination of accesses associated
 with the old `local_der` array. The old reports contain 1,105,920 executed local-load instructions
