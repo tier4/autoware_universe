@@ -521,6 +521,40 @@ if(CUDA_AVAIL)
         "$<TARGET_FILE:test_costs>")
     set_tests_properties(test_cost_report_round_trip PROPERTIES LABELS "cpu;cost;unit" TIMEOUT 120)
 
+    # MPPI headers define non-inline RiskMeasure functions in each CUDA translation unit.
+    # Keep derivative tests in their own executable to avoid duplicate definitions at link time.
+    cuda_add_executable(test_dynamics_derivative
+      test/test_dynamics_derivative.cu
+      OPTIONS --diag-suppress=177
+    )
+    target_link_libraries(test_dynamics_derivative
+      first_order_dubins_mppi
+      ${GTEST_LIBRARIES}
+      ${GTEST_MAIN_LIBRARIES}
+    )
+    target_include_directories(test_dynamics_derivative SYSTEM PRIVATE
+      ${GTEST_INCLUDE_DIRS}
+    )
+    set_target_properties(test_dynamics_derivative PROPERTIES
+      CXX_STANDARD 17
+      CUDA_STANDARD 17
+    )
+    ament_add_gtest_test(test_dynamics_derivative ENV "GTEST_FILTER=DynamicsDerivative.*")
+    set_tests_properties(test_dynamics_derivative PROPERTIES
+      LABELS "cpu;dynamics;gtest"
+      TIMEOUT 120
+    )
+    set(derivative_gpu_result
+      "${AMENT_TEST_RESULTS_DIR}/${PROJECT_NAME}/test_dynamics_derivative_gpu.gtest.xml")
+    ament_add_test(test_dynamics_derivative_gpu
+      COMMAND "$<TARGET_FILE:test_dynamics_derivative>"
+        "--gtest_filter=GpuDynamicsDerivative.*" "--gtest_output=xml:${derivative_gpu_result}"
+      OUTPUT_FILE "${CMAKE_BINARY_DIR}/ament_cmake_gtest/test_dynamics_derivative_gpu.txt"
+      RESULT_FILE "${derivative_gpu_result}"
+      TIMEOUT 120
+    )
+    set_tests_properties(test_dynamics_derivative_gpu PROPERTIES LABELS "dynamics;gpu;gtest")
+
     # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
     # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
     set_source_files_properties(test/test_distance_map.cpp PROPERTIES

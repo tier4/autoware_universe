@@ -1,7 +1,10 @@
 # Cost tests and reports
 
-`test_costs.cu` exercises cost behavior directly, with deterministic inputs. It does not run the
-optimizer, sample noise, or measure performance. Production cost and dynamics code are unchanged.
+`test_costs` checks cost behavior and dynamics with deterministic fixtures, plus selected production
+sampling and rollout checks. It does not measure performance. The separate
+`test_dynamics_derivative` executable compares the scalar implementation with frozen original
+arithmetic; its assertions are reported by GTest and do not generate cost CSV rows. See the
+[derivative validation commands](PERFORMANCE_BENCHMARKS.md#scalar-dynamics-derivative-validation).
 
 ## Running
 

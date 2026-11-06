@@ -315,15 +315,325 @@ A matched comparison against baseline Universe revision `afab67af33` is still ne
 their net overhead and compiler effects. The results measure GPU elapsed work, not power or
 whole-system GPU utilization.
 
-Next, repeat the matched runs in reversed order, concentrating on the short-path result and grid
-numerical variability. Once confirmed, capture fresh profiling data for the pruned kernels before
-choosing another optimization. In the instrumented hairpin, dynamics is now 6.592 ms versus 4.762 ms
+This first comparison called for reversed-order repetitions to assess the short-path result and grid
+numerical variability, followed by fresh profiling of the pruned kernels before choosing another
+optimization. In the instrumented hairpin, dynamics is now 6.592 ms versus 4.762 ms
 for cost, with random sampling at 3.619 ms: the previous projection-dominated profile no longer
-describes the measured phase balance. No new profile was captured in this follow-up.
+describes the measured phase balance. The repeated runs and fresh profiles are assessed below.
+
+#### Balanced repetitions and pruned-kernel profiles: 2026-11-06
+
+The user ran the manual follow-up runner on November 6 JST (the directory timestamps use November 5
+UTC). All three collections completed:
+
+- [Repeated comparison](../../../../../mppi_benchmark_results/projection_repeat_20261105_201641_EMP3VC/):
+  128 valid reports, eight scenes × two pruning settings × two timing modes × four process pairs.
+- [Nsight Systems](../../../../../mppi_benchmark_results/projection_nsys_20261105_202220_HH0bQ7/):
+  three timelines, SQLite exports and valid benchmark reports, one per representative scene.
+- [Nsight Compute](../../../../../mppi_benchmark_results/projection_ncu_20261105_202229_UzNsY7/):
+  six reports, dynamics/cost separately for each scene, with exactly three matching kernel launches
+  and the expected NVTX stack in each. All six companion benchmark reports are valid.
+
+There are no unexpected optimizer outcomes, incomplete workloads, failed cases or skipped cases.
+The repeated runs have the expected measured cycle indices 10–109 and ten launch/event pairs per
+instrumented iterative phase, including the separately recorded first call. Profiles, hardware,
+build metadata, seed, dimensions and split-kernel selection match throughout the repeated matrix.
+The only collection warning is Nsight Compute's expected warning about unlocked GPU clocks; its
+PM-sampling sections report zero dropped samples. Profiler wall/CPU measurements are excluded from
+the latency comparison.
+
+All three manifests record executable SHA-256
+`28a5b671995bc30fe2dab755382592e9a911ce3d4c55a7e4e443c6ec2e7b3ccb`, Universe checkout
+`df828f42a6`, and vendor `56e4b48`. The benchmark JSON still records the earlier configure-time
+Universe revision `x2/v4.4.0-552-gafab67af33-dirty`. This is a matched pruning-switch experiment,
+not a verified rebuild-to-checkout comparison; linked library paths are recorded but their contents
+are not hashed. Refresh configure-time provenance before a later cross-revision comparison.
+
+Before/after snapshots show a 450 W power limit, temperatures spanning 45–65 °C, and SM clocks
+of 210 MHz initially idle and 2520 MHz at the other sampled boundaries. Power-capping counters
+remain zero and thermal slowdown is inactive in the snapshots. Desktop graphics processes remain
+resident. These are boundary snapshots, not proof of constant conditions during every call or an
+energy/utilization measurement. The environment note contains the runner label but no user-supplied
+description of GPU conditions.
+
+**Repeated timing results.** Wall values below are the arithmetic mean of the four process-level
+medians, not a median pooled across 400 calls. The range is the four paired percentage reductions,
+not a confidence interval. Cost values average the four instrumented phase means. All times are
+milliseconds per complete ten-iteration call; timing modes remain separate.
+
+| Scene                         | Wall median off → on (ms) | Reduction | Paired reduction range | Cost GPU mean off → on (ms) |
+| ----------------------------- | ------------------------: | --------: | ---------------------: | --------------------------: |
+| FreeSpaceCached               |           20.078 → 18.085 |     9.92% |        9.03% to 10.58% |               6.170 → 4.097 |
+| Hairpin256Cached              |           28.555 → 18.995 |    33.48% |       33.34% to 33.82% |              14.243 → 4.754 |
+| StaticObstacles64Cached       |           24.686 → 22.596 |     8.47% |         8.12% to 8.92% |              10.240 → 8.123 |
+| StaticObstacleGeometryUpdates |           22.033 → 20.154 |     8.53% |         8.25% to 9.04% |               7.483 → 5.621 |
+| GridBoundaryCrossings         |           26.521 → 24.334 |     8.25% |         8.06% to 8.58% |              11.526 → 9.359 |
+| ReferenceGeometryUpdates      |           28.556 → 19.002 |    33.46% |       33.15% to 33.87% |              14.242 → 4.720 |
+| ShortProjectionPath           |           16.808 → 16.816 |    −0.05% |        −0.76% to 0.56% |               3.049 → 3.042 |
+| OverlappingProjectionGroups   |           30.267 → 30.095 |     0.57% |         0.14% to 0.98% |             16.176 → 15.995 |
+
+The main gains survive both run orders. Hairpin median latency falls by 9.560 ms and cost GPU mean
+by 9.489 ms (66.6%). The mean of its four process-level p95s falls from 28.725 to 19.176 ms;
+process CPU mean falls from 28.595 to 19.033 ms. The changing-reference scene retains the gain,
+with approximately 10.35 microseconds of host bounds preparation per call. This still isolates
+search savings: both switch settings retain the bounds preparation and expanded runtime upload.
+
+The earlier 1% short-path slowdown is not reproduced as a consistent pruning effect. Its mean
+median difference is only +0.008 ms. Pruning-on is slower by 0.76%/0.42% in pairs 1/3, when it runs
+first, and faster by 0.41%/0.56% in pairs 2/4, when it runs second. Both settings use exhaustive
+fallback, and the direction follows order. Treat this as near-neutral within the observed
+variation. The overlapping scene has a small positive median change in all four pairs, but its
+p95 change crosses zero; it remains a weak-benefit workload rather than a substantial speedup.
+
+**Numerical reproducibility remains open.** The grid scene has four exact off/on matches and four
+nonmatching pairs across the two modes. The largest paired differences are 55.686 in baseline
+cost, 228 eligible rollouts, and 0.000532 in temperature. Eleven of the sixteen runs share exactly
+the same sequence of baseline cost, eligibility, `lambda_used` and `lambda_next`; the five others
+include both pruning settings. Differences also recur with the setting and timing mode unchanged:
+for example, exhaustive latency pairs 1 and 2 differ in 29 baseline-cost samples, by up to 55.304,
+and in 28 eligibility samples, by up to 124 rollouts. All sixteen first-call values of these four fields match;
+some later divergence is already present at the first stored measured cycle, after warmup.
+
+This is stronger evidence that the variability is not exclusive to pruning or phase timing, but
+it does not establish its cause or rule out an additional pruning-sensitive effect. Successful
+validation and earlier exact projection tests do not prove bitwise complete-optimizer parity.
+Retain this as a separate diagnostic issue and locate the first differing intermediate result
+under identical inputs before attributing it to floating-point reduction order or a race.
+
+**Steady GPU phase balance.** The saved Systems SQLite data was read without launching a target.
+CUDA runtime launches were correlated with their enclosing phase NVTX ranges, excluding the first
+100 ranges per phase (ten warmup calls). The remaining 200 ranges cover 20 measured calls. Values
+are sums of actual kernel durations per call; inclusive CPU NVTX durations are not GPU durations.
+
+| Scene                   | Dynamics |  Cost | Sampling | Weight statistics | Control reduction |
+| ----------------------- | -------: | ----: | -------: | ----------------: | ----------------: |
+| FreeSpaceCached         |    6.730 | 4.106 |    3.616 |             1.316 |             0.224 |
+| Hairpin256Cached        |    6.626 | 4.763 |    3.602 |             1.293 |             0.366 |
+| StaticObstacles64Cached |    6.691 | 8.134 |    3.600 |             1.313 |             0.221 |
+
+From the first sampling kernel through the final control-reduction kernel in each measured call,
+the mean span not covered by kernels is only 0.062–0.066 ms (less than 0.4% of that span). This does
+not include host preparation/validation outside the iteration burst, but it makes CUDA Graphs or
+launch-overhead work a lower priority for this workload. Sampling remains meaningful: approximately
+1.62 ms is frequency-noise configuration, 0.75 ms rearrangement, 0.63 ms random generation,
+0.44 ms control setup and 0.16 ms inverse FFT per call.
+
+**Dynamics is the next common optimization target.** Compute profiles report 0.689–0.700 ms per
+individual dynamics launch across the three scenes. Mean L2 throughput is 87–89% of the profiler's
+peak metric, while DRAM throughput is about 9% and achieved occupancy about 16.5%. The launch uses
+512 blocks of `(32, 2, 1)`, 61 registers per thread, and 12.40 kB dynamic shared memory per block.
+Shared memory limits theoretical occupancy to 29.17%; the grid has only four blocks per SM on
+average. This is evidence of memory traffic and limited latency hiding, not a reason to increase
+occupancy without measuring the tradeoffs.
+
+Reading the saved `.ncu-rep` files through NVIDIA's report API provides two concrete source targets:
+
+1. All recorded dynamics local-load instructions map to the indexed `local_der[i]` read in
+   [computeDynamics](include/mppi/dynamics/dubins/first_order_dubins_bicycle.cu).
+   Across three launches per scene, there are 3,317,760 executed local-load instructions and
+   6,144,000 local-store instructions. The read line accounts for about 14.6–15.2% of PC samples;
+   64% of the local-store instructions initialize zero delay-tap derivatives. Captured SASS contains
+   actual `LDL`/`STL` accesses, so this is not an inference from the reported stack size alone.
+   The dynamically indexed temporary array is a focused first candidate for eliminating local-memory
+   materialization while retaining arithmetic and disjoint writes by Y workers. NVIDIA documents
+   nonconstant array indexing as one reason for local-memory allocation in the
+   [CUDA 12.8 programming guide](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-c-programming-guide/index.html#device-memory-accesses).
+2. The global-access metric reports 16,875,520 excessive sectors per dynamics launch. Source
+   correlation assigns 88.35% to the scalar output store in `parallel_utils.cuh:219`, called when
+   [rolloutDynamicsKernel](../../../../vendor/mppi_generic_vendor/include/mppi/core/mppi_common.cu#L412)
+   writes `y_d`. Sampled-control reads/writes split the remaining 11.65%. The rollout-major
+   output layout separates neighboring rollout threads' destinations by an entire trajectory;
+   cooperative stores or a tiled layout are candidates after the smaller derivative change.
+   Any layout change must include cost-kernel consumers and be judged on combined dynamics/cost time.
+
+PC-sample shares and Nsight's advisory speedup estimates are not elapsed-time savings predictions.
+Keep the existing barriers and control/delay/safety semantics when pursuing either candidate;
+the current Y workers exchange state and controls through shared memory. In particular, simply
+removing barriers or increasing the register cap is not supported by these findings.
+
+Cost remains larger than dynamics with 64 obstacles. Its sampled source includes repeated obstacle
+yaw trigonometry and exact oriented-box safety checks; that is a later scene-specific target.
+The hairpin cost profile still attributes 56.2% of executed instructions and 50.2% of PC samples
+to `path_tracking_geometry.cuh`, with directed-rounding bound calculations prominent. Further
+projection changes remain possible, but the new common dynamics opportunity should be measured
+first. Use the latency-only repeats for speedup claims and keep the unresolved numerical diagnostic
+separate from any claim of complete-optimizer equivalence.
+
+The assistant analyzed existing JSON, text, SQLite and Compute reports only, and updated this review.
+No build, test, benchmark or profiling capture was run, and no commit was made.
+
+#### Scalar derivative storage implementation
+
+The implementation replaces the dynamically indexed 27-element `local_der` array with six
+named scalar values. The original expressions, float intermediates, delayed-control selection and
+steering clamp feed a shared inline host/device helper. Device workers retain their original
+`threadIdx.y`/`blockDim.y` ownership loop; a component selector supplies the six continuous
+derivatives and positive zero for the 21 discrete derivatives. State integration, delay advancement,
+output handling, all existing barriers, launch dimensions and compiler flags are unchanged.
+
+Three new GTests cover original/scalar host bits, original/scalar device bits and exclusive write
+ownership, and 80-step state/derivative/output/control replay. The original arithmetic and temporary
+array are retained in a test-only reference model. Fixed controls isolate this change from adaptive
+optimizer variability. Tests exercise seven parameter configurations and six block shapes, including
+inactive Y workers and independent X/Z rollouts. Their dedicated `test_dynamics_derivative`
+executable has separate host/GPU correctness registrations; performance measurement remains opt-in.
+
+Before the user's rebuild, the executable hash still matched the recorded baseline, and the
+optimizer library's SHA-256 was read as
+`bc1306b9ada06478e7fdb572d0da9e36d2bec1bdb7fcb370fc3ae83bcb773fa1`. This supplements, but does not
+retroactively prove, the library identity during the earlier recordings. Future collection manifests
+also hash the library resolved by the loader. Reconfigure when rebuilding to refresh source metadata.
+
+The user's first build compiled the new CUDA source but failed while linking `test_costs`: vendor
+headers emit non-inline `RiskMeasure::var()` and `cvar()` definitions in both CUDA translation units.
+The derivative tests now build as a separate executable, restoring `test_costs` to one CUDA source.
+The subsequent user-run build, correctness results and profiling are assessed below. The assistant
+ran no build, numerical test, sanitizer, benchmark or profiling capture. See the
+[validation and measurement commands](test/PERFORMANCE_BENCHMARKS.md#scalar-dynamics-derivative-validation).
+
+#### Measured scalar derivative follow-up: 2026-11-06
+
+**Conclusion:** the targeted local-memory accesses are eliminated, and the isolated exact-parity
+tests pass. Dynamics runs faster in the new captures. Complete-call latency has not improved
+consistently, and the collection conditions differ enough that an isolated implementation speedup
+cannot yet be assigned. Keep the observed latency regressions visible and perform a controlled
+old/new comparison before proceeding to another optimization.
+
+The new collections are under the workspace's `mppi_benchmark_results/`:
+
+- `projection_repeat_20261106_012040_uN9sii`: 128 JSON reports, covering four independent runs per
+  scene, pruning setting and timing mode, with 100 measured calls after ten warmup calls.
+- `projection_nsys_20261106_012626_K19ygV`: three Systems reports and their SQLite exports.
+- `projection_ncu_20261106_012635_cF7Ijs`: six Compute reports, three sampled launches each,
+  covering dynamics and cost in free space, hairpin and 64-obstacle scenes.
+
+Comparison uses the previous `projection_repeat_20261105_201641_EMP3VC`,
+`projection_nsys_20261105_202220_HH0bQ7` and `projection_ncu_20261105_202229_UzNsY7` collections.
+All 137 new companion JSON reports are valid, have zero unexpected outcomes and complete their
+requested workloads. Recorded dimensions, seeds, resolved profiles, hardware, compiler flags and
+kernel selection match the earlier collection. All three runner logs finish successfully. Compute
+records no dropped PM samples or PC-sampling bytes; its unlocked-frequency warning remains relevant.
+
+All three new manifests agree on executable SHA-256
+`5280729e6a47db8d3f2b263fffed8fbfc95ecdc606306f572b83e4db5d71a721` and resolved optimizer-library
+SHA-256 `4d8bf9c80d07380ca8cc33ea505af9580e8b1d5d6cef77e4d8593b53f530d488`. These also match the
+files currently in the build directory. Configure-time Universe metadata is now
+`x2/v4.4.0-554-gdf828f42a6-dirty`; vendor remains `56e4b48`. Imported dynamics source in the new
+Compute report matches the current scalar implementation, while the old report contains the array.
+The old manifests did not hash the library; their imported source and the previously recorded
+pre-rebuild hash supplement that provenance limitation.
+
+**Correctness evidence.** The saved CTest/GTest results from 10:20 JST on November 6 report all
+three new tests passing: host exact bits, device exact bits/write ownership, and the 80-step device
+replay. They ran without skips. The same collection records 37 host cost tests and 12 GPU cost tests
+passing. These are user-run results in `build/autoware_mppi_optimizer/test_results/`; no new tests
+were executed during analysis. No saved Compute Sanitizer result was found in the supplied captures.
+
+**The local-memory target is achieved for the sampled production kernel.** Every one of the nine
+new dynamics launches has zero executed local loads/stores and zero L1 local-load/store sectors.
+The captured dynamics SASS has no `LDL`/`STL` instructions. Before the change, each launch executed
+1,105,920 local-load and 2,048,000 local-store instructions. There is no observed replacement spill
+traffic. Registers remain 61 per thread, dynamic shared memory remains 12,400 bytes per block,
+and the launch remains 512 blocks of `(32, 2, 1)`. Achieved occupancy remains approximately 16–17%.
+The reported 1,024-byte stack setting persists; it does not imply executed local-memory traffic.
+
+Compute means below average three individual launches per scene; these are profiled kernel times,
+not unprofiled complete-call latency:
+
+| Scene                   | Dynamics before → after (ms/launch) | Observed time reduction | SM elapsed-cycle reduction | L2 sector reduction |
+| ----------------------- | ----------------------------------: | ----------------------: | -------------------------: | ------------------: |
+| FreeSpaceCached         |                       0.689 → 0.541 |                  21.42% |                     15.55% |              35.13% |
+| Hairpin256Cached        |                       0.700 → 0.545 |                  22.19% |                     16.46% |              35.27% |
+| StaticObstacles64Cached |                       0.698 → 0.557 |                  20.22% |                     14.35% |              35.13% |
+
+SM frequency is approximately 2.52 GHz before and 2.70–2.71 GHz after. Thus the 20–22% time reduction
+cannot all be credited to the refactor; the lower elapsed-cycle count is additional evidence, not
+a fully controlled estimate. L2 sectors fall from approximately 30.3 million to 19.6–19.7 million
+per launch. Total executed instructions increase by 9.8–10.6%, while the sampled DRAM read/write
+byte totals increase. The result is specifically an elimination of local staging and a reduction
+in observed L2 traffic, not a reduction in every instruction or memory metric. Cost-kernel local
+accesses remain outside this change's scope.
+
+**Complete-call results do not yet meet the performance acceptance target.** The following table
+holds projection pruning enabled in both builds. Wall statistics are the arithmetic means of four
+process-level medians/p95s from latency-only runs; dynamics values average the four instrumented
+phase means. All values are milliseconds per ten-iteration call. A positive wall change is slower.
+
+| Scene                         | Wall median before → after | Wall change | Wall p95 before → after | Dynamics GPU mean before → after |
+| ----------------------------- | -------------------------: | ----------: | ----------------------: | -------------------------------: |
+| FreeSpaceCached               |            18.085 → 18.065 |      −0.11% |         18.397 → 19.524 |                    6.650 → 5.937 |
+| Hairpin256Cached              |            18.995 → 19.374 |      +2.00% |         19.176 → 20.190 |                    6.636 → 6.008 |
+| StaticObstacles64Cached       |            22.596 → 23.163 |      +2.51% |         22.797 → 24.126 |                    6.608 → 5.916 |
+| StaticObstacleGeometryUpdates |            20.154 → 20.623 |      +2.33% |         20.423 → 21.479 |                    6.609 → 6.019 |
+| GridBoundaryCrossings         |            24.334 → 24.852 |      +2.13% |         24.534 → 26.038 |                    6.607 → 5.824 |
+| ReferenceGeometryUpdates      |            19.002 → 19.389 |      +2.03% |         19.237 → 20.464 |                    6.651 → 6.028 |
+| ShortProjectionPath           |            16.816 → 16.728 |      −0.52% |         16.956 → 18.116 |                    6.644 → 5.854 |
+| OverlappingProjectionGroups   |            30.095 → 31.183 |      +3.61% |         30.384 → 32.587 |                    6.633 → 6.020 |
+
+Dynamics phase time decreases by 8.9–11.9%, or 0.59–0.79 ms per call. Six complete-call medians
+increase by 2.0–3.6%; p95 increases by 5.2–7.3% in all eight scenes. Process CPU means also increase
+by 0.5–3.8%. The pruning-disabled comparisons likewise fail to show a general complete-call gain.
+The runner's off/on pairs still toggle projection pruning; both settings use scalar derivatives in
+the new build. They are not a contemporaneous old/new derivative comparison.
+
+Other phases consume the dynamics savings. For the hairpin, cost GPU mean increases from 4.754 to
+5.021 ms and sampling from 3.626 to 3.960 ms; host reference preparation increases from 0.339 to
+0.456 ms. Across all eight pruned scenes, sampling rises by about 3.2–15.5%, and cost rises in seven
+scenes. The captured cost-kernel SASS is identical before/after after mapping relocated code
+addresses to instruction indices, including its branch targets; its sampled executed-instruction
+counts also match. This excludes a change to that captured instruction stream as the explanation,
+but does not exclude changed cache behavior or interference during execution.
+
+**The environments differ.** Earlier snapshots show desktop/compositor processes; the new ones
+also include VS Code, Slack, FreeTube and Firefox GPU processes. This establishes additional
+resident GPU clients, not how much concurrent work each performed. Current-clock snapshots change
+from predominantly 2520 to 2700 MHz. Both collections retain a 450 W limit, inactive thermal
+slowdown and zero power-capping counters. Mean within-process wall standard deviation across the
+32 pruned latency-only reports increases from 0.157 to 0.802 ms. These observations support
+investigating interference and clock conditions; they do not prove those explain every regression.
+
+**Systems corroborates a dynamics reduction.** Correlating runtime launches with NVTX ranges and
+discarding the first 100 ranges per iterative phase gives these actual kernel-duration sums per
+measured call:
+
+| Scene                   | Dynamics before → after | Cost before → after | Sampling before → after | Uncovered burst span before → after |
+| ----------------------- | ----------------------: | ------------------: | ----------------------: | ----------------------------------: |
+| FreeSpaceCached         |           6.730 → 5.938 |       4.106 → 4.338 |           3.616 → 3.629 |                       0.063 → 0.061 |
+| Hairpin256Cached        |           6.626 → 6.079 |       4.763 → 5.198 |           3.602 → 3.770 |                       0.066 → 0.064 |
+| StaticObstacles64Cached |           6.691 → 5.732 |       8.134 → 8.169 |           3.600 → 3.884 |                       0.062 → 0.098 |
+
+Mean uncovered time remains below 0.6% of the iteration burst; the 64-obstacle trace has one call
+with 0.516 ms uncovered. Launch-overhead optimization remains a lower priority than kernel work
+or explaining complete-call regressions. The output-store opportunity is unchanged: 16,875,520
+excessive global sectors per dynamics launch, with 88.35% attributed to `parallel_utils.cuh:219`.
+
+**Numerical variability remains a separate issue.** All workload/outcome checks pass, and the new
+isolated derivative comparisons pass exactly. Complete optimizer diagnostic sequences still vary
+between repeated identical settings in both builds. Across matched scene/mode/pruning/run indices,
+the grid scene differs by up to 56.277 in baseline cost, 231 eligible rollouts and 0.000532 in
+temperature. These differences neither establish a derivative regression nor prove complete-output
+equivalence. Keep the existing reproducibility investigation open.
+
+**Next action:** repeat old/new binaries in alternating order under the same GPU clock policy and
+comparable background load, preserving the resolved-library hashes. Use latency-only measurements
+for complete-call acceptance and phase timing for attribution. Confirm sanitizer results separately.
+If cost/sampling regressions persist under those conditions, investigate cache effects and the first
+diverging workload/intermediate before another production optimization. Once end-to-end acceptance
+is established, cooperative output stores remain the next common dynamics candidate; cost-kernel
+consumers and their combined time must be included in that evaluation.
+
+This follow-up read saved JSON, text, SQLite, GTest and Compute reports. It launched no optimizer,
+test, benchmark or profiler target and made no commit.
 
 ## Prioritized recommendations
 
-The original ordering was based on static inspection. The measured follow-up now supports starting with recommendation 1 for these workloads; the other recommendations remain conditional on their own workload and profiling evidence. Effort estimates assume an engineer familiar with the package and include implementation and regression work: small is roughly 1–3 days, medium roughly 1–2 weeks, large several weeks. GPU access and review time are additional dependencies.
+The list below retains the original static-review workstreams. Recommendation 1 led to the prepared
+and grouped projection changes assessed above. For the current pruned implementation, the
+2026-11-06 profiles prioritize dynamics derivative storage, then output-memory access, as the next
+controlled experiments. The remaining workstreams are conditional on their workload and profiling
+evidence. Effort estimates assume an engineer familiar with the package and include implementation
+and regression work: small is roughly 1–3 days, medium roughly 1–2 weeks, large several weeks.
+GPU access and review time are additional dependencies.
 
 ### 1. Replace repeated exhaustive corridor projection with an exact acceleration structure
 

@@ -185,8 +185,173 @@ uploaded snapshot size. CMake disables pruning when configured math flags violat
 contract; reconfigure after changing flags, including NVCC environment flags. The
 [review](../GPU_PERFORMANCE_REVIEW.md#floating-point-bound-contract) documents that contract and
 the conservative rounding argument. The first supplied comparison shows substantial gains on the
-hairpin and reference-update scenes; reverse-order repetitions and a comparison against the earlier
-revision are still needed to quantify variability and net preparation/upload overhead.
+hairpin and reference-update scenes. The subsequent balanced repetitions and fresh profiles are
+recorded in the [2026-11-06 review](../GPU_PERFORMANCE_REVIEW.md#balanced-repetitions-and-pruned-kernel-profiles-2026-11-06):
+the main gains persist, the short-path result is near-neutral, and numerical reproducibility remains
+open. A comparison against the earlier revision is still needed to quantify net preparation/upload
+overhead.
+
+### Repeated comparison and fresh profiles
+
+The manual [follow-up runner](run_projection_followup.sh) collects the next set of evidence from
+an existing build. It is not registered with CTest and requires an explicit mode. Run it from the
+workspace root in your sourced Autoware environment, with other GPU workloads idle. For example,
+in zsh:
+
+```bash
+source install/setup.zsh
+mppi_followup=src/autoware/universe/planning/autoware_mppi_optimizer/test/run_projection_followup.sh
+export MPPI_BENCHMARK_ENVIRONMENT='idle GPU; normal power mode; clocks not locked'
+
+bash "$mppi_followup" repeat
+```
+
+Replace the environment note with the actual conditions. The runner fixes 10 warmup calls,
+100 measured calls, and 10 optimizer iterations to match the supplied comparison. It runs four
+independent pruning off/on pairs in each timing mode across all eight scenes: **128 JSON reports**.
+Pair 1 starts with pruning on, reversing the original comparison; subsequent pairs alternate
+the order, so each setting runs first twice. Each setting/timing combination starts a new process;
+each scenario constructs a fresh optimizer. Cost/vehicle profile and device overrides remain
+available through the existing environment variables.
+
+Each invocation creates a unique directory under `mppi_benchmark_results/projection_<mode>_*`.
+It saves console output, JSON reports, the executable and resolved optimizer-library hashes, linked library paths, current repository
+revisions/status, and `nvidia-smi -q` snapshots before/after each benchmark process. Snapshots record
+conditions at those boundaries; they do not measure clock/temperature variation during a run. The
+manifest's checkout state supplements the JSON's configure-time revisions and cannot prove that
+all loaded libraries were rebuilt from that state. Reconfigure/rebuild if the binary is stale.
+The runner stops on execution errors, missing reports (including CUDA skips), invalid measurements,
+unexpected outcomes, incompatible projection math/bounds, or a kernel other than `split`.
+
+Compare paired latency-only medians/p95 and CPU time across processes, keeping phase-timing runs
+separate. For `ShortProjectionPath`, check whether the earlier 1% slowdown persists and whether
+it follows pruning order. For `GridBoundaryCrossings`, compare baseline cost, eligible rollouts,
+and both temperature fields at matching cycle indices, including repeated runs with the same
+pruning setting. Timing variation and numerical variation need separate conclusions. The runner
+validates report eligibility; matching profiles/build metadata and numerical comparisons still
+require analysis. This remains a same-binary comparison, so it does not quantify net overhead
+against the earlier revision.
+
+Then collect the pruned timeline and kernel profiles in separate invocations:
+
+```bash
+bash "$mppi_followup" nsys
+bash "$mppi_followup" ncu
+```
+
+`nsys` profiles free space, the 256-point hairpin, and 64 static obstacles with CUDA/NVTX tracing
+and CPU sampling/context-switch tracing disabled. Each process uses 10 warmups and 20 measured
+calls. Keep the `.nsys-rep` timeline and `timeline.txt` summaries: the summaries include startup
+and warmup work, so inspect the steady part of the timeline when assessing launch gaps, sampling,
+dynamics, cost, and synchronization. These options follow the
+[Nsight Systems CLI documentation](https://docs.nvidia.com/nsight-systems/UserGuide/).
+
+`ncu` collects **six reports**: dynamics and cost separately for each of those three scenes.
+It uses the full metric set, kernel replay, cache flushing, source import, and no clock control,
+matching the earlier cost profile's collection policy. The escaped slash in each NVTX range name
+and trailing slash select the push/pop range; kernel-name filtering and `--launch-skip 100`
+skip its 10 warmup calls × 10 iterations. Startup kernel-selection trials are outside these ranges.
+`--launch-count 3` collects the first three iterations of the first measured call; these are
+three kernel launches, not three complete optimizer calls. The process completes three measured
+calls and saves its benchmark JSON. See the
+[Nsight Compute CLI documentation](https://docs.nvidia.com/nsight-compute/NsightComputeCli/).
+Inspect each `.txt` for three matching kernel entries and any collection warnings before using it;
+retain the `.ncu-rep` for CUDA/SASS source correlation and metrics beyond the text summary.
+
+The runner finds tools on `PATH`, with an additional lookup under NVIDIA's installation directories
+for `ncu`. Use `MPPI_NCU=/absolute/path/to/ncu` or `MPPI_NSYS=/absolute/path/to/nsys` if needed.
+Only Nsight Compute uses `sudo` for GPU performance-counter access; `LD_LIBRARY_PATH`, GPU selection,
+and benchmark settings are explicitly passed after `sudo` so ROS libraries remain discoverable.
+Do not launch the entire runner with `sudo`. Profiler reports/JSON written by the elevated process
+may be root-owned.
+
+Profiler JSON is labeled in `environment_note` and stored separately. Even though phase events
+are disabled, its wall/CPU times are perturbed by tracing or replay and are **not latency baselines**.
+Use the fresh profile to choose between dynamics, sampling, remaining projection work, and other
+cost terms. No new optimization should be justified solely by the old exhaustive-projection profile.
+
+### Scalar dynamics derivative validation
+
+The derivative-storage change computes six named scalar values and writes each Y worker's owned
+entries directly. The integration and rollout barriers are unchanged. The November 6 user-run
+results confirm passing isolated exact-parity tests and elimination of the sampled dynamics kernel's
+local loads/stores. Complete-call performance acceptance remains open: most medians and all p95s
+increased, and GPU clocks/background clients differ from the earlier collection. See the
+[measured follow-up](../GPU_PERFORMANCE_REVIEW.md#measured-scalar-derivative-follow-up-2026-11-06).
+The original array-based calculation is retained only in `test/dynamics_derivative_reference.cuh`
+as an independent numerical reference; it is not linked into the production optimizer or benchmark.
+
+Reconfigure and build the optimizer, using your normal workspace environment:
+
+```bash
+colcon build --packages-select autoware_mppi_optimizer --cmake-force-configure \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+  -DMPPI_BUILD_PERFORMANCE_BENCHMARKS=ON
+source install/setup.zsh
+
+build/autoware_mppi_optimizer/test_dynamics_derivative
+
+build/autoware_mppi_optimizer/test_costs \
+  --gtest_filter='GpuCostEvaluation.VelocityDependentSteeringRatePropagationMatchesHost:GpuCostEvaluation.DelayedSteadyTurnAndCommandStepReplayMatchesHost:GpuCostEvaluation.CombinedAndSplitRollouts*:GpuCostEvaluation.ZeroSoftWeightsStillReportExactSafetyViolations'
+```
+
+`DynamicsDerivative.ScalarHostMatchesOriginalBits` checks the shared arithmetic on the host.
+`GpuDynamicsDerivative.ScalarDeviceMatchesOriginalBitsAndWriteOwnership` checks exact device bits,
+signed zero, sentinel guards, immutable inputs and each worker's exclusive write set.
+`GpuDynamicsDerivative.ScalarReplayMatchesOriginalBits` compares every derivative, next-state entry,
+output and constrained control over 80 fixed-input steps. The GPU tests use 64 independent rollouts,
+seven parameter configurations, and six block shapes, including `(32, 2, 1)`, non-power-of-two Y,
+multiple X/Z rollouts, and Y workers with no derivative entry. Delay selection/clamping, actuator
+time-constant floors, rate-limit boundaries, forward/reverse motion and hold/restart state are covered.
+The derivative executable has separate CTest registrations: `test_dynamics_derivative` for the host
+case and `test_dynamics_derivative_gpu` for the GPU cases, with `cpu`/`gpu` and `dynamics` labels.
+It is separate from `test_costs` because the vendor headers include non-inline risk functions that
+produce duplicate definitions when both CUDA translation units are linked into one executable.
+Performance collection remains opt-in and absent from CTest. The reference model replaces only
+derivative evaluation, retaining the production integration, delay advance, output and synchronization
+code.
+
+Run the GPU cases through Compute Sanitizer explicitly. It is available at the path below in the
+current environment; adjust it to the target CUDA installation if needed. These commands are for
+the developer to execute, and should finish without memory, race or synchronization errors:
+
+```bash
+mppi_sanitizer=/usr/local/cuda-12.8/bin/compute-sanitizer
+for mppi_check in memcheck racecheck synccheck; do
+  "$mppi_sanitizer" --tool "$mppi_check" --error-exitcode 1 \
+    build/autoware_mppi_optimizer/test_dynamics_derivative \
+    --gtest_filter='GpuDynamicsDerivative.*' || break
+done
+```
+
+After correctness validation, use the same manually invoked collection modes:
+
+```bash
+mppi_followup=src/autoware/universe/planning/autoware_mppi_optimizer/test/run_projection_followup.sh
+bash "$mppi_followup" repeat
+bash "$mppi_followup" nsys
+bash "$mppi_followup" ncu
+```
+
+Compare against `projection_repeat_20261105_201641_EMP3VC`,
+`projection_nsys_20261105_202220_HH0bQ7`, and `projection_ncu_20261105_202229_UzNsY7`, holding
+scene, pruning setting, timing mode, profiles, iterations and hardware conditions fixed. Compare
+independent process-level statistics; the paired switch still toggles projection pruning, not the
+derivative implementation. New manifests hash the resolved optimizer library as well as the
+executable. Source revisions in JSON remain configure-time metadata.
+
+For the next acceptance comparison, alternate known old/new binaries under the same clock policy
+and comparable background GPU load. The new `projection_*_20261106_012*` captures establish the
+local-memory change, but do not supply that controlled complete-call comparison.
+
+Check the production `rolloutDynamicsKernel` source/SASS for elimination of accesses associated
+with the old `local_der` array. The old reports contain 1,105,920 executed local-load instructions
+and 2,048,000 local-store instructions per sampled launch, attributed to derivative staging. Check
+for replacement spills, register use and occupancy, then compare dynamics GPU time and complete-call
+median/p95 across all eight scenes. A scalar-looking C++ implementation or a lower instruction count
+alone does not establish a speedup. The acceptance target is exact isolated parity and a reproducible
+dynamics improvement without meaningful complete-call regressions. The existing adaptive grid
+variability remains a separate diagnostic issue.
 
 ## Scenarios and workload checks
 

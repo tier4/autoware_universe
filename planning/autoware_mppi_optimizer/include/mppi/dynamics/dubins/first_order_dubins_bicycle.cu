@@ -133,9 +133,45 @@ __host__ __device__ void advanceInputDelayPipes(
   }
 }
 
-__host__ __device__ void firstOrderDubinsBicycleDeriv(
-  const FirstOrderDubinsBicycleParams & p, const float * state, const float * control,
-  float * state_der)
+// Only the six continuous states have nonzero derivatives. Named fields allow scalar
+// replacement without a dynamically indexed thread-local array in the cooperative GPU path.
+struct FirstOrderDubinsDerivatives
+{
+  float acceleration;
+  float velocity;
+  float yaw;
+  float x;
+  float y;
+  float steering;
+
+  __host__ __device__ __forceinline__ float component(const int index) const
+  {
+    static_assert(
+      static_cast<int>(S::NUM_STATES) ==
+        6 + 2 * FirstOrderDubinsBicycleParams::kMaxInputDelaySteps + 5,
+      "Update derivative selection when extending the continuous/discrete state layout");
+    switch (static_cast<S>(index)) {
+      case S::ACCELERATION:
+        return acceleration;
+      case S::VEL_X:
+        return velocity;
+      case S::YAW:
+        return yaw;
+      case S::POS_X:
+        return x;
+      case S::POS_Y:
+        return y;
+      case S::STEER_ANGLE:
+        return steering;
+      default:
+        // Delay taps, command history and hold flags advance discretely in step().
+        return 0.0F;
+    }
+  }
+};
+
+__host__ __device__ __forceinline__ FirstOrderDubinsDerivatives firstOrderDubinsDerivativeValues(
+  const FirstOrderDubinsBicycleParams & p, const float * state, const float * control)
 {
   const float v = state[static_cast<int>(S::VEL_X)];
   const float yaw = state[static_cast<int>(S::YAW)];
@@ -148,34 +184,31 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   const float accel_tau = fmaxf(p.accel_time_constant, 1.0E-4F);
   const float steer_tau = fmaxf(p.steer_time_constant, 1.0E-4F);
 
-  state_der[static_cast<int>(S::ACCELERATION)] = (accel_cmd - accel) / accel_tau;
-  state_der[static_cast<int>(S::VEL_X)] = accel;
-  state_der[static_cast<int>(S::YAW)] = (v / p.wheel_base) * tanf(steer);
+  FirstOrderDubinsDerivatives result;
+  result.acceleration = (accel_cmd - accel) / accel_tau;
+  result.velocity = accel;
+  result.yaw = (v / p.wheel_base) * tanf(steer);
 
   float sin_yaw = 0.0F;
   float cos_yaw = 0.0F;
   sincosf(yaw, &sin_yaw, &cos_yaw);
-  state_der[static_cast<int>(S::POS_X)] = v * cos_yaw;
-  state_der[static_cast<int>(S::POS_Y)] = v * sin_yaw;
+  result.x = v * cos_yaw;
+  result.y = v * sin_yaw;
 
   // Sampled controls are target steering angles and may jump because of rollout noise. Clamp the
   // realized actuator derivative here so every host/device integration step remains achievable.
   const float steer_dot = clampSteerRate(p, v, (steer_cmd - steer) / steer_tau);
-  state_der[static_cast<int>(S::STEER_ANGLE)] = steer_dot;
+  result.steering = steer_dot;
+  return result;
+}
 
-  state_der[static_cast<int>(S::PREVIOUS_ACCEL_CMD)] = 0.0F;
-  state_der[static_cast<int>(S::PREVIOUS_STEER_CMD)] = 0.0F;
-  state_der[static_cast<int>(S::PREVIOUS_STEER_CMD_RATE)] = 0.0F;
-  state_der[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] = 0.0F;
-  state_der[static_cast<int>(S::SHORT_REFERENCE_STEERING_HOLD_ACTIVE)] = 0.0F;
-
-  // Delay taps are discrete; keep continuous ders at zero then overwrite in step().
-#ifdef __CUDA_ARCH__
-#pragma unroll
-#endif
-  for (int i = 0; i < FirstOrderDubinsBicycleParams::kMaxInputDelaySteps; ++i) {
-    state_der[accelDelayTapIndex(i)] = 0.0F;
-    state_der[steerDelayTapIndex(i)] = 0.0F;
+__host__ __device__ void firstOrderDubinsBicycleDeriv(
+  const FirstOrderDubinsBicycleParams & p, const float * state, const float * control,
+  float * state_der)
+{
+  const auto derivative = firstOrderDubinsDerivativeValues(p, state, control);
+  for (int i = 0; i < static_cast<int>(S::NUM_STATES); ++i) {
+    state_der[i] = derivative.component(i);
   }
 }
 // Transition outputs must be computed before the caller advances/swaps the state buffers.
@@ -341,12 +374,11 @@ template <class CLASS_T, class PARAMS_T>
 __device__ void FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::computeDynamics(
   float * state, float * control, float * state_der, float *)
 {
-  // Compute derivative locally to avoid read-after-write races without barriers,
-  // then partition the write to shared memory to avoid write-write races.
-  float local_der[PARENT_CLASS::STATE_DIM];
-  firstOrderDubinsBicycleDeriv(this->params_, state, control, local_der);
+  // Read state/control into scalar results before publishing disjoint derivative entries.
+  // step() retains the collective barrier before integration consumes these writes.
+  const auto derivative = firstOrderDubinsDerivativeValues(this->params_, state, control);
   for (int i = threadIdx.y; i < PARENT_CLASS::STATE_DIM; i += blockDim.y) {
-    state_der[i] = local_der[i];
+    state_der[i] = derivative.component(i);
   }
 }
 
