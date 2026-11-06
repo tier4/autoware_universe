@@ -118,7 +118,7 @@ Parameters can be set via YAML (see `config/ml_planner.param.yaml`).
 | `~/input/vector_map`      | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map                                                                                                           |
 | `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                                                                                      |
 | `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                                                                             |
-| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (ego history preprocessing and trajectory optimization; major version 6 models do not read it) |
+| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (ego history preprocessing and trajectory optimization; major version 7 models do not read it) |
 
 ## Services
 
@@ -163,7 +163,7 @@ A `metadata.json` must be placed in the same directory as the ONNX model:
 
 ```json
 {
-  "major_version": 6,
+  "major_version": 7,
   "onnx_sha256": "<sha256sum of the ONNX model>"
 }
 ```
@@ -176,6 +176,8 @@ On load, the node:
 3. checks that `major_version` equals `ML_PLANNER_WEIGHT_MAJOR_VERSION` in `CMakeLists.txt`.
 
 If any check fails, the model is not loaded and inference is disabled.
+
+Since major version 7, each `lanes` and `route_lanes` point holds the left and right boundary points (4 values), without the centerline (major version 6: the centerline and the boundary offsets, 6 values).
 
 - **Major version**
   Incremented when there are changes in the model **inputs/outputs or architecture**.

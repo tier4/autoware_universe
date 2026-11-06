@@ -55,11 +55,12 @@ inline constexpr int64_t EGO_HISTORY_DIM = 7;
 // Index for each field
 inline constexpr int64_t X = 0;
 inline constexpr int64_t Y = 1;
-inline constexpr int64_t LB_X = 2;
-inline constexpr int64_t LB_Y = 3;
-inline constexpr int64_t RB_X = 4;
-inline constexpr int64_t RB_Y = 5;
-inline constexpr int64_t SEGMENT_POINT_DIM = 6;
+// Lane and route lane points: left and right boundary points, without the centerline
+inline constexpr int64_t LB_X = 0;
+inline constexpr int64_t LB_Y = 1;
+inline constexpr int64_t RB_X = 2;
+inline constexpr int64_t RB_Y = 3;
+inline constexpr int64_t SEGMENT_POINT_DIM = 4;
 inline constexpr int64_t LINE_TYPE_LEFT_START = 0;
 inline constexpr int64_t LINE_TYPE_RIGHT_START = LINE_TYPE_NUM;
 inline constexpr int64_t LANE_TYPE_DIM = 2 * LINE_TYPE_NUM;
@@ -82,7 +83,7 @@ inline constexpr std::array<int64_t, 2> TURN_INDICATOR_LOGIT_SHAPE = {1, TURN_IN
 inline constexpr std::array<int64_t, 4> INITIAL_NOISE_SHAPE = {
   1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
 // Model inputs. The preprocessing builds the ego states with the steering angle
-// (EGO_HISTORY_DIM columns) and ego_shape with the wheel base, but the model (major version 6)
+// (EGO_HISTORY_DIM columns) and ego_shape with the wheel base, but the model (major version 7)
 // reads neither: utils::drop_steering_and_wheel_base removes them before inference.
 inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, EGO_HISTORY_DIM - 1};
 inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {
