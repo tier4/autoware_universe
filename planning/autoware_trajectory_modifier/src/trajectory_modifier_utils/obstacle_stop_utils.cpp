@@ -772,7 +772,9 @@ void ObjectFilter::filter_by_target_area(
     return outline;
   };
 
-  auto is_exiting = [&](const auto & object, const LateralMargin lat_margin) -> bool {
+  auto is_exiting = [&](
+                      const auto & object, const LateralMargin lat_margin,
+                      std::vector<geometry_msgs::msg::Pose> & overlap_path) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
     const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
     const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
@@ -805,6 +807,7 @@ void ObjectFilter::filter_by_target_area(
       }
     }
     if (poses.size() < 2 || time_step <= 1e-6) return false;
+    overlap_path = poses;
 
     const auto object_footprint =
       trajectory_time_overlap::build_object_path_footprint(poses, time_step, local_outline);
@@ -832,7 +835,7 @@ void ObjectFilter::filter_by_target_area(
         const auto query_result = query_overlapping_footprint(
           trajectory_shape, object_polygon, lat_margin, traj_low_velocity_th_);
         if (!query_result) return true;
-        if (is_exiting(object, lat_margin)) return true;
+        if (is_exiting(object, lat_margin, obj.predicted_path)) return true;
         obj.polygon = object_polygon;
         obj.ego_footprint = query_result.value().second;
         return false;

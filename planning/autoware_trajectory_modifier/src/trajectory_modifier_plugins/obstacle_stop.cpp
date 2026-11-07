@@ -303,7 +303,12 @@ ProcessingResult ObstacleStop::process(
   }
 
   if (!stop_modified && cruise_report_) {
-    add_cruise_planning_factor(cruise_report_.value(), input.current_odometry->pose.pose);
+    const auto & report = cruise_report_.value();
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000,
+      "[TM ObstacleStop] Slowing down to cruise velocity  %f m/s for gap %f m",
+      report.cruise_velocity, report.gap());
+    add_cruise_planning_factor(report, input.current_odometry->pose.pose);
   }
 
   traj_points = std::move(trajectory);
@@ -674,6 +679,7 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
   const auto white = autoware_utils::create_marker_color(1.0, 1.0, 1.0, 1.0);
   const auto yellow = autoware_utils::create_marker_color(1.0, 1.0, 0.0, 1.0);
   const auto magenta = autoware_utils::create_marker_color(1.0, 0.0, 1.0, 1.0);
+  const auto cyan = autoware_utils::create_marker_color(0.0, 1.0, 1.0, 0.9);
 
   auto add_line_list_marker = [&](
                                 const std::vector<geometry_msgs::msg::Point> & segments,
@@ -771,6 +777,18 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
       ns + "/target_objects_text", id, white);
     if (!obj.is_safe)
       add_polygon_marker(obj.ego_footprint, ns + "/overlapping_ego_footprint", id, magenta);
+    if (obj.predicted_path.size() >= 2) {
+      Marker path_marker = autoware_utils::create_default_marker(
+        "map", get_clock()->now(), ns + "/predicted_path", id, Marker::LINE_STRIP,
+        autoware_utils::create_marker_scale(0.08, 0.08, 0.08), cyan);
+      path_marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+      path_marker.points.reserve(obj.predicted_path.size());
+      for (const auto & pose : obj.predicted_path) {
+        path_marker.points.push_back(autoware_utils_geometry::create_point(
+          pose.position.x, pose.position.y, ego_z));
+      }
+      marker_array.markers.push_back(path_marker);
+    }
     id++;
   }
 
