@@ -14,13 +14,12 @@
 
 #include "autoware/trajectory_time_overlap/footprints.hpp"
 
+#include <Eigen/Geometry>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <tf2/utils.hpp>
 
 #include <boost/geometry/algorithms/correct.hpp>
-
-#include <Eigen/Geometry>
 
 #include <utility>
 #include <vector>
