@@ -243,6 +243,7 @@ struct TargetObject
   PredictedObject object;
   Polygon2d polygon;
   Polygon2d ego_footprint;
+  std::vector<geometry_msgs::msg::Pose> predicted_path;
   bool is_safe{false};
   double distance_from_ego{0.0};
   double safe_distance{0.0};
