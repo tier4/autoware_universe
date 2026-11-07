@@ -742,8 +742,8 @@ void ObjectFilter::filter_by_target_area(
   };
 
   std::map<double, trajectory_time_overlap::TrajectoryCornerFootprint> ego_footprints;
-  auto ego_footprint_for = [&](const double lateral_margin)
-    -> const trajectory_time_overlap::TrajectoryCornerFootprint * {
+  auto ego_footprint_for =
+    [&](const double lateral_margin) -> const trajectory_time_overlap::TrajectoryCornerFootprint * {
     if (trajectory_points.size() < 2) return nullptr;
     const auto it = ego_footprints.find(lateral_margin);
     if (it != ego_footprints.end()) return &it->second;
@@ -754,14 +754,14 @@ void ObjectFilter::filter_by_target_area(
   };
 
   auto outline_in_object_frame =
-    [](const geometry_msgs::msg::Pose & pose, const Polygon2d & polygon)
-    -> std::vector<universe_utils::Point2d> {
+    [](
+      const geometry_msgs::msg::Pose & pose,
+      const Polygon2d & polygon) -> std::vector<universe_utils::Point2d> {
     std::vector<universe_utils::Point2d> outline;
     const auto & outer = polygon.outer();
     if (outer.empty()) return outline;
-    const bool closed =
-      outer.size() > 1 && std::abs(outer.front().x() - outer.back().x()) < 1e-6 &&
-      std::abs(outer.front().y() - outer.back().y()) < 1e-6;
+    const bool closed = outer.size() > 1 && std::abs(outer.front().x() - outer.back().x()) < 1e-6 &&
+                        std::abs(outer.front().y() - outer.back().y()) < 1e-6;
     const auto count = closed ? outer.size() - 1 : outer.size();
     outline.reserve(count);
     for (size_t i = 0; i < count; ++i) {
