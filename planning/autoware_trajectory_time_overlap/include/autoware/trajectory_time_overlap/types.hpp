@@ -77,11 +77,11 @@ struct FootprintIntersection
   double ego_time{};     // [s] time when ego is predicted to reach the intersection point
   double object_time{};  // [s] time when the object is predicted to reach the intersection point
   universe_utils::Point2d intersection;  // intersection point
-  IntersectionPosition position{};   // position relative to the ego trajectory footprint
-  double arc_length{};               // [m] arc length of the intersection along the ego trajectory
-  double yaw_diff{};  // [rad] yaw difference between ego and the object at the intersection
-  double ego_vel{};   // [m/s] ego velocity at the intersection
-  double vel_diff{};  // [m/s] velocity difference between ego and the object at the intersection
+  IntersectionPosition position{};       // position relative to the ego trajectory footprint
+  double arc_length{};  // [m] arc length of the intersection along the ego trajectory
+  double yaw_diff{};    // [rad] yaw difference between ego and the object at the intersection
+  double ego_vel{};     // [m/s] ego velocity at the intersection
+  double vel_diff{};    // [m/s] velocity difference between ego and the object at the intersection
 };
 
 namespace bgi = boost::geometry::index;

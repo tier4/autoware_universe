@@ -160,8 +160,7 @@ void calculate_predicted_path_footprints(
   }
   geometry_msgs::msg::Pose origin;
   origin.orientation.w = 1.0;
-  const auto local_polygon =
-    autoware_utils::to_footprint(origin, half_length, half_length, width);
+  const auto local_polygon = autoware_utils::to_footprint(origin, half_length, half_length, width);
   std::vector<universe_utils::Point2d> local_outline;
   if (local_polygon.outer().size() > 1UL) {
     local_outline.reserve(local_polygon.outer().size() - 1UL);

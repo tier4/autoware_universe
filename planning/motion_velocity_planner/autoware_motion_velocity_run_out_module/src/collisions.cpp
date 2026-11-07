@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "footprints.hpp"
-
 #include "parameters.hpp"
 #include "types.hpp"
 

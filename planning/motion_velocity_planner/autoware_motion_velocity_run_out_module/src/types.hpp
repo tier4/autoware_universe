@@ -45,21 +45,21 @@ using autoware::trajectory_time_overlap::CornerFootprint;
 using autoware::trajectory_time_overlap::FootprintIntersection;
 using autoware::trajectory_time_overlap::FootprintSegmentNode;
 using autoware::trajectory_time_overlap::FootprintSegmentRtree;
-using autoware::trajectory_time_overlap::IntersectionPosition;
-using autoware::trajectory_time_overlap::ObjectPathFootprint;
-using autoware::trajectory_time_overlap::PolygonRtree;
-using autoware::trajectory_time_overlap::TimeOverlapInterval;
-using autoware::trajectory_time_overlap::TimeOverlapIntervalPair;
-using autoware::trajectory_time_overlap::TrajectoryCornerFootprint;
 using autoware::trajectory_time_overlap::front;
 using autoware::trajectory_time_overlap::front_left;
 using autoware::trajectory_time_overlap::front_right;
 using autoware::trajectory_time_overlap::inside_both_polygons;
 using autoware::trajectory_time_overlap::inside_front_polygon;
 using autoware::trajectory_time_overlap::inside_rear_polygon;
+using autoware::trajectory_time_overlap::IntersectionPosition;
+using autoware::trajectory_time_overlap::ObjectPathFootprint;
+using autoware::trajectory_time_overlap::PolygonRtree;
 using autoware::trajectory_time_overlap::rear;
 using autoware::trajectory_time_overlap::rear_left;
 using autoware::trajectory_time_overlap::rear_right;
+using autoware::trajectory_time_overlap::TimeOverlapInterval;
+using autoware::trajectory_time_overlap::TimeOverlapIntervalPair;
+using autoware::trajectory_time_overlap::TrajectoryCornerFootprint;
 using ObjectPredictedPathFootprint = ObjectPathFootprint;
 
 /// @brief a set of footprint intersections between ego and a specific object
