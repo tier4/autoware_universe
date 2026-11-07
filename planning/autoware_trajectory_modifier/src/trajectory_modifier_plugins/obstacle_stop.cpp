@@ -365,7 +365,8 @@ bool ObstacleStop::apply_cruise(
   // becomes 0
   const double max_acceleration =
     input.current_acceleration
-      ? std::max(0.0, std::min(cruise.max_acceleration, input.current_acceleration->accel.accel.linear.x))
+      ? std::max(
+          0.0, std::min(cruise.max_acceleration, input.current_acceleration->accel.accel.linear.x))
       : cruise.max_acceleration;
   const detail::VelocityLimitConstraints constraints{
     max_acceleration, cruise.max_deceleration, cruise.max_jerk};
@@ -784,8 +785,8 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
       path_marker.lifetime = rclcpp::Duration::from_seconds(0.2);
       path_marker.points.reserve(obj.predicted_path.size());
       for (const auto & pose : obj.predicted_path) {
-        path_marker.points.push_back(autoware_utils_geometry::create_point(
-          pose.position.x, pose.position.y, ego_z));
+        path_marker.points.push_back(
+          autoware_utils_geometry::create_point(pose.position.x, pose.position.y, ego_z));
       }
       marker_array.markers.push_back(path_marker);
     }
