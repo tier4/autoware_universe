@@ -817,6 +817,132 @@ struct DeviceBuffer
   DeviceBuffer(const DeviceBuffer &) = delete;
   DeviceBuffer & operator=(const DeviceBuffer &) = delete;
 };
+
+struct ObstacleAxesTestStream
+{
+  cudaStream_t stream = nullptr;
+  ObstacleAxesTestStream()
+  {
+    HANDLE_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+  }
+  ~ObstacleAxesTestStream() { cudaStreamDestroy(stream); }
+  ObstacleAxesTestStream(const ObstacleAxesTestStream &) = delete;
+  ObstacleAxesTestStream & operator=(const ObstacleAxesTestStream &) = delete;
+};
+
+__global__ void compareObstacleAxes(
+  const Cost * cost, const float * expected_yaw, uint4 * result, const int count)
+{
+  const int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (index >= count) return;
+  const int obstacle = index / H;
+  const int timestep = index % H;
+  // Independent device oracle: ordinary cosf/sinf, not host trig or the cache builder.
+  const float yaw = expected_yaw[index];
+  result[index] = make_uint4(
+    __float_as_uint(cost->obstacle_cos_device_[obstacle][timestep]),
+    __float_as_uint(cost->obstacle_sin_device_[obstacle][timestep]), __float_as_uint(cosf(yaw)),
+    __float_as_uint(sinf(yaw)));
+}
+
+void expectObstacleAxesBits(Cost & cost, const std::vector<float> & expected_yaw)
+{
+  ASSERT_FALSE(expected_yaw.empty());
+  DeviceBuffer<float> yaw(expected_yaw.size());
+  DeviceBuffer<uint4> result(expected_yaw.size());
+  HANDLE_ERROR(cudaMemcpyAsync(
+    yaw.data, expected_yaw.data(), expected_yaw.size() * sizeof(float), cudaMemcpyHostToDevice,
+    cost.stream_));
+  const int count = static_cast<int>(expected_yaw.size());
+  compareObstacleAxes<<<(count + 127) / 128, 128, 0, cost.stream_>>>(
+    cost.cost_d_, yaw.data, result.data, count);
+  HANDLE_ERROR(cudaGetLastError());
+  std::vector<uint4> values(expected_yaw.size());
+  HANDLE_ERROR(cudaMemcpyAsync(
+    values.data(), result.data, values.size() * sizeof(uint4), cudaMemcpyDeviceToHost,
+    cost.stream_));
+  HANDLE_ERROR(cudaStreamSynchronize(cost.stream_));
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    SCOPED_TRACE(i);
+    ASSERT_EQ(values[i].x, values[i].z) << "cosine bits";
+    ASSERT_EQ(values[i].y, values[i].w) << "sine bits";
+  }
+}
+
+struct ObstacleCollisionProbe
+{
+  float x;
+  float y;
+  float yaw;
+  int timestep;
+};
+
+// Frozen pre-cache exact loop. Keep the yaw loads and trig independent of the production cache.
+__device__ __noinline__ bool legacyObstacleIntersection(
+  const Cost * cost, const ObstacleCollisionProbe probe, int * intersecting_obstacle)
+{
+  *intersecting_obstacle = -1;
+  const int t = probe.timestep < 0 ? 0 : (probe.timestep >= H ? H - 1 : probe.timestep);
+  const float ego_cos = cosf(probe.yaw);
+  const float ego_sin = sinf(probe.yaw);
+  const auto p = cost->getParams();
+  const float ego_cx = probe.x + p.ego_axle_to_box_center * ego_cos;
+  const float ego_cy = probe.y + p.ego_axle_to_box_center * ego_sin;
+  const float ego_hl = p.ego_length * 0.5F + p.obstacle_collision_margin;
+  const float ego_hw = p.ego_width * 0.5F + p.obstacle_collision_margin;
+  const auto & data = cost->runtimeData();
+  const int count = mppi::memory::loadReadOnly(&data.num_obstacles_);
+#pragma unroll
+  for (int i = 0; i < count; ++i) {
+    if (!data.obstacleActiveAtStep(i, t)) continue;
+    const float yaw = mppi::memory::loadReadOnly(&data.obs_yaw_[i][t]);
+    const float obs_cos = cosf(yaw);
+    const float obs_sin = sinf(yaw);
+    if (mppi::cost::detail::orientedBoxesOverlap(
+          ego_cx, ego_cy, ego_cos, ego_sin, ego_hl, ego_hw,
+          mppi::memory::loadReadOnly(&data.obs_x_[i][t]),
+          mppi::memory::loadReadOnly(&data.obs_y_[i][t]), obs_cos, obs_sin,
+          mppi::memory::loadReadOnly(&data.obs_half_length_[i]),
+          mppi::memory::loadReadOnly(&data.obs_half_width_[i]))) {
+      *intersecting_obstacle = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+__global__ void compareObstacleIntersections(
+  const Cost * cost, const ObstacleCollisionProbe * probes, int4 * results, const int count)
+{
+  const int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (index >= count) return;
+  const auto p = probes[index];
+  int actual_index = -2, expected_index = -2;
+  const bool actual = cost->egoIntersectsObstacleAtStep(p.x, p.y, p.yaw, p.timestep, &actual_index);
+  const bool expected = legacyObstacleIntersection(cost, p, &expected_index);
+  results[index] = make_int4(actual, expected, actual_index, expected_index);
+}
+
+std::vector<int4> obstacleIntersectionResults(
+  Cost & cost, const std::vector<ObstacleCollisionProbe> & probes)
+{
+  DeviceBuffer<ObstacleCollisionProbe> input(probes.size());
+  DeviceBuffer<int4> output(probes.size());
+  HANDLE_ERROR(cudaMemcpyAsync(
+    input.data, probes.data(), probes.size() * sizeof(ObstacleCollisionProbe),
+    cudaMemcpyHostToDevice, cost.stream_));
+  const int count = static_cast<int>(probes.size());
+  compareObstacleIntersections<<<(count + 127) / 128, 128, 0, cost.stream_>>>(
+    cost.cost_d_, input.data, output.data, count);
+  HANDLE_ERROR(cudaGetLastError());
+  std::vector<int4> result(probes.size());
+  HANDLE_ERROR(cudaMemcpyAsync(
+    result.data(), output.data, result.size() * sizeof(int4), cudaMemcpyDeviceToHost,
+    cost.stream_));
+  HANDLE_ERROR(cudaStreamSynchronize(cost.stream_));
+  return result;
+}
+
 __global__ void evaluateDevice(
   Cost * cost, float * y, float * u, int t, float * result, const bool use_shared)
 {
@@ -883,6 +1009,206 @@ protected:
       tolerance + 1.0E-5 * std::abs(terminal.total));
   }
 };
+
+TEST_F(GpuCostEvaluation, CachedObstacleAxesMatchDeviceTrigBitsAndSurviveSetup)
+{
+  ObstacleAxesTestStream stream;
+  ObstacleAxesTestStream rebound;
+  Cost target(stream.stream);
+  target.setParams(disabledParams());
+  constexpr int count = Cost::kMaxObstacles;
+  std::vector<float> x(count * H, 100.0F), y(count * H, 100.0F), yaw(count * H);
+  std::vector<float> half_length(count, 0.5F), half_width(count, 0.2F);
+  const std::array<float, 16> angles{
+    0.0F,
+    -0.0F,
+    1.5707963267948966F,
+    -1.5707963267948966F,
+    3.1415926535897932F,
+    std::nextafter(3.1415926535897932F, 0.0F),
+    std::nextafter(3.1415926535897932F, 4.0F),
+    -3.1415926535897932F,
+    1.0E8F,
+    -1.0E8F,
+    std::numeric_limits<float>::max(),
+    std::numeric_limits<float>::denorm_min(),
+    -std::numeric_limits<float>::denorm_min(),
+    std::numeric_limits<float>::infinity(),
+    -std::numeric_limits<float>::infinity(),
+    std::numeric_limits<float>::quiet_NaN()};
+  for (std::size_t i = 0; i < yaw.size(); ++i) yaw[i] = angles[i % angles.size()];
+  // Stage before setup: no distance-map evaluation of the adversarial/nonfinite angles.
+  target.setOrientedBoxObstacleTrajectories(
+    x.data(), y.data(), yaw.data(), half_length.data(), half_width.data(), count, H);
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 0U);
+  target.GPUSetup();
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 1U);
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, yaw));
+  target.GPUSetup();
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 1U);
+  target.freeCudaMem();
+  target.freeCudaMem();
+  target.GPUSetup();
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 2U);
+  target.bindToStream(rebound.stream);
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, yaw));
+}
+
+TEST_F(GpuCostEvaluation, CachedObstacleAxesRefreshOnlyForCountOrYaw)
+{
+  ObstacleAxesTestStream stream;
+  Cost target(stream.stream);
+  target.setParams(disabledParams());
+  std::array<float, 2> x{20.0F, 30.0F}, y{0.0F, 0.0F}, yaw{0.0F, 0.25F};
+  std::array<float, 2> half_length{1.0F, 1.0F}, half_width{0.2F, 0.2F};
+  const auto set_static = [&](const int count = 2) {
+    target.setOrientedBoxObstacles(
+      x.data(), y.data(), yaw.data(), half_length.data(), half_width.data(), count);
+  };
+  const auto expanded = [&] {
+    std::vector<float> values(2 * H, yaw[0]);
+    std::fill(values.begin() + H, values.end(), yaw[1]);
+    return values;
+  };
+  set_static();
+  target.GPUSetup();
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expanded()));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 1U);
+  target.beginDataUpdate();
+  set_static();
+  x[0] += 1.0F;
+  half_width[1] += 0.1F;
+  set_static();
+  target.setDynamicObstacleHorizon(0.2F, dt);
+  target.setInitialSteeringAngle(0.1F);
+  target.commitDataUpdate();
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expanded()));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 1U);
+
+  const auto old_yaw = expanded();
+  target.beginDataUpdate();
+  yaw[0] = -0.0F;
+  set_static();
+  yaw[0] = 0.0F;
+  set_static();
+  yaw[0] = -0.0F;
+  set_static();
+  // Staging leaves the device generation intact until commit, even on a nondefault stream.
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, old_yaw));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 1U);
+  target.commitDataUpdate();
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expanded()));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 2U);
+
+  // A short prediction extends its last yaw through the full horizon. Tiny yaw changes still
+  // matter even when the existing pose classifier labels the object static (tolerance 1e-4).
+  constexpr int steps = 3;
+  std::array<float, 2 * steps> tx{21, 21, 21, 30, 31, 32}, ty{};
+  std::array<float, 2 * steps> angles{0.0F, 0.00001F, -0.00001F, 0.25F, 0.25F, 0.25F};
+  std::vector<float> expected(2 * H);
+  for (int i = 0; i < 2; ++i)
+    for (int t = 0; t < H; ++t) expected[i * H + t] = angles[i * steps + std::min(t, steps - 1)];
+  target.setOrientedBoxObstacleTrajectories(
+    tx.data(), ty.data(), angles.data(), half_length.data(), half_width.data(), 2, steps);
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expected));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 3U);
+  target.beginDataUpdate();
+  target.setOrientedBoxObstacleTrajectories(
+    tx.data(), ty.data(), angles.data(), half_length.data(), half_width.data(), 2, steps);
+  target.setDynamicObstacleHorizon(0.0F, dt);
+  target.commitDataUpdate();
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expected));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 3U);
+
+  angles[0] = -0.0F;
+  expected[0] = -0.0F;
+  target.setOrientedBoxObstacleTrajectories(
+    tx.data(), ty.data(), angles.data(), half_length.data(), half_width.data(), 2, steps);
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expected));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 4U);
+
+  // Collapse the near-static prediction to a static pose: compare all old timesteps, not t=0.
+  yaw[0] = -0.0F;
+  target.beginDataUpdate();
+  set_static();
+  target.commitDataUpdate();
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expanded()));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 5U);
+  set_static(1);
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, std::vector<float>(H, yaw[0])));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 6U);
+  target.clearObstacles();
+  const auto empty = obstacleIntersectionResults(target, {{21, 0, 0, 0}});
+  ASSERT_EQ(empty.size(), 1U);
+  EXPECT_EQ(empty[0].x, 0);
+  EXPECT_EQ(empty[0].z, -1);
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 6U);
+  set_static();
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expanded()));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 7U);
+  target.setOrientedBoxObstacleTrajectories(
+    tx.data(), ty.data(), angles.data(), half_length.data(), half_width.data(), 2, 0);
+  const auto no_prediction = obstacleIntersectionResults(target, {{21, 0, 0, 0}});
+  EXPECT_EQ(no_prediction[0].x, 0);
+  EXPECT_EQ(no_prediction[0].z, -1);
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 7U);
+  set_static();
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, expanded()));
+  EXPECT_EQ(target.obstacleAxesBuildCount(), 8U);
+}
+
+TEST_F(GpuCostEvaluation, CachedObstacleAxesPreserveExactIntersectionsAndFirstIndex)
+{
+  ObstacleAxesTestStream stream;
+  Cost target(stream.stream);
+  auto p = disabledParams();
+  p.obstacle_collision_margin = 0.125F;
+  target.setParams(p);
+  constexpr int count = Cost::kMaxObstacles;
+  std::vector<float> x(count * H), y(count * H), yaw(count * H);
+  std::vector<float> half_length(count, 1.0F), half_width(count, 0.25F);
+  std::vector<ObstacleCollisionProbe> probes;
+  for (int i = 0; i < count; ++i) {
+    for (int t = 0; t < H; ++t) {
+      const int index = i * H + t;
+      x[index] = i < 2 ? 0.0F : static_cast<float>(i * 12);
+      y[index] = i % 3 == 2 ? static_cast<float>(t) * 0.05F : 0.0F;
+      yaw[index] = i < 2 ? 0.0F : (i % 3 == 1 ? 0.03F * t : 0.3F * i);
+    }
+    for (const int t : {-1, 0, 1, 2, H / 2, H - 1, H + 5}) {
+      const int index = i * H + std::clamp(t, 0, H - 1);
+      for (const float offset : {0.0F, 1.375F, std::nextafter(1.375F, 2.0F), 8.0F}) {
+        probes.push_back({x[index], y[index] + offset, 0.0F, t});
+        probes.push_back({x[index], y[index] + offset, yaw[index], t});
+      }
+    }
+  }
+  target.setDynamicObstacleHorizon(0.2F, dt);
+  target.setOrientedBoxObstacleTrajectories(
+    x.data(), y.data(), yaw.data(), half_length.data(), half_width.data(), count, H);
+  target.GPUSetup();
+  ASSERT_NO_FATAL_FAILURE(expectObstacleAxesBits(target, yaw));
+  const auto values = obstacleIntersectionResults(target, probes);
+  int hits = 0, misses = 0;
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    SCOPED_TRACE(i);
+    EXPECT_EQ(values[i].x, values[i].y);
+    EXPECT_EQ(values[i].z, values[i].w);
+    if (values[i].x)
+      ++hits;
+    else
+      ++misses;
+  }
+  EXPECT_GT(hits, 0);
+  EXPECT_GT(misses, 0);
+  // Duplicate boxes retain the lowest intersecting index; static boxes outlive the cutoff.
+  const auto selected = obstacleIntersectionResults(
+    target, {{0, 0, 0, H - 1}, {36, 0, 0, H - 1}, {48, 0, 0, H - 1}, {24, 0, 0, 0}});
+  EXPECT_EQ(selected[0].z, 0);
+  EXPECT_EQ(selected[1].z, 3);
+  EXPECT_EQ(selected[2].z, -1);
+  EXPECT_EQ(selected[3].z, 2);
+}
 
 TEST_F(GpuCostEvaluation, ProductionColoredNoiseExploresBothFirstCommands)
 {
@@ -1092,6 +1418,73 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjectionAndSafetyFl
         for (float total : actual) {
           // Stationary at (1,9): lateral error is 1 m for H running stages and terminal.
           EXPECT_NEAR(total, 1.0F + 1.0F / H, 1.0E-4F);
+        }
+      }
+    }
+  }
+}
+
+TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseCachedObstacleAxes)
+{
+  using Sampler = mppi::sampling_distributions::GaussianDistribution<FirstOrderDubinsBicycleParams>;
+  constexpr int rollouts = 32;
+  Sampler::SAMPLING_PARAMS_T sampling_params;
+  sampling_params.num_rollouts = rollouts;
+  sampling_params.num_timesteps = H;
+  sampling_params.num_distributions = 1;
+  for (auto & sigma : sampling_params.std_dev) sigma = 1.0F;
+  Sampler sampler(sampling_params);
+  Model model;
+  model.GPUSetup();
+  sampler.GPUSetup();
+  const auto mean = Eigen::Matrix<float, Model::CONTROL_DIM, H>::Zero().eval();
+  sampler.copyImportanceSamplerToDevice(mean.data(), 0, true);
+  HANDLE_ERROR(cudaMemset(
+    sampler.getControlSample(0, 0, 0), 0, rollouts * H * Model::CONTROL_DIM * sizeof(float)));
+  params = disabledParams();
+  params.obstacle_barrier_weight = 3.0F;
+  apply();
+  auto state = model.getZeroState();
+  DeviceBuffer<float> initial(Model::STATE_DIM), totals(rollouts);
+  DeviceBuffer<float> outputs(rollouts * H * Model::OUTPUT_DIM);
+  DeviceBuffer<int> safety(rollouts);
+  HANDLE_ERROR(cudaMemcpy(
+    initial.data, state.data(), Model::STATE_DIM * sizeof(float), cudaMemcpyHostToDevice));
+  for (const float yaw : {0.0F, 1.5707963267948966F, 0.0F}) {
+    // A thin box beside the stationary ego becomes intersecting only when rotated.
+    obstacle(3.0F, 0.0F, yaw, 0.25F, 2.0F);
+    const bool collision = yaw != 0.0F;
+    std::array<float, rollouts> combined{};
+    for (const int variant : {0, 1, 2}) {
+      SCOPED_TRACE(yaw);
+      SCOPED_TRACE(variant);
+      if (variant != 0) {
+        mppi::kernels::launchSplitRolloutKernel(
+          &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
+          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true, safety.data, false, variant == 2);
+      } else {
+        mppi::kernels::launchRolloutKernel(
+          &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
+          dim3(32, 2, 1), 0, true, safety.data);
+      }
+      std::array<int, rollouts> statuses{};
+      std::array<float, rollouts> actual{};
+      HANDLE_ERROR(
+        cudaMemcpy(statuses.data(), safety.data, sizeof(statuses), cudaMemcpyDeviceToHost));
+      HANDLE_ERROR(cudaMemcpy(actual.data(), totals.data, sizeof(actual), cudaMemcpyDeviceToHost));
+      for (int i = 0; i < rollouts; ++i) {
+        EXPECT_EQ((statuses[i] & mppi::safety::kObstacle) != 0, collision);
+        if (collision) {
+          EXPECT_EQ(mppi::safety::timestep(statuses[i]), 0);
+        } else {
+          EXPECT_EQ(statuses[i], 0);
+        }
+        EXPECT_TRUE(std::isfinite(actual[i]));
+        if (variant == 0) {
+          combined[i] = actual[i];
+        } else {
+          // The launchers reduce timestep costs differently; retain their existing tolerance.
+          EXPECT_NEAR(actual[i], combined[i], 1.0E-4F + 1.0E-5F * std::fabs(combined[i]));
         }
       }
     }

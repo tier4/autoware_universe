@@ -581,6 +581,72 @@ alone does not establish a speedup. The acceptance target is exact isolated pari
 dynamics improvement without meaningful complete-call regressions. The existing adaptive grid
 variability remains a separate diagnostic issue.
 
+### Exact obstacle-axis cache validation
+
+The exact device collision loop now reads obstacle cosine/sine values computed with the original
+CUDA `cosf`/`sinf`. The cache resides outside the per-cycle upload snapshot, is rebuilt on count/yaw
+changes, and retains the 64-register cap. CPU/fractional-step validation and soft-distance/map
+trigonometry retain their previous arithmetic. The user-run focused seven-test selection and full
+53-test cost suite passed. All four new cache cases also passed memcheck/racecheck/synccheck with
+zero reported errors or hazards. The subsequent 128-report repeat collection and nine
+profiler-associated benchmark reports are valid, and all stored diagnostics match the pre-cache
+baseline. Static-64 complete-call median improved by 6.65% and cost GPU mean by 16.21%; other
+obstacle scenes show smaller gains, while obstacle-free medians increased by at most 0.24%.
+The agent has not run builds or tests. See the
+[implementation and validation notes](../GPU_PERFORMANCE_REVIEW.md#exact-obstacle-axis-cache-implementation-and-correctness-validation).
+The [performance analysis](../GPU_PERFORMANCE_REVIEW.md#obstacle-axis-cache-performance-results-2026-11-07)
+records all eight scenes, source/counter evidence and the limits of historical comparisons.
+
+After rebuilding in the sourced workspace, run the focused checks, followed by the complete cost
+suite before collecting performance results:
+
+```bash
+build/autoware_mppi_optimizer/test_costs \
+  --gtest_filter='GpuCostEvaluation.CachedObstacleAxes*:GpuCostEvaluation.CombinedAndSplitRollouts*:GpuCostEvaluation.ZeroSoftWeightsStillReportExactSafetyViolations'
+
+build/autoware_mppi_optimizer/test_costs
+```
+
+The new checks compare cached trig bits against direct device evaluation, and intersection flags
+and first indices against the previous exact collision loop. They cover all 64 slots, every
+timestep, partial prediction padding, signed zero, large/nonfinite angles, static/moving cutoffs,
+count changes, clear/re-add, zero-length predictions, reuse and batched updates. Nondefault streams,
+stream rebinding, repeated setup and teardown/re-setup are included. The production rollout case
+rotates an obstacle into and out of collision using combined and both split store variants.
+
+Run the focused cases under the existing sanitizer installation:
+
+```bash
+mppi_sanitizer=/usr/local/cuda-12.8/bin/compute-sanitizer
+for mppi_check in memcheck racecheck synccheck; do
+  "$mppi_sanitizer" --tool "$mppi_check" --error-exitcode 1 \
+    build/autoware_mppi_optimizer/test_costs \
+    --gtest_filter='GpuCostEvaluation.CachedObstacleAxes*:GpuCostEvaluation.CombinedAndSplitRolloutsUseCachedObstacleAxes' || break
+done
+```
+
+For performance, retain pruning and cooperative stores in both baseline/candidate measurements.
+Use the existing eight-scene matrix in latency-only and phase modes, with repeated processes and
+matching clock/load conditions. The cooperative rows from
+`projection_stores_20261106_212505_4n792O` supply the current historical baseline; alternating known
+old/new builds provides stronger attribution. The existing `repeat` runner can collect the full
+matrix, but its switch compares projection pruning, not the obstacle-axis implementation.
+
+The existing `nsys` and `ncu` runner modes remain applicable. Inspect `MPPI/obstacle_axes_build`
+and `cacheObstacleAxesKernel` in the timeline and phase JSON: builds should appear on initial
+nonempty upload or changed count/yaw, not on unchanged warm calls or position-only updates.
+The normal NCU command targets `rolloutCostKernel`, so its source/SASS should show cached axis
+loads replacing the obstacle loop's repeated trig. Check registers, replacement spills, local
+traffic, cost duration and complete-call timing. A reduction in trig instructions is not by itself
+a speedup. Compare numerical diagnostics and eligibility alongside timing. The completed
+`projection_repeat_20261107_001334_tVBLp2`, `projection_nsys_20261107_001825_tmYVE2` and
+`projection_ncu_20261107_001833_Tr1iAK` collections use the same cached-axis library and provide
+the baseline for subsequent work. Cost allocation remains 64 registers, and local/spill counts
+are unchanged. Cache builds occur only on initial nonempty upload in these captures; position-only
+updates reuse the axes. These stationary scenes do not measure continuously changing yaw or moving
+predictions. Stored diagnostic equality complements the isolated parity tests but does not prove
+bitwise equality of every complete output trajectory.
+
 ## Scenarios and workload checks
 
 | Scenario                                                             | Workload                                                                                     |

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 
 namespace
@@ -26,6 +27,28 @@ using mppi::cost::detail::pathLengthAtProjection;
 using mppi::cost::detail::pointInPolygon;
 using mppi::cost::detail::projectPointToPreparedPolyline;
 using mppi::cost::detail::vectorLength;
+
+template <int NUM_TIMESTEPS>
+__global__ void cacheObstacleAxesKernel(
+  const FirstOrderDubinsRuntimeData<NUM_TIMESTEPS> * data, float (*obstacle_cos)[NUM_TIMESTEPS],
+  float (*obstacle_sin)[NUM_TIMESTEPS])
+{
+  const int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (index >= data->num_obstacles_ * NUM_TIMESTEPS) return;
+  const int obstacle = index / NUM_TIMESTEPS;
+  const int timestep = index % NUM_TIMESTEPS;
+  const float yaw = data->obs_yaw_[obstacle][timestep];
+  // Match the exact collision loop, including large-angle reduction and signed zero.
+  // The approximate __sincosf used by distance maps is not interchangeable here.
+  obstacle_cos[obstacle][timestep] = cosf(yaw);
+  obstacle_sin[obstacle][timestep] = sinf(yaw);
+}
+
+inline bool obstacleYawBitsDiffer(const float & previous, const float & next)
+{
+  // Floating-point equality misses +0 -> -0, which changes the exact sine bits.
+  return std::memcmp(&previous, &next, sizeof(float)) != 0;
+}
 
 struct CostPathBuffers
 {
@@ -288,6 +311,7 @@ template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ void
 FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::GPUSetup()
 {
+  const bool new_device_object = !this->GPUMemStatus_;
   if (runtime_data_.size() == 0) {
     runtime_data_.resize(1);
     runtime_data_.data()[0] = runtime_data_device_;
@@ -295,6 +319,10 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   // Managed copies the embedded device snapshot, including values set before GPU setup.
   runtime_data_device_ = runtime_data_.data()[0];
   PARENT_CLASS::GPUSetup();
+  if (new_device_object) {
+    obstacle_axes_dirty_ = true;
+    refreshObstacleAxes();
+  }
   if (!vegetation_points_.empty()) uploadVegetationCollisionPoints();
   setDistanceMapTextureDebugEnabled(distance_map_texture_debug_enabled_);
   if (!data_update_active_) refreshPreferredLaneCenterTexture();
@@ -313,6 +341,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   PARENT_CLASS::freeCudaMem();
   if (runtime_data_.size() != 0) runtime_data_device_ = runtime_data_.data()[0];
   runtime_data_.resetNoThrow();
+  obstacle_axes_dirty_ = true;
   data_update_active_ = false;
 }
 
@@ -398,7 +427,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   data_update_active_ = false;
 
   // Distance-map generation kernels consume the runtime cost data, so preserve this ordering on
-  // the cost stream: snapshot upload, map rebuilds, then rollout kernels.
+  // the cost stream: snapshot upload, exact obstacle axes, map rebuilds, then rollouts.
   if (runtime_data_dirty_) {
     uploadDataToDevice();
   }
@@ -450,12 +479,37 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     runtime_data_.resize(1);
     runtime_data_.data()[0] = runtime_data_device_;
   }
-  mppi::instrumentation::ScopedNvtxRange range(
-    "MPPI/scene_runtime_upload", mppi::instrumentation::NvtxColor::DATA_TRANSFER, this->stream_);
-  HANDLE_ERROR(cudaMemcpyAsync(
-    &this->cost_d_->runtime_data_device_, this->runtime_data_.data(), sizeof(RuntimeData),
-    cudaMemcpyHostToDevice, this->stream_));
+  {
+    mppi::instrumentation::ScopedNvtxRange range(
+      "MPPI/scene_runtime_upload", mppi::instrumentation::NvtxColor::DATA_TRANSFER, this->stream_);
+    HANDLE_ERROR(cudaMemcpyAsync(
+      &this->cost_d_->runtime_data_device_, this->runtime_data_.data(), sizeof(RuntimeData),
+      cudaMemcpyHostToDevice, this->stream_));
+  }
+  refreshObstacleAxes();
   runtime_data_dirty_ = false;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::refreshObstacleAxes()
+{
+  if (!this->GPUMemStatus_ || !obstacle_axes_dirty_) return;
+  const int count = runtimeData().num_obstacles_ * NUM_TIMESTEPS;
+  if (count > 0) {
+    mppi::instrumentation::ScopedNvtxRange range(
+      "MPPI/obstacle_axes_build", mppi::instrumentation::NvtxColor::MAP_GENERATION, this->stream_);
+    constexpr int threads = 128;
+    cacheObstacleAxesKernel<NUM_TIMESTEPS>
+      <<<(count + threads - 1) / threads, threads, 0, this->stream_>>>(
+        &this->cost_d_->runtime_data_device_, this->cost_d_->obstacle_cos_device_,
+        this->cost_d_->obstacle_sin_device_);
+    HANDLE_ERROR(cudaGetLastError());
+    ++obstacle_axes_build_count_;
+  }
+  // Fill every timestep, including inactive moving-object tails. Cutoff-only changes can reuse
+  // the axes, and stream ordering makes them visible before any subsequent cost evaluation.
+  obstacle_axes_dirty_ = false;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -653,6 +707,7 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 {
   const int n = std::max(0, std::min(count, kMaxObstacles));
   bool geometry_changed = n != runtimeData().num_obstacles_;
+  obstacle_axes_dirty_ |= n != runtimeData().num_obstacles_;
   for (int i = 0; i < n && !geometry_changed; ++i) {
     geometry_changed = !runtimeData().obs_is_static_[i] || runtimeData().obs_x_[i][0] != x[i] ||
                        runtimeData().obs_y_[i][0] != y[i] ||
@@ -666,6 +721,8 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     runtimeData().obs_half_width_[i] = half_width[i];
     runtimeData().obs_is_static_[i] = true;
     for (int t = 0; t < NUM_TIMESTEPS; ++t) {
+      obstacle_axes_dirty_ =
+        obstacle_axes_dirty_ || obstacleYawBitsDiffer(runtimeData().obs_yaw_[i][t], yaw[i]);
       runtimeData().obs_x_[i][t] = x[i];
       runtimeData().obs_y_[i][t] = y[i];
       runtimeData().obs_yaw_[i][t] = yaw[i];
@@ -720,6 +777,7 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
   const int n = std::max(0, obstacle_count);
   const int nt = std::max(0, std::min(num_timesteps, NUM_TIMESTEPS));
   bool geometry_changed = runtimeData().num_obstacles_ != (nt > 0 ? n : 0);
+  obstacle_axes_dirty_ |= geometry_changed;
   runtimeData().num_obstacles_ = nt > 0 ? n : 0;
   constexpr float kStaticPoseTolerance = 1.0E-4F;
   for (int i = 0; i < n; ++i) {
@@ -731,6 +789,8 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     runtimeData().obs_is_static_[i] = true;
     for (int t = 0; t < nt; ++t) {
       const int idx = i * nt + t;
+      obstacle_axes_dirty_ =
+        obstacle_axes_dirty_ || obstacleYawBitsDiffer(runtimeData().obs_yaw_[i][t], yaw[idx]);
       obstacle_geometry_changed =
         obstacle_geometry_changed || runtimeData().obs_x_[i][t] != x[idx] ||
         runtimeData().obs_y_[i][t] != y[idx] || runtimeData().obs_yaw_[i][t] != yaw[idx];
@@ -748,6 +808,9 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
       obstacle_geometry_changed || was_static != runtimeData().obs_is_static_[i];
     if (nt > 0) {
       for (int t = nt; t < NUM_TIMESTEPS; ++t) {
+        obstacle_axes_dirty_ =
+          obstacle_axes_dirty_ ||
+          obstacleYawBitsDiffer(runtimeData().obs_yaw_[i][t], runtimeData().obs_yaw_[i][nt - 1]);
         obstacle_geometry_changed =
           obstacle_geometry_changed ||
           runtimeData().obs_x_[i][t] != runtimeData().obs_x_[i][nt - 1] ||
@@ -769,6 +832,7 @@ void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearObstacles()
 {
   const bool geometry_changed = runtimeData().num_obstacles_ != 0;
+  obstacle_axes_dirty_ |= geometry_changed;
   runtimeData().num_obstacles_ = 0;
   dataToDevice();
   refreshDistanceMapTextures(geometry_changed, false, false);
@@ -1146,11 +1210,11 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 #endif
   for (int i = 0; i < num_obstacles; ++i) {
     if (!data.obstacleActiveAtStep(i, t)) continue;
-    const float obs_yaw = mppi::memory::loadReadOnly(&data.obs_yaw_[i][t]);
 #ifdef __CUDA_ARCH__
-    const float obs_cos = cosf(obs_yaw);
-    const float obs_sin = sinf(obs_yaw);
+    const float obs_cos = mppi::memory::loadReadOnly(&obstacle_cos_device_[i][t]);
+    const float obs_sin = mppi::memory::loadReadOnly(&obstacle_sin_device_[i][t]);
 #else
+    const float obs_yaw = data.obs_yaw_[i][t];
     const float obs_cos = std::cos(obs_yaw);
     const float obs_sin = std::sin(obs_yaw);
 #endif

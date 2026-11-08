@@ -1353,14 +1353,394 @@ policy or output-layout changes are not justified by the present cost results.
 The agent read saved reports and updated documentation only; no build, test, benchmark, sanitizer,
 profiling capture or commit was run for this analysis.
 
+## Cost local memory and remaining geometry: 2026-11-07
+
+**Initial recommendation:** an isolated cost-kernel register-limit experiment, followed by the
+texture fast path's addressable circle arrays. The subsequent deployment constraint requires
+retaining the 64-register cap, so the implementation below instead addresses repeated obstacle
+orientation, the strongest identified scene-specific geometry opportunity. Projection acceleration
+remains a separate workstream, informed by additional measurements of the overlapping-path case.
+The subsequent [cache measurements](#obstacle-axis-cache-performance-results-2026-11-07) show
+lower obstacle-scene latency while retaining that register cap.
+
+### Evidence and applicability
+
+This investigation reads the three `cost.ncu-rep` files in
+`mppi_benchmark_results/projection_ncu_20261106_112708_jQfTzB`, covering free space, hairpin-256
+and static-64, with three launches per scene. They were collected with Nsight Compute 2025.1.1,
+full-set kernel replay, cache control `all`, and clock control `none`, after 100 warmup launches.
+They cover the first three iterations of the first measured call, not the full benchmark
+distribution. The later controlled store collection contains no new NCU counters.
+
+Before the cache implementation below, the imported cost `.cu`, cost `.cuh` and projection-helper
+source files matched the checkout byte for byte. The existing optimizer library had SHA-256
+`4f0daa650ce1e88b349cc0f7b55b62f2ed70f5bc01334f498b63f2178a7ec55c`, matching the controlled
+store collection. Its SM 8.9 cost-kernel disassembly matches all 15,098 captured instructions
+after normalizing relocated control-flow targets, formatting and disassembler-only `.reuse`
+annotations; the current listing has an additional trailing branch and 13 padding NOPs.
+This supports using the older capture for the pre-cache cost implementation. It does not make
+the capture a measurement of the newer binary or prove equality of instruction encodings.
+
+The tables below average the three launches. Source instruction shares use the sum of NCU
+`inst_executed` source instances, including predicated-off instructions, as their denominator.
+They are warp instruction counts, not per-thread operations or elapsed-time percentages.
+Source attribution can move across inline expressions. PC sampling had no dropped bytes, but
+samples identify where warps wait, not an independently measured duration for each source line.
+
+### Local traffic has two distinct causes
+
+| Per cost launch on RTX 4090            | Free space | Hairpin 256 | Static-64 |
+| -------------------------------------- | ---------- | ----------- | --------- |
+| NCU replay duration, microseconds      | 424.309    | 500.064     | 847.584   |
+| Executed local-load warp instructions  | 933,888    | 933,888     | 933,888   |
+| Executed local-store warp instructions | 1,252,833  | 1,240,766   | 1,384,602 |
+| Local-load L1 sector requests          | 2,768,896  | 2,768,896   | 2,768,896 |
+| Local-store L1 sector requests         | 4,902,591  | 4,866,358   | 6,346,672 |
+| Local-load L1 hit rate                 | 26.78%     | 32.59%      | 15.52%    |
+
+Instruction rows use `smsp__sass_inst_executed_op_local_{ld,st}.sum`; sector rows use
+`l1tex__t_sectors_pipe_lsu_mem_local_op_{ld,st}.sum`. Each sector is 32 bytes. These are cache
+requests, including repeated accesses, not unique bytes or DRAM transfers. Kernel replay's
+cache policy also matters. Do not substitute these durations for the unprofiled phase means or
+convert the local request volume into an estimated wall-time saving. NVIDIA's
+[profiling guide](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html) describes the
+memory metrics and the distinction between measured traffic and theoretical source-sector counts.
+
+**Compiler register spilling is confirmed.** NCU reports exactly **2,080,768** for
+`sass__inst_executed_register_spilling` in each of the nine launches. Summing the source-level
+`LDL`/`STL` instruction counts, excluding the explicit circle-array stores below, gives the same
+value. This source count includes predication differently from the hardware instruction rows
+above; those totals should not be forced to agree. The existing cost kernel uses 64 registers
+and a 208-byte stack frame. The disassembler's separate `LOCAL:0` field does not mean that stack
+loads and stores are absent.
+
+Some conspicuous local loads are scalar cost terms kept alive across geometry evaluation.
+Seven `LDL` instructions attributed to `markSafetyViolation` at cost source line 156 restore
+values from fixed stack offsets; they are not loads of `crash_status`. Together they execute
+344,064 warp loads per launch, **36.8% of all local-load instructions**. Additional reloads
+feed the final sum at line 1882. The status itself is stored in shared memory. This makes live
+ranges in `computeStateCost` relevant, while warning against treating every source-line label
+as the logical owner of a memory access.
+
+**Addressable circle arrays create a separate avoidable fast-path cost.**
+[Circle generation](include/mppi/cost_functions/dubins/distance_map_texture.cuh#L104) fills four
+x/y coordinate pairs. The obstacle and road-border callers pass those arrays to out-of-line
+analytical fallbacks. The compiler emits two `STL.128` instructions for their coordinates before
+the texture path's successful return, although texture queries retain the coordinates in registers.
+The analytical distance fallbacks execute no calls in these nine launches; exact obstacle
+collision checks are a different path and do execute in static-64.
+
+The circle stores contribute 131,072 source warp instructions per launch in free space/hairpin
+(road border), and 262,144 in static-64 (road border plus obstacles). Accounting for active lanes
+and 16 bytes per store, their payload is **40.5 MiB and 81 MiB per launch**, respectively, including
+terminal queries. This is stored payload, not additional DRAM traffic. A higher register limit
+alone need not remove storage whose address escapes to a fallback.
+
+### Register headroom makes a small first experiment possible
+
+The cost launch has 80 threads, 11,520 bytes of dynamic shared memory and 1,024 bytes of
+driver-reserved shared memory per block. NCU reports an eight-block limit from shared memory,
+versus ten from registers at the current allocation. Eight blocks contain 24 warps: theoretical
+occupancy is 50% on this RTX 4090.
+
+The saved `launch__occupancy_per_register_count` table predicts **24 resident warps for 64–80
+registers per thread**, falling to 18 for 81–96. Thus a **64 versus 80 cost-only cap** is a useful
+first comparison. This is architecture/configuration-specific headroom, not proof of a speedup;
+the compiler may change scheduling or fail to remove enough spills to help.
+
+Do not globally replace the package's `--maxrregcount=64`, which would also change dynamics,
+sampling and other kernels. CUDA 12.8 supports a per-kernel `__maxnreg__` qualifier that overrides
+the file-wide cap; it cannot be combined with `__launch_bounds__` on the same kernel. See the
+[CUDA 12.8 register-limit documentation](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-c-programming-guide/index.html#maximum-number-of-registers-per-thread).
+An implementation should keep the experiment opt-in, scope it to this cost instantiation, record
+the selected cap, and retain compatibility with other supported CUDA versions and vendor users.
+
+### Geometry still explains substantial scene-dependent work
+
+| Source-attributed work, million warp instructions per launch | Free space | Hairpin 256 | Static-64 |
+| ------------------------------------------------------------ | ---------- | ----------- | --------- |
+| All attributed instructions                                  | 248.946    | 306.787     | 482.879   |
+| Projection helpers, excluding box intersection               | 122.169    | 172.502     | 123.382   |
+| Projection-helper share                                      | 49.07%     | 56.23%      | 25.55%    |
+| Exact obstacle loop plus box intersection                    | 0          | 0           | 191.822   |
+| Obstacle `cosf`/`sinf` lines, included in the preceding row  | 0          | 0           | 98.529    |
+
+Projection-helper attribution covers `path_tracking_geometry.cuh` through line 535; it excludes
+the cost caller's subsequent progress/yaw calculations. The obstacle row combines cost lines
+1110–1167 with the oriented-box helper, avoiding double counting the trig subset.
+
+**Obstacle orientations are repeated invariant work.** In
+[the exact collision loop](include/mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cu#L1147),
+`cosf(obs_yaw)` and `sinf(obs_yaw)` account for **20.40% of all static-64 instructions**.
+Each obstacle/timestep yaw is invariant across rollouts and optimizer iterations for the uploaded
+scene. Computing its axes once on the device per geometry generation could remove repeated
+transcendental work. Two arrays for 64 obstacles × 80 timesteps require 40 KiB.
+
+Preserve the same device `cosf`/`sinf` results; neither host trigonometry nor the approximate
+`__sincosf` already used by soft-distance geometry establishes bitwise parity. A cache needs explicit
+invalidation for count, yaw and prediction/hypothesis changes, correct stream ordering and buffer
+lifetime, and coverage of static/moving objects and dynamic cutoffs. Keep obstacle traversal order,
+first intersecting index, margins and SAT arithmetic. Avoid adding an unconditional 40 KiB host
+upload to every cycle. This is a separate optimization from distance-map reuse.
+
+**Projection pruning still pays to visit group bounds.** The hairpin has 32 groups versus ten
+for the straight path. The conservative lower-bound expression at helper line 401 accounts for
+35.752 million attributed instructions in the hairpin, versus 11.239 million in free space.
+Bounds use directed rounding, including a downward-rounded square root. A faster square root,
+squared-distance comparison or weaker tie rule is not an equivalent replacement without a
+numerical proof and adversarial parity coverage. A hierarchy over the existing groups is a later
+candidate if real query/candidate counts justify its additional traversal and storage.
+
+The existing captures do **not** cover grid crossings or overlapping groups. Their current cost
+means of 9.353 and 16.006 ms per ten-iteration call establish their importance, but do not identify
+their source-level bottleneck. In particular, poor group rejection in the overlapping scene is
+a hypothesis to measure. Sampled barrier waits in the static scene are consistent with uneven
+geometry work across the three warps in an 80-thread block; they do not justify removing any
+shared-memory/reduction synchronization.
+
+### Recommended experiment order and acceptance evidence
+
+1. **Cost-only register cap, 64 versus 80.** Keep arithmetic, block shape, shared memory, cache
+   policy and cooperative dynamics stores fixed. Inspect the resulting registers, stack and
+   spilling counters, then compare balanced repeated processes in both latency-only and phase
+   modes. Retain the existing default until the timing and correctness evidence supports changing it.
+2. **Keep circle arrays inside the analytical slow path.** Retain scalar coordinates for texture
+   queries and materialize addressable arrays only after a fallback is selected. Preserve coordinate
+   arithmetic, all-circle bounds checks, fetch/minimum order, radius handling and diagnostic index
+   behavior. Confirm the common-path `STL.128` stores disappear in compiled code. Cover invalid
+   textures, partial out-of-map circles, road/drivable boundaries and explicit closest-index queries.
+3. **Cache exact obstacle axes.** Measure the extra preparation cost as well as cost-kernel savings,
+   especially for moving/updated scenes. Exercise cache invalidation and compare collision decisions,
+   costs and indices against direct device trigonometry. Implement independently of steps 1–2 so
+   timing attribution remains possible.
+4. **Revisit projection traversal with representative evidence.** Add source-correlated captures
+   for overlapping groups and grid crossings, and obtain actual group/segment/fallback counts in
+   a separate diagnostic run. Preserve conservative bounds, global nearest selection, lowest-index
+   ties, endpoint conventions and degenerate geometry before considering a hierarchy.
+
+If step 1 leaves substantial scalar spills, a focused follow-up is shortening live ranges around
+the final cost sum. Keep the original left-associative addition order and inspect generated FMA
+contraction; apparently equivalent C++ regrouping can change bits. Do not mix that change into
+the register-cap comparison or remove zero-weight terms without preserving nonfinite behavior.
+
+For each candidate, retain raw cost/output and safety-flag parity checks, combined/split coverage,
+the full benchmark diagnostic comparisons, and appropriate memory/synchronization checks for
+changed storage. Compare both per-kernel counters and complete calls: lower local traffic or fewer
+instructions alone is insufficient. The existing captures justify these experiments, but provide
+no isolated percentage of runtime attributable to spills and no promised gain from eliminating them.
+
+This investigation read saved reports, source and existing-binary disassembly and updated this
+document. No build, test, benchmark, sanitizer, profiling capture or commit was run.
+
+### Exact obstacle-axis cache implementation and correctness validation
+
+The user targets devices that must retain the 64-register limit and selected obstacle trigonometry
+first. The package's `--maxrregcount=64`, launch shapes and shared-memory requests remain unchanged.
+The device exact obstacle intersection loop now reads precomputed cosine/sine values. A small
+`cacheObstacleAxesKernel` evaluates the same CUDA `cosf` and `sinf` once per obstacle/timestep after
+the runtime snapshot upload, on the cost object's existing stream. It computes the full horizon,
+including currently inactive moving-obstacle tails. No synchronization was added.
+
+Two arrays in the device cost object consume 40 KiB at 64 × 80, outside `RuntimeData`, so ordinary
+cycle uploads do not copy the cache. They share the cost object's allocation and teardown; no
+additional device allocation or pointer ownership is introduced. The host object also reserves
+this storage, and the initial whole-object setup copy includes it before device generation.
+CPU validation still evaluates its original host trigonometry, including fractional-step yaw.
+The soft-distance/map `__sincosf` path and ego orientation calculations are unchanged.
+
+Count changes and bitwise yaw changes invalidate the cache. Both obstacle setters inspect every
+written timestep, including prediction padding and a near-static trajectory replaced by a static
+pose. This catches signed-zero changes missed by numeric equality. Unchanged inputs, position/size
+updates, dynamic cutoffs and unrelated runtime updates reuse the axes. Batched updates launch at
+most one refresh at commit; clearing obstacles launches none. First setup and setup after teardown
+regenerate all active axes. `obstacleAxesBuildCount()` reports host launch counts for regression
+checks; `MPPI/obstacle_axes_build` exposes preparation time separately from snapshot upload and
+rollout cost in optional phase reports/NVTX traces.
+
+Four new `test_costs` cases check device trig bits (including signed zero, large angles and
+nonfinite inputs), reuse/invalidation, nondefault stream ordering and rebinding, setup/teardown,
+exact intersection decisions and first indices against the frozen previous device loop, and
+combined/split production rollouts across clear → rotated collision → clear updates. Static and
+moving obstacles, cutoff transitions, partial predictions, empty predictions and capacity 64 are
+covered. The tests share the existing CUDA translation unit to avoid the vendor header's known
+multiple-definition problem when linking additional CUDA files into `test_costs`.
+
+The user subsequently supplied successful execution output for the rebuilt test binary:
+
+- All seven selected cache, combined/split and zero-soft-weight safety tests passed.
+- The complete `test_costs` executable passed **53 tests across four suites**, including all
+  16 GPU cases. The seven selected tests are a subset of these 53, not additional distinct tests.
+- Each of memcheck, racecheck and synccheck passed all four new cache cases. Memcheck and synccheck
+  reported zero errors; racecheck reported zero hazards, zero errors and zero warnings.
+
+This establishes the covered numerical, invalidation, lifecycle and integration checks for the
+user's run. There is no failure here requiring a code correction. The console transcript does not
+include binary hashes or GPU metadata and does not establish validation on every target architecture.
+GTest/sanitizer durations are not optimizer performance measurements. The subsequent
+[benchmark and profiler results](#obstacle-axis-cache-performance-results-2026-11-07) assess full
+optimizer diagnostics and performance separately. See the
+[validation and profiling instructions](test/PERFORMANCE_BENCHMARKS.md#exact-obstacle-axis-cache-validation).
+The original 64/80-register experiment remains deferred for deployment compatibility. The
+circle-array change is the next recommended isolated optimization.
+
+## Obstacle-axis cache performance results: 2026-11-07
+
+**Decision: retain the cache.** The supplied runs show a 6.65% complete-call median reduction
+and a 16.21% cost-phase reduction in static-64. Smaller gains appear in the two other obstacle
+scenes. All stored numerical/outcome diagnostics match the pre-cache baseline. The cost kernel
+still uses 64 registers; its measured spill and local-memory counts are unchanged.
+
+### Evidence and comparison boundaries
+
+The new collections are:
+
+- `projection_repeat_20261107_001334_tVBLp2`: 128 benchmark reports, covering eight scenes,
+  four processes per combination of projection pruning and phase timing.
+- `projection_nsys_20261107_001825_tmYVE2`: three timelines and benchmark reports.
+- `projection_ncu_20261107_001833_Tr1iAK`: six NCU reports and benchmark reports, comprising
+  dynamics/cost captures for free space, hairpin-256 and static-64, with three launches per report.
+
+All 137 new JSON reports have valid measurements, zero unexpected outcomes and complete
+ten-iteration workloads. Offline checks reproduced their wall/CPU summary statistics from raw
+samples and checked the instrumented iteration/event counts. The repeated benchmark uses ten
+warmup calls and 100 measured calls per process; NSYS records 20 measured calls and NCU three.
+All use 16,384 rollouts, an 80-step horizon, seed 1, split rollout and cooperative dynamics stores.
+
+The three new manifests identify the same optimizer library, SHA-256
+`f4c06ea4ceaa20d9387ad5fa105814c6360cc9d53cd626d95186367ef4cb7d6d`. It also matches the current
+library used for offline resource inspection. The imported cost `.cu`/`.cuh`, projection helper
+and distance-texture helper match the checkout byte for byte in all three cost captures. The
+harness hash remains `f31f49f8e7f06b415445a6cddbb90195de70c96d6ba6ceb7bcfeb3b09554c023`.
+Configure-time revision strings remain stale; they are not the identity of this source change.
+
+Complete-call comparisons use only cooperative-store reports from
+`projection_stores_20261106_212505_4n792O`, with library
+`4f0daa650ce1e88b349cc0f7b55b62f2ed70f5bc01334f498b63f2178a7ec55c`. New timing rows use only
+pruning-on reports. Thus each table entry averages four independent process statistics with
+matching profile, hardware and workload metadata. The new runner alternates pruning, not cache
+implementations: these are historical before/after collections, not an alternating old/new binary
+experiment. The older NCU/NSYS baselines are the `20261106_112708_jQfTzB` and
+`20261106_112659_KLKvJD` collections assessed above.
+
+Each scene has an identical sequence of all stored first-call and measured-call diagnostics
+across its eight selected old processes and sixteen new processes, including both timing modes
+and both new pruning settings. Compared fields include baseline cost, eligible-rollout count,
+used/next lambda, completed/failed iteration, output point count, rejection and validation status.
+The nine new profiler-associated JSON sequences also match their corresponding repeat cycles.
+This strengthens optimizer-level regression evidence, but JSON summaries do not contain every
+output trajectory value and therefore do not establish bitwise equality of complete outputs.
+
+### Complete-call and phase timing
+
+All times below are milliseconds per ten-iteration call. Complete-call values are the mean of
+four latency-only process medians; cost values are the mean of four instrumented process means.
+Positive reductions mean faster. These separate timing modes must not be added or used to
+calculate the cost phase's fraction of uninstrumented wall time.
+
+| Scene                           | Complete call, before → after | Reduction | Cost GPU, before → after | Reduction |
+| ------------------------------- | ----------------------------- | --------- | ------------------------ | --------- |
+| `FreeSpaceCached`               | 14.802 → 14.838               | -0.24%    | 4.112 → 4.163            | -1.26%    |
+| `Hairpin256Cached`              | 15.981 → 15.982               | -0.01%    | 4.754 → 4.793            | -0.82%    |
+| `StaticObstacles64Cached`       | 19.315 → 18.031               | +6.65%    | 8.131 → 6.813            | +16.21%   |
+| `StaticObstacleGeometryUpdates` | 16.912 → 16.588               | +1.92%    | 5.616 → 5.293            | +5.75%    |
+| `GridBoundaryCrossings`         | 21.152 → 20.896               | +1.21%    | 9.353 → 9.113            | +2.57%    |
+| `ReferenceGeometryUpdates`      | 15.967 → 15.991               | -0.15%    | 4.727 → 4.763            | -0.76%    |
+| `ShortProjectionPath`           | 13.760 → 13.768               | -0.06%    | 3.072 → 3.083            | -0.37%    |
+| `OverlappingProjectionGroups`   | 26.816 → 26.826               | -0.04%    | 16.006 → 16.024          | -0.11%    |
+
+Static-64 saves 1.284 ms of complete-call median and 1.318 ms of instrumented cost time. Its
+process medians span 19.292–19.365 ms before and 18.007–18.049 ms after, with no overlap. The
+mean process p95 improves from 19.507 to 18.170 ms; process CPU mean falls from 19.362 to
+18.063 ms. Obstacle-update and grid median ranges also do not overlap their old ranges.
+Dynamics, sampling, weighting and reduction times remain close to their old levels.
+
+The five scenes without obstacles have median increases of 0.001–0.036 ms, at most 0.24%.
+Their cost-phase increases are 0.011–0.052 ms, at most 1.26%; they should not be described as
+improvements. These captures used unfixed clocks and occurred at different times. GPU snapshots
+show 45–65 °C in the new repeat collection versus 44–62 °C before, with no reported thermal
+slowdown. Such snapshots do not establish identical background load. The evidence supports an
+obstacle-specific gain with small other-scene changes, not a causal estimate of each small delta
+or a measured reduction in GPU utilization/power. Other deployment architectures remain unprofiled.
+
+### Kernel work, local traffic and cache preparation
+
+The NCU comparisons retain full-set kernel replay, cache control `all`, clock control `none`,
+100 skipped launches and three captured launches on the RTX 4090. Mean SM clocks are approximately
+2.51 GHz in both collections. Per-launch mean cost durations and hardware instruction counts are:
+
+| Scene       | Cost duration, before → after (µs) | Executed warp instructions, before → after (million) |
+| ----------- | ---------------------------------- | ---------------------------------------------------- |
+| Free space  | 424.309 → 427.755                  | 248.946 → 248.946                                    |
+| Hairpin 256 | 500.064 → 502.816                  | 306.787 → 306.787                                    |
+| Static-64   | 847.584 → 704.427                  | 482.883 → 380.283                                    |
+
+Static-64 therefore executes **21.25% fewer instructions** and has **16.89% lower captured kernel
+duration**. Imported source/SASS shows cached axis loads replacing the obstacle `cosf`/`sinf`
+expansions; ego trigonometry remains. Ordinary NSYS execution corroborates the gain: the sum of
+ten cost-kernel durations averages **8.165 → 6.848 ms** over the twenty measured calls. Dynamics
+is 3.324 → 3.318 ms in that timeline comparison. NCU's three replayed launches are not a substitute
+for complete-call latency distributions.
+
+The optimization trades arithmetic for reads. Static-64 aggregate L2 sectors rise from
+34.557 million to 40.635 million per captured launch, approximately **17.59%**, while DRAM read
+bytes stay near 81 MB. L2 throughput rises from 31.62% to 43.51% of sustained peak in the shorter
+kernel. These aggregate counters include all kernel traffic, not just axis loads; they do not
+imply that the cache added 17.59% DRAM traffic.
+
+The following counts are identical before and after for each corresponding cost launch:
+
+- Register-spill source metric: **2,080,768** per launch.
+- Hardware local-load instructions: **933,888** per launch; local stores average 1,252,833,
+  1,240,766 and 1,384,602 for free space, hairpin and static-64 respectively.
+- L1 local-load sectors: **2,768,896** per launch; local-store sectors average 4,902,591,
+  4,866,358 and 6,346,672 respectively.
+
+Cost allocation remains **64 registers and a 208-byte function stack frame**. Shared memory still
+limits residency to eight blocks, with 11,520 dynamic bytes plus 1,024 driver bytes per block.
+The separate `LOCAL:0` resource field still does not mean zero stack traffic. The circle arrays
+still contribute 131,072 source warp stores per launch in free space/hairpin and 262,144 in
+static-64. Dynamics retains 61 registers and zero measured local loads/stores in these captures.
+
+Cache preparation behaves as intended. Every instrumented repeat process with obstacles records
+one initial `MPPI/obstacle_axes_build` and none on its 100 measured calls, including position-only
+obstacle updates and translated grids. Empty-obstacle scenes record none. Static-64's initial
+CUDA-event range spans 24.096–37.088 µs; the smaller obstacle scenes span 3.872–8.480 µs. These
+event ranges include launch gaps. NSYS resolves one actual static-64 cache kernel of **1.568 µs**
+before the first rollout and no further cache launches. Per-cycle runtime upload remains 83,872
+bytes; the 40 KiB axis storage remains outside that snapshot. These stationary benchmark scenes
+do not measure the rebuild cost of continuously changing yaw or moving predictions.
+
+### Next step
+
+Keep the cache and the 64-register cap. The next isolated change should move addressable
+circle-coordinate arrays into the analytical fallback path, preserving scalar coordinates in
+successful texture queries. Require unchanged coordinate arithmetic, bounds/fetch/minimum order,
+radius handling and closest-index behavior; cover invalid textures and partially out-of-grid
+circles, combined/split safety, road borders and drivable boundaries. Inspect compiled code and
+the same local/spill counters to confirm that the fast-path stores disappear without replacement
+spills, then compare all eight scenes and stored diagnostics again. No speedup from that change
+has yet been measured.
+
+Projection traversal remains a later opportunity, especially for the 16.024 ms overlapping-group
+cost phase. These new source captures still omit overlapping groups and grid crossings; obtain
+representative source/candidate-count evidence before choosing a hierarchy or changing traversal.
+
+This analysis read saved reports, source and existing-binary resources and updated documentation.
+No build, test, benchmark, sanitizer, profiling capture or commit was run by the agent.
+
 ## Prioritized recommendations
 
 The list below retains the original static-review workstreams. Recommendation 1 led to the prepared
 and grouped projection changes assessed above. For the current pruned implementation, the
 derivative-storage and cooperative output-store changes have now been implemented and measured;
 the [controlled store comparison](#controlled-store-comparison-results-2026-11-07) is the primary
-evidence for the latter. The next investigation prioritizes cost evaluation, with sampling as a
-common-workload alternative. The remaining workstreams are conditional on their workload and profiling
+evidence for the latter. The [cost investigation](#cost-local-memory-and-remaining-geometry-2026-11-07)
+above identifies register pressure, circle-array fast-path storage and repeated obstacle orientation.
+The exact obstacle-axis cache has passed the supplied correctness/sanitizer checks and shows an
+[obstacle-scene performance gain](#obstacle-axis-cache-performance-results-2026-11-07). Circle-array
+storage is the next isolated target; the register-cap experiment remains deferred for 64-register
+targets. Projection traversal and sampling remain further workstreams.
+The remaining workstreams are conditional on their workload and profiling
 evidence. Effort estimates assume an engineer familiar with the package and include implementation
 and regression work: small is roughly 1–3 days, medium roughly 1–2 weeks, large several weeks.
 GPU access and review time are additional dependencies.

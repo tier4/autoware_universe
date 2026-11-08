@@ -223,6 +223,10 @@ public:
   mppi::memory::PinnedHostBuffer<RuntimeData> runtime_data_{};
   /** Value-initialized CPU storage before GPU setup; copied into the device-side cost object. */
   RuntimeData runtime_data_device_{};
+  /** Device-generated exact collision axes. Outside RuntimeData to avoid per-cycle uploads.
+   * Host validation continues to evaluate std::cos/std::sin directly from the stored yaw. */
+  float obstacle_cos_device_[kMaxObstacles][NUM_TIMESTEPS] = {};
+  float obstacle_sin_device_[kMaxObstacles][NUM_TIMESTEPS] = {};
   DistanceMapTextureState texture_state_{};
   bool distance_map_texture_debug_enabled_{false};
 
@@ -355,6 +359,9 @@ public:
     const float * half_width, int obstacle_count, int num_timesteps);
 
   void clearObstacles();
+
+  /** Host diagnostic: successful cache-build launches over this object's lifetime. */
+  std::uint64_t obstacleAxesBuildCount() const { return obstacle_axes_build_count_; }
 
   /** Local-frame vegetation points; rebuilt into the third static distance-map channel. */
   void setVegetationPoints(const std::vector<autoware::mppi_optimizer::VegetationPoint> & points);
@@ -522,6 +529,7 @@ private:
 
   __host__ void dataToDevice();
   __host__ void uploadDataToDevice();
+  __host__ void refreshObstacleAxes();
   __host__ bool updateDistanceMapGrid(
     DistanceMapTextureGrid & grid, int width, int height, float resolution);
   __host__ bool updateNearestSegmentMapGrid();
@@ -549,6 +557,8 @@ private:
   bool preferred_lane_center_texture_enabled_ = true;
   bool data_update_active_ = false;
   bool runtime_data_dirty_ = false;
+  bool obstacle_axes_dirty_ = true;
+  std::uint64_t obstacle_axes_build_count_ = 0;
   bool distance_map_refresh_pending_ = false;
   bool obstacle_geometry_dirty_ = false;
   bool road_border_geometry_dirty_ = false;
