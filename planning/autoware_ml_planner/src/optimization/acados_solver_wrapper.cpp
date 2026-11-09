@@ -136,9 +136,9 @@ AcadosSolverWrapper::AcadosSolverWrapper(
   // so they are written in solve(). Only the reference-independent settings are set here.
   impl_->params = params;
 
-  // Input bounds (all stages).
-  std::array<double, gen_nu> lbu{params.min_acceleration_mps2, -params.max_steering_rate_rps};
-  std::array<double, gen_nu> ubu{params.max_acceleration_mps2, params.max_steering_rate_rps};
+  // Input bounds (all stages): jerk and steering rate.
+  std::array<double, gen_nu> lbu{params.min_jerk_mps3, -params.max_steering_rate_rps};
+  std::array<double, gen_nu> ubu{params.max_jerk_mps3, params.max_steering_rate_rps};
   for (size_t stage = 0; stage < gen_n; ++stage) {
     ocp_nlp_constraints_model_set(
       impl_->config, impl_->dims, impl_->in, impl_->out, static_cast<int>(stage), "lbu",
@@ -148,9 +148,11 @@ AcadosSolverWrapper::AcadosSolverWrapper(
       ubu.data());
   }
 
-  // State bounds on v and delta (stages 1..N; stage 0 is the initial state equality).
-  std::array<double, 2> lbx{params.min_velocity_mps, -max_steering_angle_rad};
-  std::array<double, 2> ubx{params.max_velocity_mps, max_steering_angle_rad};
+  // State bounds on v, delta, and a (stages 1..N; stage 0 is the initial state equality).
+  std::array<double, 3> lbx{
+    params.min_velocity_mps, -max_steering_angle_rad, params.min_acceleration_mps2};
+  std::array<double, 3> ubx{
+    params.max_velocity_mps, max_steering_angle_rad, params.max_acceleration_mps2};
   for (size_t stage = 1; stage <= gen_n; ++stage) {
     ocp_nlp_constraints_model_set(
       impl_->config, impl_->dims, impl_->in, impl_->out, static_cast<int>(stage), "lbx",
@@ -209,8 +211,9 @@ SolverSolution AcadosSolverWrapper::solve(
   //   W_pos = R(yaw_ref) * diag(w_lon, w_lat) * R(yaw_ref)^T.
   // acados scales stage costs by dt; multiply by 1/dt (= N/Tf) so the configured weights
   // keep a per-sample magnitude (same convention as generate_solver.py).
-  // y = [x, y, yaw, v, delta, a, delta_rate]. The v and delta references remain zero unless
-  // another term supplies one, so their weights penalize state magnitude directly.
+  // y = [x, y, yaw, v, delta, a, jerk, delta_rate]. The v, delta, and a references remain
+  // zero unless another term supplies one, so their weights penalize state magnitude.
+  // Jerk is the longitudinal input and is regularized toward zero.
   //
   // Temporal consistency adds a second penalty on position, yaw and velocity whose
   // reference is the previous cycle's plan. Weights and references are written together
@@ -233,9 +236,11 @@ SolverSolution AcadosSolverWrapper::solve(
   };
 
   std::array<double, gen_ny * gen_ny> stage_weight_matrix{};
-  stage_weight_matrix[4 * gen_ny + 4] = unscale * impl_->params.weight_steering_angle;
-  stage_weight_matrix[5 * gen_ny + 5] = unscale * impl_->params.weight_acceleration;
-  stage_weight_matrix[6 * gen_ny + 6] = unscale * impl_->params.weight_steering_rate;
+  stage_weight_matrix[kDelta * gen_ny + kDelta] = unscale * impl_->params.weight_steering_angle;
+  stage_weight_matrix[kA * gen_ny + kA] = unscale * impl_->params.weight_acceleration;
+  stage_weight_matrix[kYJerk * gen_ny + kYJerk] = unscale * impl_->params.weight_jerk;
+  stage_weight_matrix[kYDeltaRate * gen_ny + kYDeltaRate] =
+    unscale * impl_->params.weight_steering_rate;
   std::array<double, gen_ny> yref{};
   for (size_t stage = 0; stage < gen_n; ++stage) {
     // Stage 0 tracks the (fixed) initial state, so its state penalties contribute no cost
@@ -285,7 +290,8 @@ SolverSolution AcadosSolverWrapper::solve(
       impl_->config, impl_->dims, impl_->in, static_cast<int>(stage), "W",
       stage_weight_matrix.data());
 
-    yref = {blended_position[0], blended_position[1], blended_yaw, blended_velocity, 0.0, 0.0, 0.0};
+    yref = {
+      blended_position[0], blended_position[1], blended_yaw, blended_velocity, 0.0, 0.0, 0.0, 0.0};
     ocp_nlp_cost_model_set(
       impl_->config, impl_->dims, impl_->in, static_cast<int>(stage), "yref", yref.data());
   }
@@ -312,7 +318,6 @@ SolverSolution AcadosSolverWrapper::solve(
     const auto goal_block = position_block(
       goal_terminal_reference->yaw, impl_->params.goal.weight_longitudinal,
       impl_->params.goal.weight_lateral);
-    // Same reference for both penalties here, so summing the weights is all that is needed.
     for (size_t i = 0; i < terminal_block.size(); ++i) {
       terminal_block[i] += goal_block[i];
     }
@@ -347,13 +352,15 @@ SolverSolution AcadosSolverWrapper::solve(
   terminal_weight_matrix[gen_nyn] = terminal_block[2];
   terminal_weight_matrix[2 * gen_nyn + 2] = terminal_yaw_weight;
   terminal_weight_matrix[3 * gen_nyn + 3] = terminal_velocity_weight;
-  terminal_weight_matrix[4 * gen_nyn + 4] = terminal_scale * impl_->params.weight_steering_angle;
+  terminal_weight_matrix[kDelta * gen_nyn + kDelta] =
+    terminal_scale * impl_->params.weight_steering_angle;
+  terminal_weight_matrix[kA * gen_nyn + kA] = terminal_scale * impl_->params.weight_acceleration;
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "W",
     terminal_weight_matrix.data());
 
   std::array<double, gen_nyn> yref_e{
-    terminal_position[0], terminal_position[1], terminal_yaw, terminal_velocity, 0.0};
+    terminal_position[0], terminal_position[1], terminal_yaw, terminal_velocity, 0.0, 0.0};
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "yref", yref_e.data());
 

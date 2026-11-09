@@ -16,10 +16,10 @@
 
 Solves the OCP against a pose-only reference (positions and headings, matching what the
 model outputs) and plots reference vs. solution (position, yaw, velocity, acceleration,
-steering angle, steering rate).
+jerk, steering angle, steering rate).
 
 Reference file format (whitespace-separated, one line per point):
-    line 1        : x0  ->  x y psi v delta          (initial state, base_link)
+    line 1        : x0  ->  x y psi v delta a        (initial state, base_link)
     lines 2..N+1  : ref ->  x y psi                  (one line per 0.1 s step, t=0.1..8.0)
 
 Without --input, a synthetic noisy curved reference is generated.
@@ -33,6 +33,7 @@ from pathlib import Path
 
 from generate_solver import DEFAULT_TERMINAL_WEIGHT_SCALE
 from generate_solver import DEFAULT_WEIGHT_ACCELERATION
+from generate_solver import DEFAULT_WEIGHT_JERK
 from generate_solver import DEFAULT_WEIGHT_STEERING
 from generate_solver import DEFAULT_WEIGHT_STEERING_RATE
 from generate_solver import DEFAULT_WEIGHT_VELOCITY
@@ -66,6 +67,7 @@ def set_weights(solver, x0, refs, w_lon, w_lat):
             DEFAULT_WEIGHT_VELOCITY,
             DEFAULT_WEIGHT_STEERING,
             DEFAULT_WEIGHT_ACCELERATION,
+            DEFAULT_WEIGHT_JERK,
             DEFAULT_WEIGHT_STEERING_RATE,
         ]
     )
@@ -73,7 +75,16 @@ def set_weights(solver, x0, refs, w_lon, w_lat):
         yaw = x0[2] if k == 0 else refs[k - 1, 2]
         W[:2, :2] = rotated_position_block(yaw, w_lon, w_lat)
         solver.cost_set(k, "W", unscale * W)
-    W_e = np.diag([0.0, 0.0, DEFAULT_WEIGHT_YAW, DEFAULT_WEIGHT_VELOCITY, DEFAULT_WEIGHT_STEERING])
+    W_e = np.diag(
+        [
+            0.0,
+            0.0,
+            DEFAULT_WEIGHT_YAW,
+            DEFAULT_WEIGHT_VELOCITY,
+            DEFAULT_WEIGHT_STEERING,
+            DEFAULT_WEIGHT_ACCELERATION,
+        ]
+    )
     W_e[:2, :2] = rotated_position_block(refs[-1, 2], w_lon, w_lat)
     solver.cost_set(HORIZON_N, "W", (DEFAULT_TERMINAL_WEIGHT_SCALE / unscale) * W_e)
 
@@ -88,13 +99,13 @@ def make_synthetic_reference(rng):
     y = np.cumsum(v * DT * np.sin(psi))
     x += rng.normal(0.0, 0.15, HORIZON_N)
     y += rng.normal(0.0, 0.15, HORIZON_N)
-    x0 = np.array([0.0, 0.0, 0.0, v, 0.0])
+    x0 = np.array([0.0, 0.0, 0.0, v, 0.0, 0.0])
     return x0, np.stack([x, y, psi], axis=1)
 
 
 def load_reference(path):
     data = np.loadtxt(path)
-    x0 = data[0, :5]
+    x0 = data[0, :6] if data.shape[1] >= 6 else np.pad(data[0, :5], (0, 1))
     refs = data[1:, :3]
     if refs.shape[0] < HORIZON_N:
         raise ValueError(f"need {HORIZON_N} reference lines, got {refs.shape[0]}")
@@ -102,7 +113,7 @@ def load_reference(path):
 
 
 def solve(solver, x0, refs, wheelbase):
-    ny = 7
+    ny = 8
     for stage in range(HORIZON_N + 1):
         solver.set(stage, "p", np.array([wheelbase]))
 
@@ -113,7 +124,7 @@ def solve(solver, x0, refs, wheelbase):
         yref = np.zeros(ny)
         yref[:3] = refs[k - 1]
         solver.set(k, "yref", yref)
-    yref_e = np.zeros(5)
+    yref_e = np.zeros(6)
     yref_e[:3] = refs[-1]
     solver.set(HORIZON_N, "yref", yref_e)
 
@@ -137,7 +148,7 @@ def plot(x0, refs, xs, us, output):
     t_x = np.arange(HORIZON_N + 1) * DT
     t_u = np.arange(HORIZON_N) * DT
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 8))
+    fig, axes = plt.subplots(2, 4, figsize=(18, 8))
     ax = axes[0][0]
     ax.plot(refs[:, 0], refs[:, 1], ".", ms=3, label="reference")
     ax.plot(xs[:, 0], xs[:, 1], "-", lw=1.5, label="optimized")
@@ -151,7 +162,8 @@ def plot(x0, refs, xs, us, output):
         [
             ("yaw [rad]", refs[:, 2], xs[:, 2], t_x),
             ("velocity [m/s]", None, xs[:, 3], t_x),
-            ("acceleration [m/s^2]", None, us[:, 0], t_u),
+            ("acceleration [m/s^2]", None, xs[:, 5], t_x),
+            ("jerk [m/s^3]", None, us[:, 0], t_u),
             ("steering angle [rad]", None, xs[:, 4], t_x),
             ("steering rate [rad/s]", None, us[:, 1], t_u),
         ],
