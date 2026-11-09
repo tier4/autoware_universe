@@ -459,17 +459,14 @@ struct ObjectFilter
    * @brief Construct a filter from allowed type names and speed thresholds.
    * @param object_type_strings Allowed object classes (see string_to_object_type).
    * @param stopped_velocity_th Used when filtering by target area for "moving" vs stopped.
-   * @param max_lateral_velocity_th Lateral speed threshold for the exiting-object heuristic [m/s].
    * @param safety_buffer Safety buffer to expand object shape [m].
    * @param traj_low_velocity_th Low velocity threshold for the trajectory [m/s].
    */
   ObjectFilter(
     const std::vector<std::string> & bbox_object_type_strings,
     const std::vector<std::string> & polygon_object_type_strings, const double stopped_velocity_th,
-    const double max_lateral_velocity_th, const double safety_buffer,
-    const double traj_low_velocity_th)
+    const double safety_buffer, const double traj_low_velocity_th)
   : stopped_velocity_th_(stopped_velocity_th),
-    max_lateral_velocity_th_(max_lateral_velocity_th),
     safety_buffer_(safety_buffer),
     traj_low_velocity_th_(traj_low_velocity_th)
   {
@@ -530,8 +527,7 @@ struct ObjectFilter
   void set_params(
     const std::vector<std::string> & bbox_object_type_strings,
     const std::vector<std::string> & polygon_object_type_strings, const double stopped_velocity_th,
-    const double max_lateral_velocity_th, const double safety_buffer,
-    const double traj_low_velocity_th)
+    const double safety_buffer, const double traj_low_velocity_th)
   {
     bbox_object_types_.clear();
     polygon_object_types_.clear();
@@ -544,7 +540,6 @@ struct ObjectFilter
       polygon_object_types_.emplace(string_to_object_type.at(object_type_string));
     }
     stopped_velocity_th_ = stopped_velocity_th;
-    max_lateral_velocity_th_ = max_lateral_velocity_th;
     safety_buffer_ = safety_buffer;
     traj_low_velocity_th_ = traj_low_velocity_th;
   }
@@ -553,7 +548,6 @@ private:
   std::unordered_set<ObjectType> bbox_object_types_;
   std::unordered_set<ObjectType> polygon_object_types_;
   double stopped_velocity_th_;
-  double max_lateral_velocity_th_;
   double safety_buffer_;
   double traj_low_velocity_th_;
 };
