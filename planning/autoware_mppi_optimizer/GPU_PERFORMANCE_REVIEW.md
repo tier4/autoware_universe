@@ -1728,6 +1728,57 @@ representative source/candidate-count evidence before choosing a hierarchy or ch
 This analysis read saved reports, source and existing-binary resources and updated documentation.
 No build, test, benchmark, sanitizer, profiling capture or commit was run by the agent.
 
+## Circle-coordinate scalar-call experiment: 2026-11-09 (reverted)
+
+This experiment passed eight circle coordinates by value into the obstacle, road-border and
+drivable-area analytical fallbacks, allocating indexed arrays only inside those functions. It
+preserved the existing arithmetic and 64-register cap. The user-supplied correctness run passed
+all four focused regression cases, all 57 `test_costs` cases, and 28 of 30 `test_distance_map`
+cases. The headless-only case skipped because a display environment was present; the visualizer
+case skipped after CUDA/OpenGL registration failed. Neither affected the geometry or rollout checks.
+
+The user also collected a matched set of 128 repeat reports, three NSYS timelines and six NCU
+reports for the experiment: `projection_repeat_20261109_001433_XBeYWj`,
+`projection_nsys_20261109_001927_jf7tu3` and `projection_ncu_20261109_001936_Nl3VDU`.
+Compare these with the cached-axis baseline `projection_repeat_20261107_001334_tVBLp2`,
+`projection_nsys_20261107_001825_tmYVE2` and `projection_ncu_20261107_001833_Tr1iAK`.
+All 137 new benchmark reports validated, and the stored call diagnostics matched the baseline
+for every scene, timing mode and pruning setting. The new repeat, NSYS and NCU captures share the
+same optimizer-library hash `25c65dd9c4561f5b40d1468ed84e8ea0dea52eb93de5629f29b5b7c134e6606c`.
+
+The pruning-on, cooperative-store repeat comparison gives the following means of four process
+medians for complete calls and means of four process cost-phase GPU means, in milliseconds per
+ten-iteration call:
+
+| Scene                   | Complete call, before → scalar | Cost GPU, before → scalar |
+| ----------------------- | ------------------------------ | ------------------------- |
+| Free space              | 14.838 → 14.898                | 4.163 → 4.168             |
+| Grid crossings          | 20.897 → 20.901                | 9.113 → 9.135             |
+| Hairpin 256             | 15.982 → 16.050                | 4.793 → 4.816             |
+| Overlapping groups      | 26.826 → 26.887                | 16.024 → 16.047           |
+| Reference updates       | 15.991 → 16.024                | 4.763 → 4.788             |
+| Short path              | 13.768 → 13.781                | 3.083 → 3.083             |
+| Static obstacle updates | 16.588 → 16.588                | 5.293 → 5.314             |
+| 64 static obstacles     | 18.031 → 18.002                | 6.813 → 6.810             |
+
+NCU source/SASS still shows the two fast-path `STL.128` circle-coordinate stores at
+`distance_map_texture.cuh:116–117`: 131,072 executed source warp stores per cost launch in free
+space/hairpin and 262,144 with 64 static obstacles, unchanged from baseline. With the scalar
+calls, `rolloutCostKernel` remains at 64 registers and a 1,024-byte stack, but register-spill
+instructions rise from 2,080,768 to 2,326,528 per launch; local loads rise from 933,888 to
+1,032,192 and local stores rise by about 147,456 per launch in the three profiled scenes. Local
+L1 load/store sectors also increase. The dynamics kernel's register and local-access metrics
+remain unchanged. NSYS cost phases are mixed and do not show a compensating gain.
+
+The experiment did not remove the target stores or improve complete-call latency. The source
+change and its experiment-specific tests were reverted; this section preserves the result.
+The before/after collections ran on separate days with unfixed clocks, so small timing changes
+alone cannot establish a regression. The unchanged store instruction and increased local traffic
+provide the stronger reason to reject this implementation. A future attempt must address circle
+generation and all uses of its addressable arrays across the complete caller path, then inspect
+SASS and dynamic local-access counters before claiming a benefit. No build, test, benchmark,
+sanitizer or profiler capture was run by the agent.
+
 ## Prioritized recommendations
 
 The list below retains the original static-review workstreams. Recommendation 1 led to the prepared
@@ -1737,9 +1788,11 @@ the [controlled store comparison](#controlled-store-comparison-results-2026-11-0
 evidence for the latter. The [cost investigation](#cost-local-memory-and-remaining-geometry-2026-11-07)
 above identifies register pressure, circle-array fast-path storage and repeated obstacle orientation.
 The exact obstacle-axis cache has passed the supplied correctness/sanitizer checks and shows an
-[obstacle-scene performance gain](#obstacle-axis-cache-performance-results-2026-11-07). Circle-array
-storage is the next isolated target; the register-cap experiment remains deferred for 64-register
-targets. Projection traversal and sampling remain further workstreams.
+[obstacle-scene performance gain](#obstacle-axis-cache-performance-results-2026-11-07). The
+[scalar-call circle experiment](#circle-coordinate-scalar-call-experiment-2026-11-09-reverted)
+failed to remove the target stores and was reverted; the register-cap experiment remains deferred
+for 64-register targets.
+Projection traversal and sampling remain further workstreams.
 The remaining workstreams are conditional on their workload and profiling
 evidence. Effort estimates assume an engineer familiar with the package and include implementation
 and regression work: small is roughly 1–3 days, medium roughly 1–2 weeks, large several weeks.
