@@ -727,8 +727,6 @@ void ObjectFilter::filter_by_target_area(
   constexpr double time_margin = 0.5;
   constexpr double kinematic_horizon = 10.0;
   constexpr double kinematic_time_step = 0.5;
-  // Parameter remains so existing configs load; the time-overlap check does not use it.
-  (void)max_lateral_velocity_th_;
 
   auto get_object_polygon = [&](const auto & pose, const auto & shape) {
     if (shape.type != Shape::POLYGON) {
