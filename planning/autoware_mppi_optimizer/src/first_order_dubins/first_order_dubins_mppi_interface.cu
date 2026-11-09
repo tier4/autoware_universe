@@ -897,7 +897,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     bool valid{false};
     Mppi::control_trajectory controls = Mppi::control_trajectory::Zero();
     builtin_interfaces::msg::Time stamp{};
-    Trajectory reference;
+    Trajectory reference{};
     FirstOrderDubinsMppiKinematicLimits kinematic_limits;
   };
   AcceptedWarmStart accepted_warm_start;

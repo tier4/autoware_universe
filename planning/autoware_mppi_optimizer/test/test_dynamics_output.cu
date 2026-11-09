@@ -78,7 +78,7 @@ std::vector<float> download(const float * device, const std::size_t count)
 
 std::array<dim3, 7> launchShapes()
 {
-  // Full X tiles, including partial warps, distinct Z distributions, and Y workers
+  // X widths spanning partial warps, distinct Z distributions, and Y workers
   // that own no components in the old copy. Include the deployed (32,2,1) shape.
   return {dim3(1, 1, 1),  dim3(32, 1, 1), dim3(32, 2, 1), dim3(31, 3, 2),
           dim3(16, 4, 2), dim3(8, 8, 2),  dim3(2, 32, 2)};
@@ -95,7 +95,8 @@ __global__ void copyOutputTiles(
     // Populate by the old per-rollout ownership, independently of the new flat copy.
     for (int c = threadIdx.y; c < OutputDim; c += blockDim.y) {
       tile[local * OutputDim + c] =
-        input[((threadIdx.z * rollouts + rollout) * steps + t) * OutputDim + c];
+        rollout < rollouts ? input[((threadIdx.z * rollouts + rollout) * steps + t) * OutputDim + c]
+                           : kSentinel;
     }
     __syncthreads();
     mppi::kernels::detail::storeRolloutOutputs<OutputDim>(output, tile, rollouts, steps, t);
@@ -114,33 +115,38 @@ void checkStoreCases()
   // Deliberately offset by one float: the helper must not require vector alignment.
   constexpr int guard = 1;
   for (const auto shape : launchShapes()) {
-    for (const int steps : {1, 3, kSteps}) {
-      for (const int step_stride : {1, 2}) {
-        SCOPED_TRACE(
-          ::testing::Message() << "outputs=" << OutputDim << " block=" << shape.x << ',' << shape.y
-                               << ',' << shape.z << " steps=" << steps
-                               << " stride=" << step_stride);
-        const int rollouts = kBlocks * shape.x;
-        const std::size_t count = shape.z * rollouts * steps * OutputDim;
-        std::vector<float> input(count + 2 * guard, kSentinel);
-        std::vector<float> expected(input.size(), kSentinel);
-        for (std::size_t i = 0; i < count; ++i) {
-          const std::uint32_t bits =
-            i % 17 < special.size() ? special[i % 17] : 0x3f000000U + static_cast<std::uint32_t>(i);
-          std::memcpy(&input[guard + i], &bits, sizeof(bits));
-          const int timestep = (i / OutputDim) % steps;
-          if (timestep % step_stride == 0) expected[guard + i] = input[guard + i];
+    for (const int rollouts :
+         {kBlocks * static_cast<int>(shape.x), kBlocks * static_cast<int>(shape.x) - 1, 1}) {
+      const int blocks = (rollouts + static_cast<int>(shape.x) - 1) / shape.x;
+      for (const int steps : {1, 3, kSteps}) {
+        for (const int step_stride : {1, 2}) {
+          SCOPED_TRACE(
+            ::testing::Message() << "outputs=" << OutputDim << " block=" << shape.x << ','
+                                 << shape.y << ',' << shape.z << " steps=" << steps
+                                 << " stride=" << step_stride << " rollouts=" << rollouts);
+          const std::size_t count = shape.z * rollouts * steps * OutputDim;
+          std::vector<float> input(count + 2 * guard, kSentinel);
+          std::vector<float> expected(input.size(), kSentinel);
+          for (std::size_t i = 0; i < count; ++i) {
+            const std::uint32_t bits = i % 17 < special.size()
+                                         ? special[i % 17]
+                                         : 0x3f000000U + static_cast<std::uint32_t>(i);
+            std::memcpy(&input[guard + i], &bits, sizeof(bits));
+            const int timestep = (i / OutputDim) % steps;
+            if (timestep % step_stride == 0) expected[guard + i] = input[guard + i];
+          }
+          DeviceBuffer source(input.size()), destination(input.size());
+          upload(source.data, input);
+          upload(destination.data, std::vector<float>(input.size(), kSentinel));
+          const auto shared_bytes = shape.x * shape.z * OutputDim * sizeof(float);
+          copyOutputTiles<OutputDim><<<blocks, shape, shared_bytes>>>(
+            source.data + guard, destination.data + guard, rollouts, steps, step_stride);
+          HANDLE_ERROR(cudaGetLastError());
+          HANDLE_ERROR(cudaDeviceSynchronize());
+          ASSERT_NO_FATAL_FAILURE(
+            expectSameBits(download(destination.data, input.size()), expected));
+          ASSERT_NO_FATAL_FAILURE(expectSameBits(download(source.data, input.size()), input));
         }
-        DeviceBuffer source(input.size()), destination(input.size());
-        upload(source.data, input);
-        upload(destination.data, std::vector<float>(input.size(), kSentinel));
-        const auto shared_bytes = shape.x * shape.z * OutputDim * sizeof(float);
-        copyOutputTiles<OutputDim><<<kBlocks, shape, shared_bytes>>>(
-          source.data + guard, destination.data + guard, rollouts, steps, step_stride);
-        HANDLE_ERROR(cudaGetLastError());
-        HANDLE_ERROR(cudaDeviceSynchronize());
-        ASSERT_NO_FATAL_FAILURE(expectSameBits(download(destination.data, input.size()), expected));
-        ASSERT_NO_FATAL_FAILURE(expectSameBits(download(source.data, input.size()), input));
       }
     }
   }
@@ -376,85 +382,94 @@ TEST_F(GpuDynamicsOutput, ProductionRolloutMatchesLegacyStoresBits)
     model.setControlRanges(limits);
     model.GPUSetup();
     for (auto shape : launchShapes()) {
-      SCOPED_TRACE(
-        ::testing::Message() << "delay=" << delay << " block=" << shape.x << ',' << shape.y << ','
-                             << shape.z);
-      const int rollouts = kBlocks * shape.x;
-      Sampler::SAMPLING_PARAMS_T sampling_params(rollouts, kSteps, shape.z);
-      sampling_params.use_same_noise_for_all_distributions = false;
-      Sampler sampler(sampling_params);
-      sampler.GPUSetup();
-      std::vector<float> initial(shape.z * Model::STATE_DIM + 2 * guard, kSentinel);
-      for (unsigned int z = 0; z < shape.z; ++z) {
-        float * x = initial.data() + guard + z * Model::STATE_DIM;
-        std::fill_n(x, Model::STATE_DIM, 0.0F);
-        x[static_cast<int>(S::VEL_X)] = z == 0 ? 0.0F : -2.0F;
-        x[static_cast<int>(S::POS_X)] = 5.0F + z;
-        x[static_cast<int>(S::POS_Y)] = -3.0F * z;
-        x[static_cast<int>(S::YAW)] = z == 0 ? -0.0F : 0.25F;
-        x[static_cast<int>(S::STEER_ANGLE)] = 0.1F;
-        x[static_cast<int>(S::PREVIOUS_STEER_CMD)] = 0.1F;
-        x[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] = z == 0 ? 1.0F : 0.0F;
-        for (int tap = 0; tap < Params::kMaxInputDelaySteps; ++tap) {
-          x[static_cast<int>(S::ACCEL_CMD_D0) + tap] = 0.125F * (tap + 1);
-          x[static_cast<int>(S::STEER_CMD_D0) + tap] = 0.025F * (tap - 3);
-        }
-      }
-      std::vector<float> commands(shape.z * rollouts * kSteps * Model::CONTROL_DIM);
-      for (unsigned int z = 0; z < shape.z; ++z) {
-        for (int rollout = 0; rollout < rollouts; ++rollout) {
-          for (int t = 0; t < kSteps; ++t) {
-            const int offset = ((z * rollouts + rollout) * kSteps + t) * Model::CONTROL_DIM;
-            commands[offset] = (t / 10 % 2 ? -7.0F : 5.0F) + 0.125F * (rollout % 7);
-            commands[offset + 1] = ((t / 8 + rollout + z) % 2 ? -0.6F : 0.6F);
+      // Include an undersized launch and a partial last block across Z distributions.
+      for (const int rollouts :
+           {kBlocks * static_cast<int>(shape.x), kBlocks * static_cast<int>(shape.x) - 1, 1}) {
+        const int blocks = (rollouts + static_cast<int>(shape.x) - 1) / shape.x;
+        SCOPED_TRACE(
+          ::testing::Message() << "delay=" << delay << " block=" << shape.x << ',' << shape.y << ','
+                               << shape.z << " rollouts=" << rollouts);
+        Sampler::SAMPLING_PARAMS_T sampling_params(rollouts, kSteps, shape.z);
+        sampling_params.use_same_noise_for_all_distributions = false;
+        Sampler sampler(sampling_params);
+        sampler.GPUSetup();
+        std::vector<float> initial(shape.z * Model::STATE_DIM + 2 * guard, kSentinel);
+        for (unsigned int z = 0; z < shape.z; ++z) {
+          float * x = initial.data() + guard + z * Model::STATE_DIM;
+          std::fill_n(x, Model::STATE_DIM, 0.0F);
+          x[static_cast<int>(S::VEL_X)] = z == 0 ? 0.0F : -2.0F;
+          x[static_cast<int>(S::POS_X)] = 5.0F + z;
+          x[static_cast<int>(S::POS_Y)] = -3.0F * z;
+          x[static_cast<int>(S::YAW)] = z == 0 ? -0.0F : 0.25F;
+          x[static_cast<int>(S::STEER_ANGLE)] = 0.1F;
+          x[static_cast<int>(S::PREVIOUS_STEER_CMD)] = 0.1F;
+          x[static_cast<int>(S::STEERING_COMMAND_HOLD_ACTIVE)] = z == 0 ? 1.0F : 0.0F;
+          for (int tap = 0; tap < Params::kMaxInputDelaySteps; ++tap) {
+            x[static_cast<int>(S::ACCEL_CMD_D0) + tap] = 0.125F * (tap + 1);
+            x[static_cast<int>(S::STEER_CMD_D0) + tap] = 0.025F * (tap - 3);
           }
         }
-      }
-      const std::size_t output_count = shape.z * rollouts * kSteps * Model::OUTPUT_DIM;
-      const std::vector<float> sentinel(output_count + 2 * guard, kSentinel);
-      DeviceBuffer input(initial.size()), actual(sentinel.size()), expected(sentinel.size());
-      upload(input.data, initial);
-      upload(actual.data, sentinel);
-      upload(expected.data, sentinel);
-      float * controls = sampler.getControlSample(0, 0, 0);
-      upload(controls, commands);
-      const auto shared_bytes =
-        mppi::kernels::calcRolloutDynamicsKernelSharedMemSize(&model, &sampler, shape);
-      legacyRolloutDynamics<<<kBlocks, shape, shared_bytes>>>(
-        model.model_d_, sampler.sampling_d_, kDt, kSteps, rollouts, input.data + guard,
-        expected.data + guard);
-      HANDLE_ERROR(cudaGetLastError());
-      HANDLE_ERROR(cudaDeviceSynchronize());
-      const auto expected_controls = download(controls, commands.size());
-      ASSERT_FALSE(std::equal(expected_controls.begin(), expected_controls.end(), commands.begin()))
-        << "Fixture must exercise constrained-control writes";
-      for (const bool cooperative : {false, true}) {
-        SCOPED_TRACE(::testing::Message() << "cooperative=" << cooperative);
-        // Both specializations start from the original samples and sentinel outputs.
-        upload(controls, commands);
-        upload(actual.data, sentinel);
-        if (cooperative) {
-          mppi::kernels::rolloutDynamicsKernel<Model, Sampler, true>
-            <<<kBlocks, shape, shared_bytes>>>(
-              model.model_d_, sampler.sampling_d_, kDt, kSteps, rollouts, input.data + guard,
-              actual.data + guard);
-        } else {
-          mppi::kernels::rolloutDynamicsKernel<Model, Sampler, false>
-            <<<kBlocks, shape, shared_bytes>>>(
-              model.model_d_, sampler.sampling_d_, kDt, kSteps, rollouts, input.data + guard,
-              actual.data + guard);
+        std::vector<float> commands(shape.z * rollouts * kSteps * Model::CONTROL_DIM);
+        for (unsigned int z = 0; z < shape.z; ++z) {
+          for (int rollout = 0; rollout < rollouts; ++rollout) {
+            for (int t = 0; t < kSteps; ++t) {
+              const int offset = ((z * rollouts + rollout) * kSteps + t) * Model::CONTROL_DIM;
+              commands[offset] = (t / 10 % 2 ? -7.0F : 5.0F) + 0.125F * (rollout % 7);
+              commands[offset + 1] = ((t / 8 + rollout + z) % 2 ? -0.6F : 0.6F);
+            }
+          }
         }
+        const std::size_t output_count = shape.z * rollouts * kSteps * Model::OUTPUT_DIM;
+        const std::vector<float> sentinel(output_count + 2 * guard, kSentinel);
+        DeviceBuffer input(initial.size()), actual(sentinel.size()), expected(sentinel.size());
+        upload(input.data, initial);
+        upload(actual.data, sentinel);
+        upload(expected.data, sentinel);
+        float * controls = sampler.getControlSample(0, 0, 0);
+        upload(controls, commands);
+        const auto shared_bytes =
+          mppi::kernels::calcRolloutDynamicsKernelSharedMemSize(&model, &sampler, shape);
+        // X=1 keeps the frozen reference's full-tile contract for any rollout count.
+        dim3 reference_shape(1, shape.y, shape.z);
+        const auto reference_shared_bytes =
+          mppi::kernels::calcRolloutDynamicsKernelSharedMemSize(&model, &sampler, reference_shape);
+        legacyRolloutDynamics<<<rollouts, reference_shape, reference_shared_bytes>>>(
+          model.model_d_, sampler.sampling_d_, kDt, kSteps, rollouts, input.data + guard,
+          expected.data + guard);
         HANDLE_ERROR(cudaGetLastError());
         HANDLE_ERROR(cudaDeviceSynchronize());
-        const auto values = download(actual.data, sentinel.size());
-        ASSERT_NO_FATAL_FAILURE(expectSameBits(values, download(expected.data, sentinel.size())));
-        ASSERT_NO_FATAL_FAILURE(
-          expectSameBits(download(controls, commands.size()), expected_controls));
-        ASSERT_NO_FATAL_FAILURE(expectSameBits(download(input.data, initial.size()), initial));
-        for (std::size_t i = 0; i < values.size(); ++i) {
-          ASSERT_TRUE(std::isfinite(values[i])) << "element=" << i;
-          const bool is_guard = i < guard || i >= guard + output_count;
-          ASSERT_EQ(values[i] == kSentinel, is_guard) << "element=" << i;
+        const auto expected_controls = download(controls, commands.size());
+        ASSERT_FALSE(
+          std::equal(expected_controls.begin(), expected_controls.end(), commands.begin()))
+          << "Fixture must exercise constrained-control writes";
+        for (const bool cooperative : {false, true}) {
+          SCOPED_TRACE(::testing::Message() << "cooperative=" << cooperative);
+          // Both specializations start from the original samples and sentinel outputs.
+          upload(controls, commands);
+          upload(actual.data, sentinel);
+          if (cooperative) {
+            mppi::kernels::rolloutDynamicsKernel<Model, Sampler, true>
+              <<<blocks, shape, shared_bytes>>>(
+                model.model_d_, sampler.sampling_d_, kDt, kSteps, rollouts, input.data + guard,
+                actual.data + guard);
+          } else {
+            mppi::kernels::rolloutDynamicsKernel<Model, Sampler, false>
+              <<<blocks, shape, shared_bytes>>>(
+                model.model_d_, sampler.sampling_d_, kDt, kSteps, rollouts, input.data + guard,
+                actual.data + guard);
+          }
+          HANDLE_ERROR(cudaGetLastError());
+          HANDLE_ERROR(cudaDeviceSynchronize());
+          const auto values = download(actual.data, sentinel.size());
+          ASSERT_NO_FATAL_FAILURE(expectSameBits(values, download(expected.data, sentinel.size())));
+          ASSERT_NO_FATAL_FAILURE(
+            expectSameBits(download(controls, commands.size()), expected_controls));
+          ASSERT_NO_FATAL_FAILURE(expectSameBits(download(input.data, initial.size()), initial));
+          for (std::size_t i = 0; i < values.size(); ++i) {
+            ASSERT_TRUE(std::isfinite(values[i])) << "element=" << i;
+            const bool is_guard = i < guard || i >= guard + output_count;
+            ASSERT_EQ(values[i] == kSentinel, is_guard) << "element=" << i;
+          }
         }
       }
     }

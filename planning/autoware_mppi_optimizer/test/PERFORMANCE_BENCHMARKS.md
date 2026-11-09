@@ -367,7 +367,7 @@ source install/setup.zsh
 build/autoware_mppi_optimizer/test_dynamics_output
 build/autoware_mppi_optimizer/test_dynamics_derivative
 build/autoware_mppi_optimizer/test_costs \
-  --gtest_filter='GpuCostEvaluation.CombinedAndSplitRollouts*:GpuCostEvaluation.VelocityDependentSteeringRatePropagationMatchesHost:GpuCostEvaluation.DelayedSteadyTurnAndCommandStepReplayMatchesHost'
+  --gtest_filter='CostEvaluation.ObstacleYawInvalidationUsesNumericComparisonAndSign:GpuCostEvaluation.CachedObstacleAxes*:GpuCostEvaluation.CombinedAndSplitRollouts*:GpuCostEvaluation.VelocityDependentSteeringRatePropagationMatchesHost:GpuCostEvaluation.DelayedSteadyTurnAndCommandStepReplayMatchesHost'
 ```
 
 `MPPI-Generic` is the package name for `src/vendor/mppi_generic_vendor`. Include it in the rebuild
@@ -380,6 +380,7 @@ alternate timestep writes. It compares every destination bit against a host refe
 signed zero, subnormals, infinities and NaN payloads. It also checks guards, unchanged inputs and
 untouched timesteps, using deliberately unaligned base pointers. Shapes cover `(32,2,1)`, partial
 warps, non-power-of-two Y, multiple X blocks/Z distributions, and workers with no copy work.
+Rollout counts cover full grids, partial final X blocks and a single rollout.
 
 `GpuDynamicsOutput.ProductionRolloutMatchesLegacyStoresBits` compares both production split dynamics
 specializations (legacy and cooperative stores) against a test-only frozen loop from vendor
@@ -387,8 +388,10 @@ specializations (legacy and cooperative stores) against a test-only frozen loop 
 controls; random generation is not invoked. All 13 outputs at every one of 80 timesteps and all
 constrained controls must match bit for bit. The test checks seven block shapes, three delay
 configurations, forward/reverse constraints, distinct distributions, guards and immutable initial
-states. The reference uses the existing model arithmetic so it specifically isolates the copy
-change; the separate derivative tests retain their independent arithmetic reference.
+states, with full and partial grids and a single rollout. The frozen reference uses X=1 so every
+reference block is complete for every rollout count. It retains the existing model arithmetic;
+the separate derivative tests retain their independent arithmetic reference. The combined/split
+cached-axis test also exercises the host launcher with 33 rollouts and a dynamics block width of 32.
 
 `GpuDynamicsOutput.ControlConstraintsMatchHostAcrossWorkers` checks the production device
 constraint method against serial host evaluation for 22 command/state cases, eight parameter

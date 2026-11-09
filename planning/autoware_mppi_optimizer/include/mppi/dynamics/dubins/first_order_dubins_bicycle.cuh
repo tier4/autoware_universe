@@ -210,8 +210,9 @@ public:
   void enforceConstraints(Eigen::Ref<state_array> state, Eigen::Ref<control_array> control);
 
   /**
-   * Device state-aware control filtering, partitioned by control component across Y workers.
-   * Call collectively with published state/controls; synchronize before consuming the result.
+   * Device state-aware control filtering on Y worker zero after a block barrier for parent clamps.
+   * All block threads must call with published state/controls, including padded rollout workers;
+   * synchronize again before consuming the result.
    */
   __device__ void enforceConstraints(float * state, float * control);
 

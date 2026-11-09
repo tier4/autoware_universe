@@ -1010,6 +1010,29 @@ protected:
   }
 };
 
+TEST_F(CostEvaluation, ObstacleYawInvalidationUsesNumericComparisonAndSign)
+{
+  EXPECT_FALSE(obstacleYawBitsDiffer(0.25F, 0.25F));
+  EXPECT_TRUE(obstacleYawBitsDiffer(0.25F, std::nextafter(0.25F, 1.0F)));
+  EXPECT_FALSE(obstacleYawBitsDiffer(0.0F, 0.0F));
+  EXPECT_FALSE(obstacleYawBitsDiffer(-0.0F, -0.0F));
+  EXPECT_TRUE(obstacleYawBitsDiffer(0.0F, -0.0F));
+  EXPECT_TRUE(obstacleYawBitsDiffer(-0.0F, 0.0F));
+  const float tiny = std::numeric_limits<float>::denorm_min();
+  EXPECT_FALSE(obstacleYawBitsDiffer(tiny, tiny));
+  EXPECT_TRUE(obstacleYawBitsDiffer(0.0F, tiny));
+  EXPECT_TRUE(obstacleYawBitsDiffer(-0.0F, -tiny));
+  const float infinity = std::numeric_limits<float>::infinity();
+  EXPECT_FALSE(obstacleYawBitsDiffer(infinity, infinity));
+  EXPECT_TRUE(obstacleYawBitsDiffer(infinity, -infinity));
+  // Numeric comparison deliberately invalidates every NaN, including identical payloads.
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_TRUE(obstacleYawBitsDiffer(nan, nan));
+  EXPECT_TRUE(obstacleYawBitsDiffer(nan, std::nanf("1")));
+  EXPECT_TRUE(obstacleYawBitsDiffer(nan, 0.0F));
+  EXPECT_TRUE(obstacleYawBitsDiffer(0.0F, nan));
+}
+
 TEST_F(GpuCostEvaluation, CachedObstacleAxesMatchDeviceTrigBitsAndSurviveSetup)
 {
   ObstacleAxesTestStream stream;
@@ -1427,7 +1450,8 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjectionAndSafetyFl
 TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseCachedObstacleAxes)
 {
   using Sampler = mppi::sampling_distributions::GaussianDistribution<FirstOrderDubinsBicycleParams>;
-  constexpr int rollouts = 32;
+  // Exercise the host launcher's rounded-up dynamics grid and both output-store variants.
+  constexpr int rollouts = 33;
   Sampler::SAMPLING_PARAMS_T sampling_params;
   sampling_params.num_rollouts = rollouts;
   sampling_params.num_timesteps = H;
@@ -1465,7 +1489,7 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseCachedObstacleAxes)
       } else {
         mppi::kernels::launchRolloutKernel(
           &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
-          dim3(32, 2, 1), 0, true, safety.data);
+          dim3(1, 2, 1), 0, true, safety.data);
       }
       std::array<int, rollouts> statuses{};
       std::array<float, rollouts> actual{};

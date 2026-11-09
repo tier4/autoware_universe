@@ -1779,6 +1779,37 @@ generation and all uses of its addressable arrays across the complete caller pat
 SASS and dynamic local-access counters before claiming a benefit. No build, test, benchmark,
 sanitizer or profiler capture was run by the agent.
 
+## Rollout bounds, yaw comparison and constraint synchronization follow-up
+
+The split launcher now accepts rollout counts that are not divisible by the dynamics block's X
+dimension. Its existing ceiling grid calculation covers the final partial block; sampler reads,
+constrained-control writes and both output-store paths mask invalid rollout indices. Padded
+workers initialize independent shared scratch from their distribution's initial state and still
+enter all dynamics and constraint calls, because these calls contain block barriers. Returning
+early or wrapping the entire dynamics step in an active-rollout condition would be unsafe.
+The zero-width block validation remains, since such a CUDA launch is invalid.
+
+The device bicycle constraint method now inserts a block barrier immediately after the parent
+clamps, then Y worker zero applies both state-aware filters. The previous ownership formula was
+consistent with the parent's current component partition; this revision removes that dependency
+and permits filters to read any clamped component. Callers must invoke it collectively and still
+synchronize before consuming the final controls. This adds a barrier per constraint call, so prior
+performance measurements do not establish its runtime cost.
+
+Yaw invalidation now uses `previous != next || std::signbit(previous) != std::signbit(next)`.
+This preserves signed-zero changes. It does **not** merge NaN payloads or normalize subnormals:
+every NaN comparison invalidates, even for identical payloads, and a nonzero subnormal remains
+different from zero under ordinary floating-point comparison. No CMake fast-math detection or
+`MPPI_PROJECTION_PRECISE_MATH` setting was changed.
+
+Regression coverage now includes partial output tiles across distributions, single-rollout
+launches, constrained controls and all 80 output timesteps against the frozen complete-block
+reference, plus a 33-rollout combined/split cost and safety comparison. The existing serial-host
+constraint matrix covers the new publication barrier across seven worker shapes. A new host test
+records the yaw comparison semantics, including repeated NaNs. Source and formatting checks were
+performed; builds, tests, sanitizers and profiling remain for user execution using the
+[output-store validation commands](test/PERFORMANCE_BENCHMARKS.md).
+
 ## Prioritized recommendations
 
 The list below retains the original static-review workstreams. Recommendation 1 led to the prepared

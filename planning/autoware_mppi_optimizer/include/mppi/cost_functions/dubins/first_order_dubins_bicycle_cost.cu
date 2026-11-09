@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <stdexcept>
 
 namespace
@@ -47,7 +46,8 @@ __global__ void cacheObstacleAxesKernel(
 inline bool obstacleYawBitsDiffer(const float & previous, const float & next)
 {
   // Floating-point equality misses +0 -> -0, which changes the exact sine bits.
-  return std::memcmp(&previous, &next, sizeof(float)) != 0;
+  // NaNs compare unequal even with identical payloads; nonzero subnormals remain distinct.
+  return previous != next || std::signbit(previous) != std::signbit(next);
 }
 
 struct CostPathBuffers
