@@ -86,7 +86,6 @@
           polygon: ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "unknown"]
           pointcloud: ["structure", "vegetation"]
         stopped_velocity_th: 0.3 # [m/s]
-        max_lateral_velocity_th: 1.0 # [m/s] max lateral velocity (w.r.t ego traj) to consider for obstacle stop
         safety_buffer: 0.1 # [m] safety buffer to expand object shape
         pointcloud_height_buffer: 0.2
         pointcloud_min_height: 0.2

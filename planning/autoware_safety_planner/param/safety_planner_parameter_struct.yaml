@@ -381,11 +381,6 @@ safety_planner:
         default_value: 0.3
         read_only: true
         description: velocity [m/s] below which an object is considered stopped
-      max_lateral_velocity_th:
-        type: double
-        default_value: 1.0
-        read_only: true
-        description: lateral velocity [m/s] above which a moving object is considered leaving the path
       safety_buffer:
         type: double
         default_value: 0.1

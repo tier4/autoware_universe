@@ -58,8 +58,8 @@ void ObstacleStop::on_initialize(const MinimumRuleBasedPlannerParams & params)
 
   object_filter_ = std::make_unique<trajectory_modifier::utils::obstacle_stop::ObjectFilter>(
     params_.objects.target_objects.bbox, params_.objects.target_objects.polygon,
-    params_.objects.stopped_velocity_th, params_.objects.max_lateral_velocity_th,
-    params_.objects.safety_buffer, params_.objects.low_velocity_th);
+    params_.objects.stopped_velocity_th, params_.objects.safety_buffer,
+    params_.objects.low_velocity_th);
 
   pub_filtered_pointcloud_ =
     get_node_ptr()->create_publisher<PointCloud2>("~/obstacle_stop/debug/filtered_points", 1);

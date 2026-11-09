@@ -75,7 +75,7 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
     const auto & p = params_.objects;
     object_filter_ = std::make_unique<utils::obstacle_stop::ObjectFilter>(
       p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
-      p.max_lateral_velocity_th, p.safety_buffer, p.low_velocity_th);
+      p.safety_buffer, p.low_velocity_th);
     pointcloud_filter_ =
       std::make_unique<utils::obstacle_stop::PointCloudFilter>(p.target_objects.pointcloud);
 
@@ -140,7 +140,7 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
     const auto & p = params_.objects;
     object_filter_->set_params(
       p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
-      p.max_lateral_velocity_th, p.safety_buffer, p.low_velocity_th);
+      p.safety_buffer, p.low_velocity_th);
     pointcloud_filter_->set_params(p.target_objects.pointcloud);
 
     lateral_margin_map_ = {

@@ -96,7 +96,6 @@
           polygon: ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "unknown"]
           pointcloud: ["structure", "vegetation"]
         stopped_velocity_th: 0.3 # velocity threshold for target object to be considered as stopped [m/s]
-        max_lateral_velocity_th: 1.0 # maximum lateral velocity threshold for target object [m/s]
         safety_buffer: 0.1       # safety buffer to expand object shape [m]
         pointcloud_height_buffer: 0.5
         pointcloud_min_height: 0.2
