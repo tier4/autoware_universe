@@ -140,6 +140,7 @@ PidLongitudinalController::PidLongitudinalController(
     m_enable_brake_keeping_before_stop =
       node.declare_parameter<bool>("enable_brake_keeping_before_stop");         // [-]
     m_brake_keeping_acc = node.declare_parameter<double>("brake_keeping_acc");  // [m/s^2]
+    m_brake_keep_dist = node.declare_parameter<double>("brake_keep_dist");      // [m]
   }
 
   // parameters for smooth stop state
@@ -904,7 +905,7 @@ PidLongitudinalController::Motion PidLongitudinalController::calcCtrlCmd(
         raw_ctrl_cmd.vel = control_data.interpolated_traj.points.at(control_data.target_idx)
                              .longitudinal_velocity_mps;
         raw_ctrl_cmd.acc = applyVelocityFeedback(control_data);
-        raw_ctrl_cmd = keepBrakeBeforeStop(control_data, raw_ctrl_cmd, target_idx);
+        raw_ctrl_cmd = keepBrakeBeforeStop(control_data, raw_ctrl_cmd);
 
         RCLCPP_DEBUG(
           logger_,
@@ -1105,34 +1106,22 @@ double PidLongitudinalController::applySlopeCompensation(
 }
 
 PidLongitudinalController::Motion PidLongitudinalController::keepBrakeBeforeStop(
-  const ControlData & control_data, const Motion & target_motion, const size_t nearest_idx) const
+  const ControlData & control_data, const Motion & target_motion) const
 {
   Motion output_motion = target_motion;
 
   if (m_enable_brake_keeping_before_stop == false) {
     return output_motion;
   }
-  const auto traj = control_data.interpolated_traj;
 
-  const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj.points);
-  if (!stop_idx) {
-    return output_motion;
-  }
-
-  double min_acc_before_stop = std::numeric_limits<double>::max();
-  size_t min_acc_idx = std::numeric_limits<size_t>::max();
-  for (int i = static_cast<int>(*stop_idx); i >= 0; --i) {
-    const auto ui = static_cast<size_t>(i);
-    if (traj.points.at(ui).acceleration_mps2 > static_cast<float>(min_acc_before_stop)) {
-      break;
-    }
-    min_acc_before_stop = traj.points.at(ui).acceleration_mps2;
-    min_acc_idx = ui;
-  }
-
-  const double brake_keeping_acc = std::max(m_brake_keeping_acc, min_acc_before_stop);
-  if (nearest_idx >= min_acc_idx && target_motion.acc > brake_keeping_acc) {
-    output_motion.acc = brake_keeping_acc;
+  // Keep the brake near the stop position without relying on a zero-velocity stop point.
+  // NaN stop_dist makes the range check false, so it never activates.
+  const bool is_near_stop =
+    0.0 <= control_data.stop_dist && control_data.stop_dist <= m_brake_keep_dist;
+  const bool is_weak_deceleration =
+    m_brake_keeping_acc < target_motion.acc && target_motion.acc < 0.0;
+  if (is_near_stop && is_weak_deceleration) {
+    output_motion.acc = m_brake_keeping_acc;
   }
 
   return output_motion;
