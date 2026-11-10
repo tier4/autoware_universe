@@ -31,6 +31,7 @@
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/GenericTrafficRules.h>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -38,6 +39,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace autoware::avoidance_target_detector
@@ -173,6 +175,10 @@ public:
   [[nodiscard]] std::vector<Segment> get_road_borders_around_trajectory(
     const Trajectory & trajectory, double margin) const;
 
+  /** Return road borders near the trajectory on the same elevation level. */
+  [[nodiscard]] std::vector<Segment> get_road_borders_around_trajectory(
+    const Trajectory & trajectory, double margin, double max_height_difference) const;
+
   [[nodiscard]] std::vector<Segment> get_drivable_area_around_trajectory(
     const Trajectory & trajectory, double margin) const;
 
@@ -235,6 +241,10 @@ private:
   RouteBounds extended_route_bounds_;
   std::unordered_map<lanelet::Id, std::size_t> lanelet_to_segment_index_;
   SegmentRtree road_borders_rtree_;
+  using ElevatedSegment = std::pair<Segment, std::array<double, 2>>;
+  using ElevatedSegmentRtree =
+    boost::geometry::index::rtree<ElevatedSegment, boost::geometry::index::rstar<16>>;
+  ElevatedSegmentRtree elevated_road_borders_rtree_;
   SegmentRtree original_bounds_rtree_;
   SegmentRtree extended_bounds_rtree_;
 };
