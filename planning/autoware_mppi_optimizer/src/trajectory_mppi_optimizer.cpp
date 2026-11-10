@@ -758,8 +758,9 @@ ProcessingResult TrajectoryMppiOptimizer::process(
       data.current_steering ? std::make_optional(*data.current_steering) : std::nullopt;
 
     const auto velocity_limit = velocity_limit_sub_->take_data();
-    auto kinematic_limits =
-      velocity_limit ? makeKinematicLimits(*velocity_limit) : FirstOrderDubinsMppiKinematicLimits{};
+    auto kinematic_limits = params_.limit_velocity_from_external && velocity_limit
+                              ? makeKinematicLimits(*velocity_limit)
+                              : FirstOrderDubinsMppiKinematicLimits{};
     if (params_.limit_velocity_from_map) {
       kinematic_limits.max_velocity_by_reference_point.reserve(input.points.size());
       for (const auto & point : input.points) {
