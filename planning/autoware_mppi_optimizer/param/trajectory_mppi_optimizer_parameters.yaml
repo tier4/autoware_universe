@@ -50,6 +50,11 @@ trajectory_mppi_optimizer:
     default_value: false
     description: Apply the lanelet velocity limit at each input reference trajectory point
     read_only: false
+  limit_velocity_from_external:
+    type: bool
+    default_value: false
+    description: Apply the subscribed external velocity limit to MPPI
+    read_only: false
   limit_velocity_from_map_debug_lanelet_ids:
     type: int_array
     default_value: []
