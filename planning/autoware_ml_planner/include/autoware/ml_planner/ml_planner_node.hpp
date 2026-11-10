@@ -243,6 +243,8 @@ private:
   BufferingPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
     this, "~/input/turn_indicators"};
   BufferingPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
+  NewestPollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped> sub_acceleration_{
+    this, "~/input/acceleration"};
   NewestPollingSubscriber<LaneletRoute> route_subscriber_{
     this, "~/input/route", rclcpp::QoS{1}.transient_local()};
   NewestPollingSubscriber<LaneletMapBin> vector_map_subscriber_{
