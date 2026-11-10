@@ -723,7 +723,8 @@ void MLPlanner::on_timer()
   }
 
   auto buffer_result = core_->update_buffer(
-    ego_kinematic_state, objects, traffic_signals, turn_indicators_ptr, temp_route_ptr);
+    ego_kinematic_state, objects, traffic_signals, turn_indicators_ptr, steering_reports,
+    temp_route_ptr);
   if (!buffer_result) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,

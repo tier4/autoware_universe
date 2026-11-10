@@ -110,15 +110,15 @@ Parameters can be set via YAML (see `config/ml_planner.param.yaml`).
 
 ## Inputs
 
-| Topic                     | Message Type                                        | Description                                                   |
-| ------------------------- | --------------------------------------------------- | ------------------------------------------------------------- |
-| `~/input/odometry`        | nav_msgs/msg/Odometry                               | Ego vehicle odometry                                          |
-| `~/input/tracked_objects` | autoware_perception_msgs/msg/TrackedObjects         | Detected dynamic objects                                      |
-| `~/input/traffic_signals` | autoware_perception_msgs/msg/TrafficLightGroupArray | Traffic light states                                          |
-| `~/input/vector_map`      | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map                                                  |
-| `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                             |
-| `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                    |
-| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (used by the trajectory optimization) |
+| Topic                     | Message Type                                        | Description                                                                                                            |
+| ------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `~/input/odometry`        | nav_msgs/msg/Odometry                               | Ego vehicle odometry                                                                                                   |
+| `~/input/tracked_objects` | autoware_perception_msgs/msg/TrackedObjects         | Detected dynamic objects                                                                                               |
+| `~/input/traffic_signals` | autoware_perception_msgs/msg/TrafficLightGroupArray | Traffic light states                                                                                                   |
+| `~/input/vector_map`      | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map                                                                                                           |
+| `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                                                                                      |
+| `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                                                                             |
+| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (ego history preprocessing and trajectory optimization; major version 6 models do not read it) |
 
 ## Services
 
