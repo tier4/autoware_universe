@@ -140,7 +140,7 @@ PidLongitudinalController::PidLongitudinalController(
     m_enable_brake_keeping_before_stop =
       node.declare_parameter<bool>("enable_brake_keeping_before_stop");         // [-]
     m_brake_keeping_acc = node.declare_parameter<double>("brake_keeping_acc");  // [m/s^2]
-    m_brake_keep_dist = node.declare_parameter<double>("brake_keep_dist");      // [m]
+    m_brake_keep_dist = node.declare_parameter<double>("brake_keep_dist", 2.0);      // [m]
   }
 
   // parameters for smooth stop state
@@ -350,6 +350,7 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalController::paramCallbac
     update_param("ff_scale_max", m_ff_scale_max);
     update_param("velocity_lookahead_time", m_velocity_lookahead_time);
     update_param("velocity_lookahead_blend_weight", m_velocity_lookahead_blend_weight);
+    update_param("brake_keep_dist", m_brake_keep_dist);
   }
 
   // stopping state
