@@ -33,7 +33,7 @@
       warning_brake_delay_s: 2.0
       warning_on_time_buffer_s: 0.20
       warning_off_time_buffer_s: 0.10
-      departure_risk_level: 3
+      departure_risk_level: 2
 
     hazard_warning:
       min_alert_duration: 0.5
@@ -41,7 +41,7 @@
     collision_validator:
       enable_warning: true
       braking:
-        reaction_times: [2.0, 1.5, 1.0] # descending; hazard levels 2 to 4
+        reaction_times: [2.0, 1.5, 1.0] # descending; risk levels LOW to HIGH
         deceleration: 6.0
       collision_cos_threshold: 0.0 # -1 disables the collision angle condition
       prediction_horizon: 5.0

@@ -313,7 +313,7 @@ void UncrossableBoundDepartureValidator::validate(
         departure.push_back(
           HazardSource{
             transform_polygon_to_base_link(point, kinematics.pose.pose), departure_risk_level_,
-            kinematics.header.stamp});
+            HazardSector::SOURCE_BOUNDARY_DEPARTURE, kinematics.header.stamp});
       }
     });
     hazard_sources.departure = std::move(departure);

@@ -19,7 +19,6 @@
 #include "autoware/control_validator/hazard_warning/hazard_warning_sources.hpp"
 
 #include <autoware_control_validator/control_validator_parameters.hpp>
-#include <autoware_control_validator/msg/hazard_alert.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
@@ -27,6 +26,7 @@
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/time.hpp>
 
+#include <autoware_internal_control_msgs/msg/hazard_alert.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <array>
@@ -70,7 +70,7 @@ public:
    * @param vehicle_info footprint whose centroid is the origin of the sector bearings
    * @return nullopt when disabled or when neither collision nor departure was evaluated
    */
-  std::optional<autoware_control_validator::msg::HazardAlert> make_alert(
+  std::optional<autoware_internal_control_msgs::msg::HazardAlert> make_alert(
     const HazardWarningSources & hazard_sources,
     const vehicle_info_utils::VehicleInfo & vehicle_info, const rclcpp::Time & now);
 
@@ -84,9 +84,9 @@ private:
   void build_wedges(const autoware_utils_geometry::Point2d & apex);
   void assign_sectors(
     const HazardWarningSources & hazard_sources, const autoware_utils_geometry::Point2d & apex,
-    std::array<uint8_t, hazard_warning::kNumSectors> & max_level,
+    std::array<hazard_warning::SectorState, hazard_warning::kNumSectors> & raw,
     std::array<HazardWarningSources, hazard_warning::kNumSectors> & sector_sources) const;
-  void publish_debug(const autoware_control_validator::msg::HazardAlert & alert) const;
+  void publish_debug(const autoware_internal_control_msgs::msg::HazardAlert & alert) const;
 
   rclcpp::Logger logger_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
