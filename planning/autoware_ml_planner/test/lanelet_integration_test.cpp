@@ -297,8 +297,7 @@ TEST_F(LaneletIntegrationTest, LaneTensorHoldsBoundaryPoints)
   map_to_ego(0, 3) = -origin.x();
   map_to_ego(1, 3) = -origin.y();
   map_to_ego(2, 3) = -origin.z();
-  const auto indices =
-    context.select_lane_segment_indices(map_to_ego, origin.x(), origin.y(), NUM_SEGMENTS_IN_LANE);
+  const auto indices = context.select_lane_segment_indices(map_to_ego, NUM_SEGMENTS_IN_LANE);
   ASSERT_FALSE(indices.empty());
 
   const auto [lanes, lane_types, speed_limits] =
