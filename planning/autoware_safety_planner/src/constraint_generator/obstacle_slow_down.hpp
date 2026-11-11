@@ -17,6 +17,9 @@
 
 #include "constraint_generator_interface.hpp"
 
+#include <autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_slow_down_utils.hpp>
+
+#include <optional>
 #include <string>
 
 namespace autoware::safety_planner::experimental
@@ -30,6 +33,18 @@ public:
   std::string get_name() const override { return "obstacle_slow_down"; }
 
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
+
+private:
+  using SlowDownParameters = trajectory_modifier::utils::obstacle_slow_down::SlowDownParameters;
+  using SlowDownPlanner = trajectory_modifier::utils::obstacle_slow_down::SlowDownPlanner;
+
+  //! Converted from params_ and validated on the first call, since params_ is only set after
+  //! construction
+  const SlowDownParameters & slow_down_parameters();
+
+  std::optional<SlowDownParameters> slow_down_parameters_;
+  //! Keeps the per-UUID entry/exit counters and the previous outputs across cycles
+  SlowDownPlanner slow_down_planner_;
 };
 
 }  // namespace autoware::safety_planner::experimental
