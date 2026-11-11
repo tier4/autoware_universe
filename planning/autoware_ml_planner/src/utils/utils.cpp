@@ -14,10 +14,15 @@
 
 #include "autoware/ml_planner/utils/utils.hpp"
 
+#include "autoware/ml_planner/dimensions.hpp"
+
+#include <xtensor/xview.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -115,6 +120,23 @@ xt::xarray<float> replicate_for_batch(const xt::xarray<float> & single_data, con
       batch_data.begin() + static_cast<std::ptrdiff_t>(batch * single_data.size()));
   }
   return batch_data;
+}
+
+void drop_steering_and_wheel_base(std::unordered_map<std::string, xt::xarray<float>> & input_map)
+{
+  auto & ego_history = input_map.at("ego_agent_past");
+  if (
+    ego_history.dimension() != 2 || ego_history.shape(1) != static_cast<size_t>(EGO_HISTORY_DIM)) {
+    throw std::invalid_argument("ego_agent_past must be (time, EGO_HISTORY_DIM)");
+  }
+  ego_history = xt::view(ego_history, xt::all(), xt::drop(EGO_AGENT_PAST_IDX_STEERING));
+  auto & ego_shape = input_map.at("ego_shape");
+  if (
+    ego_shape.dimension() != 1 ||
+    ego_shape.shape(0) != static_cast<size_t>(EGO_SHAPE_IDX_WHEEL_BASE + 1)) {
+    throw std::invalid_argument("ego_shape must end with the wheel base");
+  }
+  ego_shape = xt::view(ego_shape, xt::drop(EGO_SHAPE_IDX_WHEEL_BASE));
 }
 
 }  // namespace autoware::ml_planner::utils

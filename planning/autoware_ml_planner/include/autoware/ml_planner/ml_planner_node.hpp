@@ -39,6 +39,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/set_bool.hpp>
@@ -241,7 +242,9 @@ private:
     sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
   BufferingPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
     this, "~/input/turn_indicators"};
-  NewestPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
+  BufferingPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
+  NewestPollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped> sub_acceleration_{
+    this, "~/input/acceleration"};
   NewestPollingSubscriber<LaneletRoute> route_subscriber_{
     this, "~/input/route", rclcpp::QoS{1}.transient_local()};
   NewestPollingSubscriber<LaneletMapBin> vector_map_subscriber_{

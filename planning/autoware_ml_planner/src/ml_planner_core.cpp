@@ -53,7 +53,7 @@ bool optimization_params_changed(
          lhs.weight_lateral != rhs.weight_lateral || lhs.weight_yaw != rhs.weight_yaw ||
          lhs.weight_velocity != rhs.weight_velocity ||
          lhs.weight_steering_angle != rhs.weight_steering_angle ||
-         lhs.weight_acceleration != rhs.weight_acceleration ||
+         lhs.weight_acceleration != rhs.weight_acceleration || lhs.weight_jerk != rhs.weight_jerk ||
          lhs.weight_steering_rate != rhs.weight_steering_rate ||
          lhs.terminal_weight_scale != rhs.terminal_weight_scale ||
          lhs.goal.weight_longitudinal != rhs.goal.weight_longitudinal ||
@@ -67,6 +67,7 @@ bool optimization_params_changed(
          lhs.max_velocity_mps != rhs.max_velocity_mps ||
          lhs.min_acceleration_mps2 != rhs.min_acceleration_mps2 ||
          lhs.max_acceleration_mps2 != rhs.max_acceleration_mps2 ||
+         lhs.min_jerk_mps3 != rhs.min_jerk_mps3 || lhs.max_jerk_mps3 != rhs.max_jerk_mps3 ||
          lhs.max_steering_rate_rps != rhs.max_steering_rate_rps ||
          lhs.max_lateral_acceleration_mps2 != rhs.max_lateral_acceleration_mps2 ||
          lhs.max_sqp_iterations != rhs.max_sqp_iterations ||
@@ -227,6 +228,7 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
     traffic_signals,
   const std::vector<std::shared_ptr<const TurnIndicatorsReport>> & turn_indicators,
+  const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
   const LaneletRoute::ConstSharedPtr & route_ptr)
 {
   if (route_ptr) {
@@ -235,6 +237,11 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   for (const auto & msg : ego_kinematic_states) {
     if (msg) {
       ego_history_.push_back(*msg);
+    }
+  }
+  for (const auto & msg : steering_reports) {
+    if (msg) {
+      steering_history_.push_back(*msg);
     }
   }
   for (const auto & msg : turn_indicators) {
@@ -266,6 +273,9 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   if (turn_indicators_history_.empty()) {
     missing_inputs.emplace_back("turn indicators");
   }
+  if (steering_history_.empty()) {
+    missing_inputs.emplace_back("steering status");
+  }
   if (!missing_inputs.empty()) {
     std::string error{"Missing required input: "};
     for (size_t index = 0; index < missing_inputs.size(); ++index) {
@@ -280,6 +290,7 @@ MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
   return preprocess::FrameInputs{
     frame_time(),
     preprocess::MessageView<nav_msgs::msg::Odometry>{ego_history_.msgs()},
+    preprocess::MessageView<SteeringReport>{steering_history_.msgs()},
     preprocess::MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport>{
       turn_indicators_history_.msgs()},
     preprocess::MessageView<autoware_perception_msgs::msg::TrackedObjects>{objects_history_.msgs()},
@@ -306,6 +317,7 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   auto builder_output = std::move(single_input_result.value());
   selected_agents_ = std::move(builder_output.selected_agents);
   TensorMap single_input_data_map = std::move(builder_output.tensors);
+  utils::drop_steering_and_wheel_base(single_input_data_map);
 
   // Replicate for batch
   TensorMap input_data_map;
@@ -348,7 +360,8 @@ InferenceResult MLPlannerCore::run_inference(const TensorMap & input_data_map)
 
 PlannerOutput MLPlannerCore::create_planner_output(
   const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
-  const UUID & generator_uuid, const double current_steering_angle_rad)
+  const UUID & generator_uuid, const double current_steering_angle_rad,
+  const double current_acceleration_mps2)
 {
   // Derive the frame state from the raw message buffers
   const Odometry & kinematic_state = ego_history_.back();
@@ -405,7 +418,8 @@ PlannerOutput MLPlannerCore::create_planner_output(
         goal_pose = route_ptr_->goal_pose;
       }
       auto optimization_result = trajectory_optimizer_->optimize(
-        trajectory, kinematic_state, current_steering_angle_rad, static_cast<size_t>(i), goal_pose);
+        trajectory, kinematic_state, current_steering_angle_rad, current_acceleration_mps2,
+        static_cast<size_t>(i), goal_pose);
       if (i == 0) {
         output.optimization_debug.attempted = true;
         output.optimization_debug.optimized = optimization_result.optimized;
@@ -417,6 +431,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
     }
 #else
     (void)current_steering_angle_rad;
+    (void)current_acceleration_mps2;
 #endif
 
     if (optimization_failed) {

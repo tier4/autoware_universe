@@ -32,7 +32,8 @@ namespace autoware::ml_planner::preprocess
 {
 
 xt::xarray<float> create_ego_history(
-  const MessageView<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
+  const MessageView<nav_msgs::msg::Odometry> & odom_msgs,
+  const MessageView<autoware_vehicle_msgs::msg::SteeringReport> & steering_msgs, size_t num_timesteps,
   const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & reference_time)
 {
   constexpr size_t features_per_timestep = EGO_HISTORY_DIM;
@@ -110,6 +111,30 @@ xt::xarray<float> create_ego_history(
     }
 
     store_state(t, interpolated_pose, interpolated_velocity, interpolated_yaw_rate);
+  }
+
+  // Steering is linearly interpolated on the same grid, holding the edge values outside
+  // the steering message range.
+  if (!steering_msgs.empty()) {
+    size_t steering_index = 0;
+    for (size_t t = 0; t < num_timesteps; ++t) {
+      const double target_sec = ref_sec - static_cast<double>(num_timesteps - 1 - t) * dt;
+      for (; steering_index + 1 < steering_msgs.size(); ++steering_index) {
+        if (target_sec <= stamp_to_sec(steering_msgs[steering_index + 1].stamp)) {
+          break;
+        }
+      }
+      const auto & before = steering_msgs[steering_index];
+      double steering = before.steering_tire_angle;
+      if (steering_index + 1 < steering_msgs.size()) {
+        const auto & after = steering_msgs[steering_index + 1];
+        const double t0 = stamp_to_sec(before.stamp);
+        const double t1 = stamp_to_sec(after.stamp);
+        const double ratio = (t1 > t0) ? std::clamp((target_sec - t0) / (t1 - t0), 0.0, 1.0) : 0.0;
+        steering += ratio * (after.steering_tire_angle - before.steering_tire_angle);
+      }
+      ego_agent_past(t, EGO_AGENT_PAST_IDX_STEERING) = static_cast<float>(steering);
+    }
   }
 
   return ego_agent_past;

@@ -63,6 +63,10 @@ struct TrajectoryModifierData
     nullptr};
   std::size_t external_velocity_limit_clear_revision{0U};
   SemanticSpeedTracker semantic_speed_tracker;
+  // Same batch snapshot as the external limit. Null when no scenario max velocity has arrived.
+  bool has_scenario_max_velocity_snapshot{false};
+  autoware_internal_planning_msgs::msg::VelocityLimit::ConstSharedPtr scenario_max_velocity{
+    nullptr};
 };
 
 }  // namespace autoware::trajectory_modifier
