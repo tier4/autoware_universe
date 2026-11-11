@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/ml_planner/constants.hpp"
 #include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 
@@ -66,8 +67,8 @@ protected:
 TEST_F(RoadBorderSplitTest, KeepsEveryOriginalPoint)
 {
   // Irregular spacing, including points closer than any resampling step would produce.
-  const std::vector<std::pair<double, double>> raw{
-    {0.0, 0.0}, {0.3, 0.1}, {7.0, 0.0}, {7.2, 2.0}, {30.0, 2.0}, {31.0, 2.5}, {80.0, 2.5}};
+  const std::vector<std::pair<double, double>> raw{{0.0, 0.0},  {0.3, 0.1},  {7.0, 0.0}, {7.2, 2.0},
+                                                   {30.0, 2.0}, {31.0, 2.5}, {80.0, 2.5}};
   add_road_border(raw);
   const auto map = convert_to_internal_lanelet_map(lanelet_map_ptr_);
   const auto points = flatten(map.road_borders);
@@ -80,13 +81,13 @@ TEST_F(RoadBorderSplitTest, FillsGapsAndSplitsIntoFixedSizePieces)
 {
   add_road_border({{0.0, 0.0}, {200.0, 0.0}});
   const auto map = convert_to_internal_lanelet_map(lanelet_map_ptr_);
-  // 200 m at <= 5 m spacing gives 41 points, split into pieces of 20 sharing end points.
+  // 200 m at <= 2.5 m spacing gives 81 points, split into pieces of 20 sharing end points.
   ASSERT_GE(map.road_borders.size(), 2u);
   for (size_t i = 0; i < map.road_borders.size(); ++i) {
     const auto & points = map.road_borders[i].points;
     ASSERT_EQ(points.size(), static_cast<size_t>(POINTS_PER_ROAD_BORDER));
     for (size_t j = 1; j < points.size(); ++j) {
-      EXPECT_LE((points[j] - points[j - 1]).norm(), 5.0 + 1e-9);
+      EXPECT_LE((points[j] - points[j - 1]).norm(), constants::ROAD_BORDER_MAX_STEP_M + 1e-9);
     }
   }
   EXPECT_EQ(map.road_borders.front().points.front(), LanePoint(0.0, 0.0, 0.0));
@@ -120,7 +121,7 @@ TEST_F(RoadBorderSplitTest, PiecesDoNotOverlap)
   }
 }
 
-TEST_F(RoadBorderSplitTest, ShortBorderIsPaddedWithMidpoints)
+TEST_F(RoadBorderSplitTest, ShortBorderIsFilledByDividingEdges)
 {
   add_road_border({{0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}});
   const auto map = convert_to_internal_lanelet_map(lanelet_map_ptr_);

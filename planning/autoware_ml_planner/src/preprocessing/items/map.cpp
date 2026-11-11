@@ -112,12 +112,17 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
 }
 
 /**
- * @brief Densify a line string and split it into pieces of exactly num_points points.
+ * @brief Split a line string into pieces of exactly num_points points, keeping every original
+ * point.
  *
- * Every original point is kept. Gaps longer than max_step_m are filled with linearly
- * interpolated points. The points are then divided as evenly as possible into the fewest pieces
- * of at most num_points points; consecutive pieces share their end point and never overlap.
- * Each piece is filled up to num_points by inserting midpoints on its longest gaps.
+ * 1. Every original edge is divided evenly into the fewest steps of at most max_step_m.
+ * 2. The steps are divided as evenly as possible into the fewest pieces of at most
+ *    num_points - 1 steps; consecutive pieces share their end point and never overlap.
+ * 3. Each piece is filled up to num_points - 1 steps: one step at a time goes to the part of an
+ *    original edge in the piece with the longest step, and that part is divided evenly again.
+ *
+ * Every step is at most max_step_m, and steps within one original edge stay equal, so the
+ * spacing stays close to max_step_m except where the original points are closer than that.
  */
 std::vector<Polyline> split_line_string(
   const Polyline & input, const size_t num_points, const double max_step_m)
@@ -125,46 +130,79 @@ std::vector<Polyline> split_line_string(
   if (input.empty() || num_points < 2) {
     return {};
   }
-  if (input.size() == 1) {
-    return {Polyline(num_points, input.front())};
-  }
 
   constexpr double k_epsilon = 1e-6;
-  const double safe_max_step_m = std::max(max_step_m, k_epsilon);
-  Polyline dense;
-  dense.push_back(input.front());
-  for (size_t i = 1; i < input.size(); ++i) {
-    const LanePoint & from = input[i - 1];
-    const LanePoint & to = input[i];
-    const auto n_steps =
-      static_cast<size_t>(std::max(1.0, std::ceil((to - from).norm() / safe_max_step_m)));
-    for (size_t step = 1; step < n_steps; ++step) {
-      const double t = static_cast<double>(step) / static_cast<double>(n_steps);
-      dense.emplace_back(from + t * (to - from));
+  Polyline points{input.front()};
+  for (const auto & point : input) {
+    if ((point - points.back()).norm() > k_epsilon) {
+      points.push_back(point);
     }
-    dense.push_back(to);
+  }
+  if (points.size() == 1) {
+    return {Polyline(num_points, points.front())};
   }
 
-  // Fewest pieces such that each holds at most num_points points (num_points - 1 gaps).
-  const size_t n_gaps = dense.size() - 1;
-  const size_t n_pieces = (n_gaps + num_points - 2) / (num_points - 1);
+  // A straight part of the line string, divided evenly into n_steps steps.
+  struct Part
+  {
+    LanePoint from;
+    LanePoint to;
+    size_t n_steps;
+
+    double step_length() const { return (to - from).norm() / static_cast<double>(n_steps); }
+    void append_to(Polyline & polyline) const
+    {
+      for (size_t step = 1; step < n_steps; ++step) {
+        const double t = static_cast<double>(step) / static_cast<double>(n_steps);
+        polyline.emplace_back(from + t * (to - from));
+      }
+      polyline.push_back(to);
+    }
+  };
+
+  // 1. Divide every original edge into steps of at most max_step_m.
+  const double safe_max_step_m = std::max(max_step_m, k_epsilon);
+  Polyline dense{points.front()};
+  std::vector<size_t> edge_of_step;
+  for (size_t i = 1; i < points.size(); ++i) {
+    const Part edge{
+      points[i - 1], points[i],
+      static_cast<size_t>(
+        std::max(1.0, std::ceil((points[i] - points[i - 1]).norm() / safe_max_step_m)))};
+    edge.append_to(dense);
+    edge_of_step.insert(edge_of_step.end(), edge.n_steps, i - 1);
+  }
+
+  // 2. Fewest pieces such that each holds at most num_points - 1 steps.
+  const size_t n_steps = edge_of_step.size();
+  const size_t n_pieces = (n_steps + num_points - 2) / (num_points - 1);
   std::vector<Polyline> result;
   result.reserve(n_pieces);
   for (size_t piece_index = 0; piece_index < n_pieces; ++piece_index) {
-    const size_t begin = piece_index * n_gaps / n_pieces;
-    const size_t end = (piece_index + 1) * n_gaps / n_pieces;
-    Polyline piece(
-      dense.begin() + static_cast<std::ptrdiff_t>(begin),
-      dense.begin() + static_cast<std::ptrdiff_t>(end + 1));
-    while (piece.size() < num_points) {
-      size_t longest = 1;
-      for (size_t i = 2; i < piece.size(); ++i) {
-        if ((piece[i] - piece[i - 1]).norm() > (piece[longest] - piece[longest - 1]).norm()) {
-          longest = i;
-        }
+    const size_t begin = piece_index * n_steps / n_pieces;
+    const size_t end = (piece_index + 1) * n_steps / n_pieces;
+    std::vector<Part> parts;
+    for (size_t step = begin; step < end; ++step) {
+      if (!parts.empty() && edge_of_step[step] == edge_of_step[step - 1]) {
+        parts.back().to = dense[step + 1];
+        ++parts.back().n_steps;
+      } else {
+        parts.push_back(Part{dense[step], dense[step + 1], 1});
       }
-      const LanePoint midpoint = 0.5 * (piece[longest - 1] + piece[longest]);
-      piece.insert(piece.begin() + static_cast<std::ptrdiff_t>(longest), midpoint);
+    }
+
+    // 3. Fill up to num_points - 1 steps, dividing the part with the longest step again.
+    for (size_t step_count = end - begin; step_count < num_points - 1; ++step_count) {
+      const auto longest = std::max_element(
+        parts.begin(), parts.end(),
+        [](const Part & a, const Part & b) { return a.step_length() < b.step_length(); });
+      ++longest->n_steps;
+    }
+
+    Polyline piece{parts.front().from};
+    piece.reserve(num_points);
+    for (const auto & part : parts) {
+      part.append_to(piece);
     }
     result.push_back(std::move(piece));
   }
@@ -183,8 +221,7 @@ std::vector<LanePoint> convert_to_polyline(const T & line_string) noexcept
 }
 }  // namespace
 
-LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr)
+LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lanelet_map_ptr)
 {
   LaneletMap lanelet_map;
   lanelet_map.lane_segments.reserve(lanelet_map_ptr->laneletLayer.size());
