@@ -38,6 +38,10 @@ constexpr double MAX_ROUTE_SEGMENT_YAW_DIFF_RAD = M_PI / 3.0;
 // sites this leaves out 0.1-0.6% of the lanelets within 150 m, all 6.4 m or more above or below.
 constexpr double MAX_SAME_LEVEL_HEIGHT_DIFF_M = 4.0;
 constexpr double SAME_LEVEL_HEIGHT_DIFF_PER_DISTANCE = 0.05;
+// Maximum distance between consecutive road border points; longer gaps are divided evenly by
+// linear interpolation. Original points are always kept. A road border piece of
+// POINTS_PER_ROAD_BORDER points is at most (POINTS_PER_ROAD_BORDER - 1) * this long.
+constexpr double ROAD_BORDER_MAX_STEP_M = 2.5;
 
 }  // namespace autoware::ml_planner::constants
 
