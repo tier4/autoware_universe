@@ -277,6 +277,47 @@ TEST_F(LaneletIntegrationTest, CheckReasonableCoordinateRanges)
   }
 }
 
+TEST_F(LaneletIntegrationTest, LaneTensorHoldsBoundaryPoints)
+{
+  using autoware::ml_planner::LB_X;
+  using autoware::ml_planner::LB_Y;
+  using autoware::ml_planner::NUM_SEGMENTS_IN_LANE;
+  using autoware::ml_planner::POINTS_PER_SEGMENT;
+  using autoware::ml_planner::RB_X;
+  using autoware::ml_planner::RB_Y;
+  using autoware::ml_planner::SEGMENT_POINT_DIM;
+
+  const autoware::ml_planner::preprocess::LaneSegmentContext context(lanelet_map_ptr_);
+  const auto lane_segments = convert_to_internal_lanelet_map(lanelet_map_ptr_);
+  ASSERT_FALSE(lane_segments.lane_segments.empty());
+
+  // Ego at the first point of the first lane; map to ego frame by translation only
+  const auto & origin = lane_segments.lane_segments.front().centerline.front();
+  Eigen::Matrix4d map_to_ego = Eigen::Matrix4d::Identity();
+  map_to_ego(0, 3) = -origin.x();
+  map_to_ego(1, 3) = -origin.y();
+  map_to_ego(2, 3) = -origin.z();
+  const auto indices =
+    context.select_lane_segment_indices(map_to_ego, origin.x(), origin.y(), NUM_SEGMENTS_IN_LANE);
+  ASSERT_FALSE(indices.empty());
+
+  const auto [lanes, lane_types, speed_limits] =
+    context.create_tensor_data_from_indices(map_to_ego, indices, NUM_SEGMENTS_IN_LANE);
+  ASSERT_EQ(lanes.shape(2), static_cast<size_t>(SEGMENT_POINT_DIM));
+
+  // Each point holds the left and right boundary points in the ego frame, without the centerline
+  constexpr double tolerance_m = 1e-4;
+  for (size_t s = 0; s < std::min(indices.size(), static_cast<size_t>(NUM_SEGMENTS_IN_LANE)); ++s) {
+    const auto & segment = lane_segments.lane_segments[indices[s]];
+    for (int64_t p = 0; p < POINTS_PER_SEGMENT; ++p) {
+      EXPECT_NEAR(lanes(s, p, LB_X), segment.left_boundary[p].x() - origin.x(), tolerance_m);
+      EXPECT_NEAR(lanes(s, p, LB_Y), segment.left_boundary[p].y() - origin.y(), tolerance_m);
+      EXPECT_NEAR(lanes(s, p, RB_X), segment.right_boundary[p].x() - origin.x(), tolerance_m);
+      EXPECT_NEAR(lanes(s, p, RB_Y), segment.right_boundary[p].y() - origin.y(), tolerance_m);
+    }
+  }
+}
+
 int main(int argc, char ** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);
