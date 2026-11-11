@@ -136,6 +136,9 @@ tl::expected<plugin::InputData, std::string> TrajectoryModifier::make_input_data
   input.external_velocity_limit = context_->external_velocity_limit.active_limit();
   input.external_velocity_limit_clear_revision =
     context_->external_velocity_limit.clear_revision();
+  context_->refresh_scenario_max_velocity();
+  input.has_scenario_max_velocity_snapshot = true;
+  input.scenario_max_velocity = context_->scenario_max_velocity();
   input.current_odometry = sub_current_odometry_.take_data();
   input.current_acceleration = sub_current_acceleration_.take_data();
   input.predicted_objects = sub_objects_.take_data();

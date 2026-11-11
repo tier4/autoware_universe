@@ -11,6 +11,7 @@ generate_parameter_library(trajectory_modifier_param
 
 ament_auto_add_library(${PROJECT_NAME}_utils SHARED
   src/trajectory_modifier_utils/utils.cpp
+  src/trajectory_modifier_utils/set_max_velocity.cpp
   src/trajectory_modifier_utils/obstacle_stop_utils.cpp
 )
 
