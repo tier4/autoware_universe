@@ -27,6 +27,7 @@
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
@@ -48,19 +49,23 @@ struct VehicleSpec
   double base_link_to_front;
   double vehicle_length;
   double vehicle_width;
+  double wheel_base;
 
   VehicleSpec(
-    const double base_link_to_front, const double vehicle_length, const double vehicle_width)
+    const double base_link_to_front, const double vehicle_length, const double vehicle_width,
+    const double wheel_base)
   : base_link_to_front(base_link_to_front),
     vehicle_length(vehicle_length),
-    vehicle_width(vehicle_width)
+    vehicle_width(vehicle_width),
+    wheel_base(wheel_base)
   {
   }
 
   explicit VehicleSpec(const autoware::vehicle_info_utils::VehicleInfo & info)
   : base_link_to_front(info.wheel_base_m + info.front_overhang_m),
     vehicle_length(info.front_overhang_m + info.wheel_base_m + info.rear_overhang_m),
-    vehicle_width(info.left_overhang_m + info.wheel_tread_m + info.right_overhang_m)
+    vehicle_width(info.left_overhang_m + info.wheel_tread_m + info.right_overhang_m),
+    wheel_base(info.wheel_base_m)
   {
   }
 };
@@ -80,6 +85,7 @@ struct FrameInputs
 {
   rclcpp::Time frame_time;  ///< Reference time (newest sample of every history grid).
   MessageView<nav_msgs::msg::Odometry> ego_history;
+  MessageView<autoware_vehicle_msgs::msg::SteeringReport> steering_history;
   MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport> turn_indicators_history;
   MessageView<autoware_perception_msgs::msg::TrackedObjects> objects_history;
   MessageView<autoware_perception_msgs::msg::TrafficLightGroupArray> traffic_signals_history;

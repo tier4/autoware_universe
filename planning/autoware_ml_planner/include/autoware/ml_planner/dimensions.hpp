@@ -48,8 +48,9 @@ inline constexpr int64_t EGO_AGENT_PAST_IDX_Y = 1;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_COS = 2;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_SIN = 3;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_VELOCITY = 4;
-inline constexpr int64_t EGO_AGENT_PAST_IDX_YAW_RATE = 5;
-inline constexpr int64_t EGO_HISTORY_DIM = 6;
+inline constexpr int64_t EGO_AGENT_PAST_IDX_STEERING = 5;
+inline constexpr int64_t EGO_AGENT_PAST_IDX_YAW_RATE = 6;
+inline constexpr int64_t EGO_HISTORY_DIM = 7;
 
 // Index for each field
 inline constexpr int64_t X = 0;
@@ -80,7 +81,10 @@ inline constexpr std::array<int64_t, 2> TURN_INDICATOR_LOGIT_SHAPE = {1, TURN_IN
 
 inline constexpr std::array<int64_t, 4> INITIAL_NOISE_SHAPE = {
   1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
-inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, EGO_HISTORY_DIM};
+// Model inputs. The preprocessing builds the ego states with the steering angle
+// (EGO_HISTORY_DIM columns) and ego_shape with the wheel base, but the model (major version 6)
+// reads neither: utils::drop_steering_and_wheel_base removes them before inference.
+inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, EGO_HISTORY_DIM - 1};
 inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {
   1, MAX_NUM_NEIGHBORS, INPUT_T + 1, POSE_DIM};
 inline constexpr std::array<int64_t, 3> AGENT_SHAPE_SHAPE = {1, MAX_NUM_NEIGHBORS, 2};
@@ -105,6 +109,8 @@ inline constexpr std::array<int64_t, 4> STOP_LINES_SHAPE = {
 inline constexpr std::array<int64_t, 4> ROAD_BORDERS_SHAPE = {
   1, NUM_ROAD_BORDERS, POINTS_PER_ROAD_BORDER, 2};
 inline constexpr std::array<int64_t, 2> GOAL_POSE_SHAPE = {1, POSE_DIM};
+// ego_shape from the preprocessing: [base_link_to_front, vehicle_length, vehicle_width, wheel_base]
+inline constexpr int64_t EGO_SHAPE_IDX_WHEEL_BASE = 3;
 inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 3};
 inline constexpr std::array<int64_t, 2> TURN_INDICATORS_SHAPE = {1, INPUT_T + 1};
 // Per-segment history of the associated traffic light state
