@@ -56,7 +56,6 @@ struct InputData
   bool has_scenario_max_velocity_snapshot{false};
   autoware_internal_planning_msgs::msg::VelocityLimit::ConstSharedPtr scenario_max_velocity{
     nullptr};
-  SemanticSpeedTracker semantic_speed_tracker;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin
