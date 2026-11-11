@@ -136,6 +136,9 @@ tl::expected<plugin::InputData, std::string> TrajectoryModifier::make_input_data
   input.external_velocity_limit = context_->external_velocity_limit.active_limit();
   input.external_velocity_limit_clear_revision =
     context_->external_velocity_limit.clear_revision();
+  context_->refresh_scenario_max_velocity();
+  input.has_scenario_max_velocity_snapshot = true;
+  input.scenario_max_velocity = context_->scenario_max_velocity();
   input.current_odometry = sub_current_odometry_.take_data();
   input.current_acceleration = sub_current_acceleration_.take_data();
   input.predicted_objects = sub_objects_.take_data();
@@ -222,126 +225,6 @@ void TrajectoryModifier::update_params()
   } catch (const std::exception & e) {
     RCLCPP_WARN(this->get_logger(), "Failed to update parameters: %s", e.what());
   }
-}
-
-tl::expected<TrajectoryModifierData, std::string> TrajectoryModifier::make_input_data()
-{
-  TrajectoryModifierData data;
-  context_->refresh_external_velocity_limit();
-  data.has_external_velocity_limit_snapshot = true;
-  data.external_velocity_limit = context_->external_velocity_limit.active_limit();
-  data.external_velocity_limit_clear_revision = context_->external_velocity_limit.clear_revision();
-  context_->refresh_scenario_max_velocity();
-  data.has_scenario_max_velocity_snapshot = true;
-  data.scenario_max_velocity = context_->scenario_max_velocity();
-  data.current_odometry = sub_current_odometry_.take_data();
-  data.current_acceleration = sub_current_acceleration_.take_data();
-  data.current_steering = sub_current_steering_.take_data();
-  data.predicted_objects = sub_objects_.take_data();
-  data.tracked_objects = sub_tracked_objects_.take_data();
-  data.obstacle_pointcloud = sub_pointcloud_.take_data();
-  data.route = sub_route_.take_data();
-  data.traffic_light_signals = sub_traffic_lights_.take_data();
-  data.lanelet_map = lanelet_map_ptr_;
-  data.lanelet_map_bin = lanelet_map_bin_ptr_;
-
-  if (!data.current_odometry || !data.current_acceleration) {
-    return tl::make_unexpected("Data is not ready: odometry or acceleration is not set");
-  }
-  if (!data.predicted_objects) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 1000, "Missing data: predicted_objects is not set");
-  }
-  if (!data.obstacle_pointcloud) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 1000, "Missing data: obstacle_pointcloud is not set");
-  }
-  if (!data.route) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: route is not set");
-  }
-  if (!data.traffic_light_signals) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 1000, "Missing data: traffic_light_signals is not set");
-  }
-  if (!data.lanelet_map) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: lanelet_map is not set");
-  }
-  return data;
-}
-
-void TrajectoryModifier::publish_processing_time(const double processing_time_ms)
-{
-  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "processing_time_ms", processing_time_ms);
-}
-
-void TrajectoryModifier::on_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch;
-  stop_watch.tic(__func__);
-
-  if (param_listener_->is_old(params_)) {
-    update_params();
-  }
-
-  const auto input = make_input_data();
-  if (!input) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s", input.error().c_str());
-    publish_processing_time(stop_watch.toc(__func__));
-    return;
-  }
-
-  CandidateTrajectories output = *msg;
-  std::string modified_instances;
-  for (std::size_t candidate_index = 0; candidate_index < output.candidate_trajectories.size();
-       ++candidate_index) {
-    auto & candidate = output.candidate_trajectories.at(candidate_index);
-    auto data = input.value();
-    data.candidate_header = candidate.header;
-    data.candidate_index = candidate_index;
-    data.candidate_count = output.candidate_trajectories.size();
-    for (auto & modifier_plugin : plugins_) {
-      const auto result = modifier_plugin->process(candidate.points, data);
-      modifier_plugin->publish_debug_data("trajectory_" + std::to_string(candidate_index));
-      // Always publish so inspection-only plugins (ModelPlanningFactorID) can emit factors
-      // without mutating the trajectory. An empty publish also clears stale factors.
-      modifier_plugin->publish_planning_factor();
-      if (result != plugin::ProcessingResult::Modified) {
-        continue;
-      }
-      if (!modified_instances.empty()) {
-        modified_instances += ", ";
-      }
-      modified_instances += modifier_plugin->get_short_name();
-    }
-    if (candidate.points.size() < 3) {
-      candidate.points =
-        autoware::trajectory_modifier::utils::generate_three_point_stopped_trajectory(
-          candidate.points, *data.current_odometry);
-    }
-  }
-
-  if (!modified_instances.empty()) {
-    RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 1000, "Trajectory was modified by %s",
-      modified_instances.c_str());
-  }
-
-  trajectories_pub_->publish(output);
-  if (output.candidate_trajectories.empty()) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "Received an empty candidate trajectory array; skipping selected trajectory output");
-    publish_processing_time(stop_watch.toc(__func__));
-    return;
-  }
-
-  Trajectory selected;
-  selected.header = output.candidate_trajectories.front().header;
-  selected.points = output.candidate_trajectories.front().points;
-  trajectory_pub_->publish(selected);
-  publish_processing_time(stop_watch.toc(__func__));
 }
 
 }  // namespace autoware::trajectory_modifier
