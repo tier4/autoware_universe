@@ -187,6 +187,7 @@ private:
   double m_velocity_lookahead_blend_weight{0.5};
   bool m_enable_brake_keeping_before_stop;
   double m_brake_keeping_acc;
+  double m_brake_keep_dist;
 
   // smooth stop
   SmoothStop m_smooth_stop;
@@ -390,11 +391,10 @@ private:
 
   /**
    * @brief keep target motion acceleration negative before stop
-   * @param [in] traj reference trajectory
-   * @param [in] motion delay compensated target motion
+   * @param [in] control_data control data (stop_dist is used)
+   * @param [in] target_motion delay compensated target motion
    */
-  Motion keepBrakeBeforeStop(
-    const ControlData & control_data, const Motion & target_motion, const size_t nearest_idx) const;
+  Motion keepBrakeBeforeStop(const ControlData & control_data, const Motion & target_motion) const;
 
   /**
    * @brief interpolate trajectory point that is nearest to vehicle
