@@ -626,20 +626,15 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
     // Process each point in the segment
     for (int64_t i = 0; i < POINTS_PER_SEGMENT; ++i) {
-      // Center (0, 1)
-      const Eigen::Vector4d center = transform_matrix * convert_to_vector4d(centerline[i]);
-      tensor_data(added_segments, i, X) = static_cast<float>(center.x());
-      tensor_data(added_segments, i, Y) = static_cast<float>(center.y());
-
-      // Left (2, 3)
+      // Left (0, 1)
       const Eigen::Vector4d left = transform_matrix * convert_to_vector4d(left_boundary[i]);
-      tensor_data(added_segments, i, LB_X) = static_cast<float>(left.x() - center.x());
-      tensor_data(added_segments, i, LB_Y) = static_cast<float>(left.y() - center.y());
+      tensor_data(added_segments, i, LB_X) = static_cast<float>(left.x());
+      tensor_data(added_segments, i, LB_Y) = static_cast<float>(left.y());
 
-      // Right (4, 5)
+      // Right (2, 3)
       const Eigen::Vector4d right = transform_matrix * convert_to_vector4d(right_boundary[i]);
-      tensor_data(added_segments, i, RB_X) = static_cast<float>(right.x() - center.x());
-      tensor_data(added_segments, i, RB_Y) = static_cast<float>(right.y() - center.y());
+      tensor_data(added_segments, i, RB_X) = static_cast<float>(right.x());
+      tensor_data(added_segments, i, RB_Y) = static_cast<float>(right.y());
     }
 
     speed_limit_tensor(added_segments, 0) = lane_segment.speed_limit_mps.value_or(0.0f);
