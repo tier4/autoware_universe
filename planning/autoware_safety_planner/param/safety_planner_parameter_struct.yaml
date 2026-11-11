@@ -164,6 +164,7 @@ safety_planner:
       - autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator
       - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
       - autoware::safety_planner::experimental::ObstacleStopConstraintGenerator
+      - autoware::safety_planner::experimental::ObstacleSlowDownConstraintGenerator
     read_only: true
     description: fully qualified class names of the constraint generator plugins to load
 
@@ -445,6 +446,200 @@ safety_planner:
         default_value: 1.5
         read_only: true
         description: "[s]"
+
+  # The obstacle_slow_down of motion_velocity_planner (objects only), emitted as SpeedLimitZones
+  obstacle_slow_down:
+    obstacle_filtering:
+      object_types:
+        type: string_array
+        default_value:
+          - car
+          - truck
+          - bus
+          - trailer
+          - motorcycle
+          - bicycle
+          - pedestrian
+        read_only: true
+        description: classes of the objects to slow down for
+        validation:
+          subset_of<>: [[car, truck, bus, trailer, motorcycle, bicycle, pedestrian, unknown]]
+          unique<>: null
+      min_lat_margin:
+        type: double
+        default_value: -10.0
+        read_only: true
+        description: "[m] objects with a clearance to the trajectory band at/below this are left to obstacle_stop"
+      max_lat_margin:
+        type: double
+        default_value: 1.0
+        read_only: true
+        description: "[m] clearance to the trajectory band below which an object is slowed down for; the entry/exit clearances are this -/+ lat_hysteresis_margin / 2"
+      lat_hysteresis_margin:
+        type: double
+        default_value: 0.2
+        read_only: true
+        description: "[m] hysteresis on max_lat_margin between entering and leaving the slow down condition"
+        validation:
+          gt_eq<>: [0.0]
+      max_lat_velocity:
+        type: double
+        default_value: 3.0
+        read_only: true
+        description: "[m/s] objects moving laterally faster than this are not slowed down for"
+        validation:
+          gt<>: [0.0]
+      successive_num_to_entry_slow_down_condition:
+        type: int
+        default_value: 5
+        read_only: true
+        description: number of cycles meeting the condition before an object is slowed down for
+        validation:
+          gt<>: [0]
+      successive_num_to_exit_slow_down_condition:
+        type: int
+        default_value: 5
+        read_only: true
+        description: number of cycles failing the condition before an object is released
+        validation:
+          gt<>: [0]
+    slow_down_planning:
+      slow_down_min_acc:
+        type: double
+        default_value: -1.0
+        read_only: true
+        description: "[m/s^2] the deceleration the slow down is planned with"
+        validation:
+          lt<>: [0.0]
+      slow_down_min_jerk:
+        type: double
+        default_value: -1.0
+        read_only: true
+        description: "[m/s^3] the jerk the slow down is planned with"
+        validation:
+          lt<>: [0.0]
+      lpf_gain_slow_down_vel:
+        type: double
+        default_value: 0.0
+        read_only: true
+        description: low-pass filter gain on the slow down velocity (0 = no filter)
+        validation:
+          bounds<>: [0.0, 1.0]
+      lpf_gain_lateral_distance:
+        type: double
+        default_value: 0.8
+        read_only: true
+        description: low-pass filter gain on the clearance to the object
+        validation:
+          bounds<>: [0.0, 1.0]
+      lpf_gain_dist_to_slow_down:
+        type: double
+        default_value: 0.8
+        read_only: true
+        description: low-pass filter gain on the start and end of the slow down interval
+        validation:
+          bounds<>: [0.0, 1.0]
+      time_margin_on_target_velocity:
+        type: double
+        default_value: 1.5
+        read_only: true
+        description: "[s] the ego reaches the slow down velocity this long before the object (at least 3 m)"
+        validation:
+          gt_eq<>: [0.0]
+      moving_object_speed_threshold:
+        type: double
+        default_value: 0.5
+        read_only: true
+        description: "[m/s] speed above which an object is moving"
+        validation:
+          gt_eq<>: [0.0]
+      moving_object_hysteresis_range:
+        type: double
+        default_value: 0.1
+        read_only: true
+        description: "[m/s] hysteresis on moving_object_speed_threshold"
+        validation:
+          gt_eq<>: [0.0]
+      # Per class, side of the trajectory and motion: the slow down velocity is interpolated
+      # linearly from min_ego_velocity at min_lat_margin to max_ego_velocity at max_lat_margin.
+      # "stationary" is "static" of the legacy parameters (a C++ keyword)
+      object_type_specified_params:
+        car: &slow_down_class_params
+          left: &slow_down_side_params
+            moving:
+              min_lat_margin:
+                { type: double, default_value: 0.2, read_only: true, description: "[m]" }
+              max_lat_margin:
+                { type: double, default_value: 1.5, read_only: true, description: "[m]" }
+              min_ego_velocity:
+                { type: double, default_value: 2.0, read_only: true, description: "[m/s]" }
+              max_ego_velocity:
+                { type: double, default_value: 12.0, read_only: true, description: "[m/s]" }
+            stationary:
+              min_lat_margin:
+                { type: double, default_value: 0.2, read_only: true, description: "[m]" }
+              max_lat_margin:
+                { type: double, default_value: 1.8, read_only: true, description: "[m]" }
+              min_ego_velocity:
+                { type: double, default_value: 4.0, read_only: true, description: "[m/s]" }
+              max_ego_velocity:
+                { type: double, default_value: 12.0, read_only: true, description: "[m/s]" }
+          right: *slow_down_side_params
+          wheel_off_track_scale:
+            type: double
+            default_value: 0.0
+            read_only: true
+            description: scale of the extra margin against the wheel off-tracking of the ego
+            validation:
+              gt_eq<>: [0.0]
+        truck: *slow_down_class_params
+        bus: *slow_down_class_params
+        trailer: *slow_down_class_params
+        motorcycle: *slow_down_class_params
+        bicycle: *slow_down_class_params
+        pedestrian: *slow_down_class_params
+        unknown: *slow_down_class_params
+    trajectory_polygon:
+      decimate_trajectory_step_length:
+        type: double
+        default_value: 2.0
+        read_only: true
+        description: "[m] step of the trajectory the ego footprints are swept along"
+        validation:
+          gt<>: [0.0]
+      goal_extended_trajectory_length:
+        type: double
+        default_value: 6.0
+        read_only: true
+        description: "[m] the trajectory is extended by this much beyond its end for the clearance"
+        validation:
+          gt_eq<>: [0.0]
+      ego_nearest_dist_threshold:
+        type: double
+        default_value: 3.0
+        read_only: true
+        description: "[m] distance threshold of the nearest trajectory point to the ego"
+        validation:
+          gt_eq<>: [0.0]
+      ego_nearest_yaw_threshold:
+        type: double
+        default_value: 1.046
+        read_only: true
+        description: "[rad] yaw threshold of the nearest trajectory point to the ego"
+        validation:
+          gt_eq<>: [0.0]
+      enable_to_consider_current_pose:
+        type: bool
+        default_value: true
+        read_only: true
+        description: add the ego footprints converging from the current pose to the trajectory
+      time_to_convergence:
+        type: double
+        default_value: 1.5
+        read_only: true
+        description: "[s] time over which the lateral and yaw errors of the ego converge to zero"
+        validation:
+          gt<>: [0.0]
 
   frenet_sampling_based_planner:
     time_step_s:
