@@ -40,6 +40,8 @@
     velocity_lookahead_blend_weight: 0.5
     enable_brake_keeping_before_stop: false
     brake_keeping_acc: -0.2
+    brake_keeping_terminal_clip_dist_th: 1.0
+    brake_keeping_abort_dist_th: 2.0
 
     # smooth stop state
     smooth_stop_max_strong_acc: -0.5
