@@ -15,7 +15,6 @@
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/plugin_utils/trajectory_velocity_optimizer_utils.hpp"
 
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/set_max_velocity.hpp"
-#include "autoware/trajectory_modifier/utils.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
