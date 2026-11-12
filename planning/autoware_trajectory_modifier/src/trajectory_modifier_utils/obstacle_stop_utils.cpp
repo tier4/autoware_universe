@@ -15,9 +15,7 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp"
 
 #include <autoware/motion_utils/distance/distance.hpp>
-#include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware/object_recognition_utils/predicted_path_utils.hpp>
 #include <autoware/trajectory_time_overlap/footprints.hpp>
 #include <autoware/trajectory_time_overlap/overlap.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
@@ -373,7 +371,11 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
   geometry_msgs::msg::Point nearest_collision_point;
   bool found_collision = false;
 
-  for (const auto & point : *pointcloud) {
+  const auto & pcd = *pointcloud;
+
+  size_t target_source_index = 0;
+  for (size_t i = 0; i < pcd.size(); ++i) {
+    const auto & point = pcd[i];
     const auto classification = static_cast<PointCloudClassification>(point.class_id);
     const auto lat_margin = get_lateral_margin(lateral_margin_map, to_object_type(classification));
     const Point2d query_point{point.x, point.y};
@@ -381,7 +383,7 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
       query_overlapping_footprint(trajectory_shape, query_point, lat_margin, traj_low_velocity_th);
     if (!result) continue;
 
-    const auto & [index, overlap_polygon] = result.value();
+    const auto index = result->index;
     const auto & footprint = trajectory_shape.footprints[index];
     const auto rel = autoware_utils::inverse_transform_point(query_point.to_3d(), footprint.pose);
     const auto arc_length = footprint.arc_length + rel.x();
@@ -393,12 +395,13 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
     if (arc_length < min_arc_length) {
       min_arc_length = arc_length;
       nearest_collision_point = p;
+      target_source_index = i;
       found_collision = true;
     }
   }
 
   if (!found_collision) return std::nullopt;
-  return CollisionPoint(nearest_collision_point, min_arc_length, 0.0);
+  return CollisionPoint(target_source_index, nearest_collision_point, min_arc_length, 0.0);
 }
 
 geometry_msgs::msg::Pose extrapolate_object_pose_from_kinematics(
@@ -411,74 +414,6 @@ geometry_msgs::msg::Pose extrapolate_object_pose_from_kinematics(
   const auto obj_accel = object.kinematics.initial_acceleration_with_covariance.accel.linear.x;
   const auto dist = obj_vel * t + 0.5 * obj_accel * t * t;
   return autoware_utils::calc_offset_pose(initial_pose, dist, 0, 0);
-}
-
-geometry_msgs::msg::Pose get_predicted_obj_pose_at_time(
-  const PredictedObject & object, const double t)
-{
-  if (object.kinematics.predicted_paths.empty()) {
-    return extrapolate_object_pose_from_kinematics(object, t);
-  }
-
-  const auto predicted_path = [&]() {
-    std::optional<autoware_perception_msgs::msg::PredictedPath> p;
-    for (const auto & path : object.kinematics.predicted_paths) {
-      if (path.path.empty()) continue;
-      if (!p || path.confidence > p->confidence) p = path;
-    }
-    return p;
-  }();
-
-  if (!predicted_path) {
-    return extrapolate_object_pose_from_kinematics(object, t);
-  }
-
-  const double dt = std::max(rclcpp::Duration(predicted_path->time_step).seconds(), 1e-3);
-  const double path_horizon = dt * static_cast<double>(predicted_path->path.size() - 1);
-  if (t >= path_horizon) {
-    return predicted_path->path.back();
-  }
-
-  auto interpolated_pose =
-    autoware::object_recognition_utils::calcInterpolatedPose(*predicted_path, t);
-  if (!interpolated_pose) {
-    return extrapolate_object_pose_from_kinematics(object, t);
-  }
-
-  return interpolated_pose.value();
-}
-
-ObjectState get_object_state_at_time(
-  const TrajectoryPoints & trajectory_points, const PredictedObject & object, const double t)
-{
-  const auto predicted_obj_pose = get_predicted_obj_pose_at_time(object, t);
-
-  const auto nearest_seg =
-    motion_utils::findNearestSegmentIndex(trajectory_points, predicted_obj_pose.position);
-  const auto p1 = trajectory_points.at(nearest_seg).pose.position;
-  const auto p2 = trajectory_points.at(nearest_seg + 1).pose.position;
-  auto lon_vel = [&]() {
-    const auto traj_dir = Eigen::Vector2d(p2.x - p1.x, p2.y - p1.y).normalized();
-    const Eigen::Rotation2Dd obj_rot(tf2::getYaw(predicted_obj_pose.orientation));
-    const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
-    const auto obj_vel_vector = obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y);
-    return obj_vel_vector.dot(traj_dir);
-  }();
-
-  const auto obj_polygon = autoware_utils::to_polygon2d(predicted_obj_pose, object.shape);
-  auto min_arc_length = std::numeric_limits<double>::max();
-  geometry_msgs::msg::Point nearest_point;
-  for (const auto & point : obj_polygon.outer()) {
-    const geometry_msgs::msg::Point p =
-      geometry_msgs::msg::Point().set__x(point.x()).set__y(point.y());
-    const auto l = motion_utils::calcSignedArcLength(trajectory_points, 0, p);
-    if (l < min_arc_length) {
-      min_arc_length = l;
-      nearest_point = p;
-    }
-  }
-
-  return ObjectState{std::max(0.0, min_arc_length), lon_vel, nearest_point};
 }
 
 double get_safe_distance(
@@ -538,13 +473,13 @@ ObjectRssState evaluate_object_state(
 
   const auto ego_front_arc_length =
     trajectory_shape.ego_arc_length() + trajectory_shape.ego_front_offset;
-    ObjectRssState state;
+  ObjectRssState state;
   state.type = to_object_type(target_object.object);
   state.nearest_point = nearest_intersection_point;
   state.arc_length = min_arc_length;
   state.gap = std::max(0.0, min_arc_length - ego_front_arc_length);
   state.lon_vel = lon_vel;
-    state.stopping_distance =
+  state.stopping_distance =
     get_object_stopping_distance(state.type, lon_vel, object_decel_map, stopped_vel_th);
   state.is_dynamic = std::abs(lon_vel) > stopped_vel_th;
   return state;
@@ -573,106 +508,90 @@ std::optional<TargetObject> select_cruise_target(const TargetObjects & target_ob
   return target;
 }
 
-std::optional<CollisionPoint> get_nearest_object_collision(
-  TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
-  const double stopped_vel_th)
+std::optional<CollisionPoint> get_nearest_object_collision(TargetObjects & target_objects)
 {
-  if (target_objects.empty() || trajectory_points.size() < 2) return std::nullopt;
+  if (target_objects.empty()) return std::nullopt;
 
   auto min_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
   bool found_collision = false;
   double obstacle_lon_vel = 0.0;
-  for (auto & object : target_objects) {
-    const auto obj_state = get_object_state_at_time(trajectory_points, object.object, 0.0);
+  bool is_dynamic = false;
+  size_t target_source_index = 0;
+  for (size_t i = 0; i < target_objects.size(); ++i) {
+    auto & object = target_objects[i];
+    const auto & state = object.rss_state;
     object.is_safe = false;
-    object.safe_distance = obj_state.arc_length;
-    object.distance_from_ego = obj_state.arc_length;
+    object.safe_distance = state.arc_length;
+    object.distance_from_ego = state.arc_length;
     found_collision = true;
-    if (obj_state.arc_length < min_arc_length) {
-      min_arc_length = obj_state.arc_length;
-      nearest_collision_point = obj_state.nearest_point;
-      obstacle_lon_vel = obj_state.lon_vel;
+    if (state.arc_length < min_arc_length) {
+      min_arc_length = state.arc_length;
+      nearest_collision_point = state.nearest_point;
+      obstacle_lon_vel = state.lon_vel;
+      is_dynamic = state.is_dynamic;
+      target_source_index = i;
     }
   }
 
   if (!found_collision) return std::nullopt;
   return CollisionPoint(
-    nearest_collision_point, min_arc_length, obstacle_lon_vel,
-    std::abs(obstacle_lon_vel) > stopped_vel_th);
+    target_source_index, nearest_collision_point, min_arc_length, obstacle_lon_vel, is_dynamic);
 }
 
 std::optional<CollisionPoint> get_nearest_object_collision(
   TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
-  const double min_safe_distance, const double rss_safety_buffer, const double stopped_vel_th,
-  const double lookahead_horizon, const bool use_rss_check)
+  const double ego_decel, const double reaction_time, const double min_safe_distance,
+  const double rss_safety_buffer, const bool use_rss_check)
 {
   if (target_objects.empty() || trajectory_points.size() < 2) return std::nullopt;
 
   // If RSS check is disabled, get the nearest object collision by pure geometric overlap.
   if (!use_rss_check) {
-    return get_nearest_object_collision(target_objects, trajectory_points, stopped_vel_th);
+    return get_nearest_object_collision(target_objects);
   }
 
-  const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
+  const auto ego_vel = trajectory_points.front().longitudinal_velocity_mps;
   constexpr double eps = 1e-3;
 
-  auto is_safe = [&](
-                   const double obj_arc_length, const double obj_stopping_distance,
-                   const double ego_arc_length,
-                   const double ego_vel) -> std::tuple<bool, double, double> {
-    const auto ego_front_arc_length = ego_arc_length + ego_front_offset;
-    const auto relative_arc_length = std::max(0.0, obj_arc_length - ego_front_arc_length);
-    if (obj_stopping_distance <= eps)
-      return std::make_tuple(false, relative_arc_length, relative_arc_length);
+  auto is_safe = [&](const ObjectRssState & state) -> std::tuple<bool, double, double> {
+    if (state.stopping_distance <= eps) return std::make_tuple(false, state.gap, state.gap);
     const auto safe_dist = std::max(
       min_safe_distance,
       get_safe_distance(
-        ego_vel, ego_decel, obj_stopping_distance, reaction_time, rss_safety_buffer));
-    return std::make_tuple(relative_arc_length - safe_dist > 1e-3, safe_dist, relative_arc_length);
+        ego_vel, ego_decel, state.stopping_distance, reaction_time, rss_safety_buffer));
+    return std::make_tuple(state.gap - safe_dist > 1e-3, safe_dist, state.gap);
   };
 
   auto min_collision_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
   bool found_collision = false;
   double obstacle_lon_vel = 0.0;
-
-  for (auto & object : target_objects) {
-    const auto obj_type = to_object_type(object.object);
-    auto last_p = trajectory_points.front().pose.position;
-    auto curr_arc_length = 0.0;
-    for (const auto & traj_p : trajectory_points) {
-      const auto t = rclcpp::Duration(traj_p.time_from_start).seconds();
-      if (t > lookahead_horizon) break;
-      curr_arc_length += autoware_utils::calc_distance2d(last_p, traj_p.pose.position);
-      last_p = traj_p.pose.position;
-      const auto target_ego_vel = traj_p.longitudinal_velocity_mps;
-      const auto obj_state = get_object_state_at_time(trajectory_points, object.object, t);
-      const auto obj_stopping_distance =
-        get_object_stopping_distance(obj_type, obj_state.lon_vel, object_decel_map, stopped_vel_th);
-      std::tie(object.is_safe, object.safe_distance, object.distance_from_ego) =
-        is_safe(obj_state.arc_length, obj_stopping_distance, curr_arc_length, target_ego_vel);
-      if (object.is_safe) continue;
-      found_collision = true;
-      auto collision_arc_length = obj_state.arc_length + obj_stopping_distance;
-      if (collision_arc_length < min_collision_arc_length) {
-        min_collision_arc_length = collision_arc_length;
-        const auto collision_point = motion_utils::calcLongitudinalOffsetPose(
-          trajectory_points, obj_state.nearest_point, obj_stopping_distance);
-        nearest_collision_point =
-          collision_point.has_value() ? collision_point.value().position : obj_state.nearest_point;
-        obstacle_lon_vel = obj_state.lon_vel;
-      }
-      break;
+  bool is_dynamic = false;
+  size_t target_source_index = 0;
+  for (size_t i = 0; i < target_objects.size(); ++i) {
+    auto & object = target_objects[i];
+    const auto & state = object.rss_state;
+    std::tie(object.is_safe, object.safe_distance, object.distance_from_ego) = is_safe(state);
+    if (object.is_safe) continue;
+    found_collision = true;
+    const auto collision_arc_length = state.arc_length + state.stopping_distance;
+    if (collision_arc_length < min_collision_arc_length) {
+      min_collision_arc_length = collision_arc_length;
+      const auto collision_point = motion_utils::calcLongitudinalOffsetPose(
+        trajectory_points, state.nearest_point, state.stopping_distance);
+      nearest_collision_point =
+        collision_point.has_value() ? collision_point.value().position : state.nearest_point;
+      obstacle_lon_vel = state.lon_vel;
+      is_dynamic = state.is_dynamic;
+      target_source_index = i;
     }
   }
 
   if (!found_collision) return std::nullopt;
   return CollisionPoint(
-    nearest_collision_point, min_collision_arc_length, obstacle_lon_vel,
-    std::abs(obstacle_lon_vel) > stopped_vel_th);
+    target_source_index, nearest_collision_point, min_collision_arc_length, obstacle_lon_vel,
+    is_dynamic);
 }
 
 void PointCloudFilter::filter_pointcloud(
