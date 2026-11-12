@@ -16,7 +16,9 @@
 
 #include "../utils/frenet_utils.hpp"
 
+#include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
+#include <autoware_utils_visualization/marker_helper.hpp>
 
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 
@@ -38,6 +40,7 @@ namespace
 
 namespace slow_down = trajectory_modifier::utils::obstacle_slow_down;
 using autoware_perception_msgs::msg::ObjectClassification;
+using slow_down::ObstacleFilteringParam;
 
 //! [m] spacing of the TrajectoryPoints handed to the slow down planner
 constexpr double RESAMPLE_INTERVAL_M = 0.5;
@@ -143,6 +146,50 @@ Polygon2d make_region(
   return make_band_polygon(centerline, half_width_m);
 }
 
+//! Outlines at which an object enters (inner) and leaves (outer) the slow down condition
+MarkerArray make_detection_area_markers(
+  const PathPointTrajectory & path, const double s_ego, const VehicleInfo & vehicle_info,
+  const ObstacleFilteringParam & filtering, const builtin_interfaces::msg::Time & stamp,
+  const double z)
+{
+  using autoware_utils_geometry::create_point;
+  using autoware_utils_visualization::create_default_marker;
+  using autoware_utils_visualization::create_marker_color;
+  using autoware_utils_visualization::create_marker_scale;
+
+  MarkerArray markers;
+  Marker delete_all;
+  delete_all.action = Marker::DELETEALL;
+  markers.markers.push_back(delete_all);
+
+  const double s0 = std::max(s_ego - vehicle_info.rear_overhang_m, 0.0);
+  const double s1 = path.length();
+  if (s1 <= s0) {
+    return markers;
+  }
+  const double half_width = vehicle_info.vehicle_width_m / 2.0;
+  const double hysteresis = filtering.lat_hysteresis_margin / 2.0;
+  const auto add =
+    [&](const std::string & ns, const double margin, const std_msgs::msg::ColorRGBA & color) {
+      const auto region = make_region(path, s0, s1, half_width + margin);
+      auto marker = create_default_marker(
+        "map", stamp, ns, 0, Marker::LINE_STRIP, create_marker_scale(0.1, 0.0, 0.0), color);
+      for (const auto & p : region.outer()) {
+        marker.points.push_back(create_point(p.x(), p.y(), z));
+      }
+      if (marker.points.size() >= 2) {
+        markers.markers.push_back(std::move(marker));
+      }
+    };
+  add(
+    "detection_area/entry", filtering.max_lat_margin - hysteresis,
+    create_marker_color(1.0, 1.0, 0.0, 0.999));
+  add(
+    "detection_area/exit", filtering.max_lat_margin + hysteresis,
+    create_marker_color(1.0, 0.5, 0.0, 0.6));
+  return markers;
+}
+
 }  // namespace
 
 const ObstacleSlowDownConstraintGenerator::SlowDownParameters &
@@ -199,6 +246,9 @@ ConstraintGeneratorOutput ObstacleSlowDownConstraintGenerator::generate_constrai
       Source{get_name(), autoware_utils_uuid::to_hex_string(interval.uuid), "slow_down"};
     output.constraints.push_back(std::move(constraint));
   }
+  output.debug_markers = make_detection_area_markers(
+    path, s_ego, context.vehicle_info, parameters.obstacle_filtering, context.odometry.header.stamp,
+    ego_pose.position.z);
   return output;
 }
 
