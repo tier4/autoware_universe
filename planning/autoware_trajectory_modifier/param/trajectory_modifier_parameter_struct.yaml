@@ -388,13 +388,6 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-      lookahead_horizon:
-        type: double
-        default_value: 1.5
-        description: lookahead horizon for RSS calculation [s]
-        validation:
-          bounds<>: [0.0, 10.0]
-        read_only: false
 
     cruise:
       enable:
