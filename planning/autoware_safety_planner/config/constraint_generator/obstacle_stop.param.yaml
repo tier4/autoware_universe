@@ -50,4 +50,3 @@
           pedestrian: 5.0
         ego_decel: 2.0 # [m/s^2]
         safety_margin: 1.5 # [m]
-        lookahead_horizon: 1.5 # [s]
