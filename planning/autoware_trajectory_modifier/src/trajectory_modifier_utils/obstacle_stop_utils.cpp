@@ -59,8 +59,9 @@ double get_detection_length(
   constexpr double buffer_length = 1.0;
   constexpr double time_delay = 0.3;
   const auto margin = stop_margin + buffer_length;
+  const auto detection_accel = std::max(current_accel, 0.0);
   auto nominal_stopping_distance = autoware::motion_utils::calculate_stop_distance(
-    current_vel, current_accel, decel, jerk, time_delay);
+    current_vel, detection_accel, decel, jerk, time_delay);
   if (nominal_stopping_distance) {
     return nominal_stopping_distance.value() + margin;
   }
