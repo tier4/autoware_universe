@@ -161,6 +161,8 @@ inline LateralMargin get_lateral_margin(const LateralMarginMap & map, const Obje
 
 struct CollisionPoint
 {
+  size_t target_source_index;  // index into target_objects for object collisions, or into the
+                               // pointcloud for pcd collisions
   geometry_msgs::msg::Point point;
   double arc_length;
   double obstacle_lon_vel;
@@ -176,9 +178,13 @@ struct CollisionPoint
    * @param is_dynamic Whether this collision is dynamic.
    */
   CollisionPoint(
-    const geometry_msgs::msg::Point & point, const double arc_length, const double obstacle_lon_vel,
-    const bool is_dynamic = false)
-  : point(point), arc_length(arc_length), obstacle_lon_vel(obstacle_lon_vel), is_dynamic(is_dynamic)
+    const size_t target_source_index, const geometry_msgs::msg::Point & point,
+    const double arc_length, const double obstacle_lon_vel, const bool is_dynamic = false)
+  : target_source_index(target_source_index),
+    point(point),
+    arc_length(arc_length),
+    obstacle_lon_vel(obstacle_lon_vel),
+    is_dynamic(is_dynamic)
   {
   }
 
@@ -192,7 +198,8 @@ struct CollisionPoint
   CollisionPoint(
     const CollisionPoint & collision_point, const rclcpp::Time & first_seen,
     const rclcpp::Time & last_seen, const bool active)
-  : point(collision_point.point),
+  : target_source_index(collision_point.target_source_index),
+    point(collision_point.point),
     arc_length(collision_point.arc_length),
     obstacle_lon_vel(collision_point.obstacle_lon_vel),
     is_active(active),
@@ -201,13 +208,6 @@ struct CollisionPoint
     last_seen(last_seen)
   {
   }
-};
-
-struct ObjectState
-{
-  double arc_length;
-  double lon_vel;
-  geometry_msgs::msg::Point nearest_point;
 };
 
 /// Ego vehicle footprint sampled along the detection trajectory.
@@ -347,20 +347,6 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
   std::vector<geometry_msgs::msg::Point> & target_pcd_points);
 
 /**
- * @brief Predict the object state at time `t` relative to the trajectory.
- * @details The object pose is taken from its most confident predicted path (falling back to
- * constant-acceleration extrapolation), and its velocity is projected on the direction of the
- * nearest trajectory segment.
- * @param trajectory_points Reference path, at least 2 points.
- * @param object Predicted object.
- * @param t Time from now [s].
- * @return Arc length (clamped to >= 0) and position of the object vertex nearest along the path,
- * and the object longitudinal velocity along the path.
- */
-ObjectState get_object_state_at_time(
-  const TrajectoryPoints & trajectory_points, const PredictedObject & object, const double t);
-
-/**
  * @brief Braking distance of an object moving along the ego path.
  * @param type Object type used to look up the braking deceleration.
  * @param lon_vel Object longitudinal velocity along the ego path [m/s].
@@ -443,10 +429,8 @@ std::optional<TargetObject> select_cruise_target(const TargetObjects & target_ob
  */
 std::optional<CollisionPoint> get_nearest_object_collision(
   TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
-  const double min_safe_distance, const double rss_safety_buffer, const double stopped_vel_th,
-  const double lookahead_horizon, const bool use_rss_check = true);
+  const double ego_decel, const double reaction_time, const double min_safe_distance,
+  const double rss_safety_buffer, const bool use_rss_check = true);
 
 /// Filters predicted objects by semantic type, speed, and spatial relationship to the trajectory.
 struct ObjectFilter
