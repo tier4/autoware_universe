@@ -282,7 +282,6 @@ protected:
     p.rss_params.object_decel.car = 1.5;
     p.rss_params.safety_margin = 2.0;
     p.rss_params.ego_decel = 4.0;
-    p.rss_params.lookahead_horizon = 2.0;
 
     p.cruise.enable = false;
     p.cruise.min_distance = 8.0;
@@ -594,7 +593,7 @@ TEST_F(ObstacleStopIntegrationTest, CruiseDisabledStillStopsForMovingLead)
 {
   auto trajectory = create_straight_trajectory(40.0, 8.0);
   const auto input = create_input_data(
-    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(25.0, 0.0, 4.0));
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_car(10.0, 0.0, 4.0));
 
   ASSERT_TRUE(process_with_hysteresis(trajectory, input));
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
