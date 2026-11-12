@@ -540,6 +540,9 @@ void validate_parameters(const SlowDownParameters & p)
   const auto & s = p.slow_down_planning;
   const auto & t = p.trajectory_polygon;
   const auto in_unit_interval = [](double v) { return std::isfinite(v) && v >= 0 && v <= 1; };
+  const auto is_valid_interpolation = [](const VelocityInterpolationParam & v) {
+    return v.min_lat_margin < v.max_lat_margin && v.min_ego_velocity <= v.max_ego_velocity;
+  };
   if (
     f.object_types.empty() || f.max_lat_margin <= f.min_lat_margin || f.lat_hysteresis_margin < 0 ||
     f.max_lat_velocity <= 0 || f.successive_num_to_entry_slow_down_condition <= 0 ||
@@ -558,12 +561,8 @@ void validate_parameters(const SlowDownParameters & p)
       throw std::invalid_argument("Obstacle SlowDown: missing velocity parameters for class");
     }
     for (const auto & row : it->second.velocity_params) {
-      for (const auto & velocity : row) {
-        if (
-          velocity.max_lat_margin <= velocity.min_lat_margin ||
-          velocity.max_ego_velocity < velocity.min_ego_velocity) {
-          throw std::invalid_argument("Obstacle SlowDown: invalid velocity interpolation bounds");
-        }
+      if (!std::all_of(row.begin(), row.end(), is_valid_interpolation)) {
+        throw std::invalid_argument("Obstacle SlowDown: invalid velocity interpolation bounds");
       }
     }
   }

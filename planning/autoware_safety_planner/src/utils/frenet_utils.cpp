@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <vector>
 
@@ -174,8 +175,10 @@ TrajectoryPoints make_trajectory_points(
     trajectory_point.heading_rate_rps = point.heading_rate_rps;
     points.push_back(trajectory_point);
   };
-  for (double s = s_from; s + 1e-3 < path.length(); s += interval_m) {
-    push(s);
+  const auto num_points = static_cast<std::size_t>(
+    std::max(std::ceil((path.length() - 1e-3 - s_from) / interval_m), 0.0));
+  for (std::size_t i = 0; i < num_points; ++i) {
+    push(s_from + static_cast<double>(i) * interval_m);
   }
   push(path.length());
   autoware::motion_utils::calculate_time_from_start(points, ego_point);

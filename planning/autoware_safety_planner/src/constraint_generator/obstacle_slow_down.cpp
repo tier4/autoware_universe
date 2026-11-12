@@ -26,9 +26,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -49,7 +51,7 @@ constexpr double REGION_SAMPLE_INTERVAL_M = 1.0;
 
 std::uint8_t to_label(const std::string & object_type)
 {
-  static const std::map<std::string, std::uint8_t> labels{
+  static const std::map<std::string, std::uint8_t, std::less<>> labels{
     {"unknown", ObjectClassification::UNKNOWN}, {"car", ObjectClassification::CAR},
     {"truck", ObjectClassification::TRUCK},     {"bus", ObjectClassification::BUS},
     {"trailer", ObjectClassification::TRAILER}, {"motorcycle", ObjectClassification::MOTORCYCLE},
@@ -65,10 +67,13 @@ slow_down::ObjectTypeSpecificParams to_object_type_specific_params(const ClassPa
     return slow_down::VelocityInterpolationParam{
       q.min_lat_margin, q.max_lat_margin, q.min_ego_velocity, q.max_ego_velocity};
   };
-  constexpr auto LEFT = static_cast<std::size_t>(slow_down::Side::Left);
-  constexpr auto RIGHT = static_cast<std::size_t>(slow_down::Side::Right);
-  constexpr auto MOVING = static_cast<std::size_t>(slow_down::Motion::Moving);
-  constexpr auto STATIC = static_cast<std::size_t>(slow_down::Motion::Static);
+  constexpr auto LEFT = static_cast<std::underlying_type_t<slow_down::Side>>(slow_down::Side::Left);
+  constexpr auto RIGHT =
+    static_cast<std::underlying_type_t<slow_down::Side>>(slow_down::Side::Right);
+  constexpr auto MOVING =
+    static_cast<std::underlying_type_t<slow_down::Motion>>(slow_down::Motion::Moving);
+  constexpr auto STATIC =
+    static_cast<std::underlying_type_t<slow_down::Motion>>(slow_down::Motion::Static);
 
   slow_down::ObjectTypeSpecificParams out;
   out.velocity_params[LEFT][MOVING] = to_interpolation(p.left.moving);

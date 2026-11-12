@@ -158,6 +158,9 @@ protected:
     return intervals;
   }
 
+  const VehicleInfo & vehicle_info() const { return vehicle_info_; }
+
+private:
   SlowDownParameters params_{make_params()};
   VehicleInfo vehicle_info_{make_vehicle_info()};
   TrajectoryPoints trajectory_{make_straight_trajectory()};
@@ -204,7 +207,7 @@ TEST_F(ObstacleSlowDownUtilsTest, SlowsDownAfterSuccessiveEntryCycles)
   EXPECT_LT(interval.velocity, EGO_VELOCITY);
   // The ego front reaches the velocity before the car (rear end at x = 38) and keeps it until
   // the car (front end at x = 42) is passed
-  EXPECT_LT(interval.start_s, OBJECT_X - 2.0 - vehicle_info_.max_longitudinal_offset_m);
+  EXPECT_LT(interval.start_s, OBJECT_X - 2.0 - vehicle_info().max_longitudinal_offset_m);
   EXPECT_GT(interval.end_s, interval.start_s);
   EXPECT_LE(interval.end_s, OBJECT_X + 2.0);
 }
