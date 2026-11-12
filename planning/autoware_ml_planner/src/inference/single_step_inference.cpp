@@ -51,15 +51,7 @@ SingleStepInference::SingleStepInference(
     autoware::cuda_utils::make_unique<float[]>(allocate(LANE_TRAFFIC_LIGHT_PAST_SHAPE));
   lane_traffic_light_future_d_ =
     autoware::cuda_utils::make_unique<float[]>(allocate(LANE_TRAFFIC_LIGHT_FUTURE_SHAPE));
-  route_lanes_d_ = autoware::cuda_utils::make_unique<float[]>(allocate(ROUTE_LANES_SHAPE));
-  route_lane_types_d_ =
-    autoware::cuda_utils::make_unique<float[]>(allocate(ROUTE_LANE_TYPES_SHAPE));
-  route_lanes_speed_limit_d_ =
-    autoware::cuda_utils::make_unique<float[]>(allocate(ROUTE_LANES_SPEED_LIMIT_SHAPE));
-  route_traffic_light_past_d_ =
-    autoware::cuda_utils::make_unique<float[]>(allocate(ROUTE_TRAFFIC_LIGHT_PAST_SHAPE));
-  route_traffic_light_future_d_ =
-    autoware::cuda_utils::make_unique<float[]>(allocate(ROUTE_TRAFFIC_LIGHT_FUTURE_SHAPE));
+  route_waypoints_d_ = autoware::cuda_utils::make_unique<float[]>(allocate(ROUTE_WAYPOINTS_SHAPE));
   intersection_area_d_ =
     autoware::cuda_utils::make_unique<float[]>(allocate(INTERSECTION_AREA_SHAPE));
   stop_lines_d_ = autoware::cuda_utils::make_unique<float[]>(allocate(STOP_LINES_SHAPE));
@@ -108,11 +100,7 @@ void SingleStepInference::load_engine(const std::string & model_path)
   add_input("lanes_speed_limit", LANES_SPEED_LIMIT_SHAPE);
   add_input("lane_traffic_light_past", LANE_TRAFFIC_LIGHT_PAST_SHAPE);
   add_input("lane_traffic_light_future", LANE_TRAFFIC_LIGHT_FUTURE_SHAPE);
-  add_input("route_lanes", ROUTE_LANES_SHAPE);
-  add_input("route_lane_types", ROUTE_LANE_TYPES_SHAPE);
-  add_input("route_lanes_speed_limit", ROUTE_LANES_SPEED_LIMIT_SHAPE);
-  add_input("route_traffic_light_past", ROUTE_TRAFFIC_LIGHT_PAST_SHAPE);
-  add_input("route_traffic_light_future", ROUTE_TRAFFIC_LIGHT_FUTURE_SHAPE);
+  add_input("route_waypoints", ROUTE_WAYPOINTS_SHAPE);
   add_input("intersection_area", INTERSECTION_AREA_SHAPE);
   add_input("stop_lines", STOP_LINES_SHAPE);
   add_input("road_borders", ROAD_BORDERS_SHAPE);
@@ -146,15 +134,7 @@ void SingleStepInference::bind_buffers()
   bind_input(
     "lane_traffic_light_future", LANE_TRAFFIC_LIGHT_FUTURE_SHAPE,
     lane_traffic_light_future_d_.get());
-  bind_input("route_lanes", ROUTE_LANES_SHAPE, route_lanes_d_.get());
-  bind_input("route_lane_types", ROUTE_LANE_TYPES_SHAPE, route_lane_types_d_.get());
-  bind_input(
-    "route_lanes_speed_limit", ROUTE_LANES_SPEED_LIMIT_SHAPE, route_lanes_speed_limit_d_.get());
-  bind_input(
-    "route_traffic_light_past", ROUTE_TRAFFIC_LIGHT_PAST_SHAPE, route_traffic_light_past_d_.get());
-  bind_input(
-    "route_traffic_light_future", ROUTE_TRAFFIC_LIGHT_FUTURE_SHAPE,
-    route_traffic_light_future_d_.get());
+  bind_input("route_waypoints", ROUTE_WAYPOINTS_SHAPE, route_waypoints_d_.get());
   bind_input("intersection_area", INTERSECTION_AREA_SHAPE, intersection_area_d_.get());
   bind_input("stop_lines", STOP_LINES_SHAPE, stop_lines_d_.get());
   bind_input("road_borders", ROAD_BORDERS_SHAPE, road_borders_d_.get());
@@ -180,11 +160,7 @@ void SingleStepInference::transfer_inputs_to_device(const preprocess::TensorMap 
   transfer("lanes_speed_limit", lanes_speed_limit_d_);
   transfer("lane_traffic_light_past", lane_traffic_light_past_d_);
   transfer("lane_traffic_light_future", lane_traffic_light_future_d_);
-  transfer("route_lanes", route_lanes_d_);
-  transfer("route_lane_types", route_lane_types_d_);
-  transfer("route_lanes_speed_limit", route_lanes_speed_limit_d_);
-  transfer("route_traffic_light_past", route_traffic_light_past_d_);
-  transfer("route_traffic_light_future", route_traffic_light_future_d_);
+  transfer("route_waypoints", route_waypoints_d_);
   transfer("intersection_area", intersection_area_d_);
   transfer("stop_lines", stop_lines_d_);
   transfer("road_borders", road_borders_d_);

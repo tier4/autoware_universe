@@ -59,8 +59,8 @@ using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
-using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using autoware_vehicle_msgs::msg::SteeringReport;
+using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using nav_msgs::msg::Odometry;
 using unique_identifier_msgs::msg::UUID;
@@ -259,7 +259,7 @@ public:
    * @brief Count valid elements in input data for diagnostics.
    *
    * @param input_data_map Input data map
-   * @param data_key Key to count (e.g., "lanes", "route_lanes", "intersection_area")
+   * @param data_key Key to count (e.g., "lanes", "route_waypoints", "intersection_area")
    * @return Count of valid elements
    */
   int64_t count_valid_elements(

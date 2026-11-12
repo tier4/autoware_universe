@@ -55,7 +55,7 @@ inline constexpr int64_t EGO_HISTORY_DIM = 7;
 // Index for each field
 inline constexpr int64_t X = 0;
 inline constexpr int64_t Y = 1;
-// Lane and route lane points: left and right boundary points, without the centerline
+// Lane points: left and right boundary points, without the centerline
 inline constexpr int64_t LB_X = 0;
 inline constexpr int64_t LB_Y = 1;
 inline constexpr int64_t RB_X = 2;
@@ -93,14 +93,11 @@ inline constexpr std::array<int64_t, 4> LANES_SHAPE = {
 inline constexpr std::array<int64_t, 3> LANE_TYPES_SHAPE = {1, NUM_SEGMENTS_IN_LANE, LANE_TYPE_DIM};
 inline constexpr std::array<int64_t, 3> LANES_HAS_SPEED_LIMIT_SHAPE = {1, NUM_SEGMENTS_IN_LANE, 1};
 inline constexpr std::array<int64_t, 3> LANES_SPEED_LIMIT_SHAPE = {1, NUM_SEGMENTS_IN_LANE, 1};
-inline constexpr std::array<int64_t, 4> ROUTE_LANES_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM};
-inline constexpr std::array<int64_t, 3> ROUTE_LANE_TYPES_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, LANE_TYPE_DIM};
-inline constexpr std::array<int64_t, 3> ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, 1};
-inline constexpr std::array<int64_t, 3> ROUTE_LANES_SPEED_LIMIT_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, 1};
+// Route waypoints: x, y, cos, sin of the route direction at points ROUTE_WAYPOINT_SPACING_M apart
+// along the route, starting at the ego's projection on it. Points past the route end are zero.
+inline constexpr int64_t NUM_ROUTE_WAYPOINTS = 25;
+inline constexpr double ROUTE_WAYPOINT_SPACING_M = 5.0;
+inline constexpr std::array<int64_t, 3> ROUTE_WAYPOINTS_SHAPE = {1, NUM_ROUTE_WAYPOINTS, POSE_DIM};
 inline constexpr std::array<int64_t, 4> INTERSECTION_AREA_SHAPE = {
   1, NUM_INTERSECTION_AREAS, POINTS_PER_INTERSECTION_AREA, 2};
 inline constexpr std::array<int64_t, 4> STOP_LINES_SHAPE = {
@@ -115,12 +112,8 @@ inline constexpr std::array<int64_t, 2> TURN_INDICATORS_SHAPE = {1, INPUT_T + 1}
 // Per-segment history of the associated traffic light state
 inline constexpr std::array<int64_t, 4> LANE_TRAFFIC_LIGHT_PAST_SHAPE = {
   1, NUM_SEGMENTS_IN_LANE, INPUT_T + 1, TRAFFIC_LIGHT_ONE_HOT_DIM};
-inline constexpr std::array<int64_t, 4> ROUTE_TRAFFIC_LIGHT_PAST_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, INPUT_T + 1, TRAFFIC_LIGHT_ONE_HOT_DIM};
 inline constexpr std::array<int64_t, 4> LANE_TRAFFIC_LIGHT_FUTURE_SHAPE = {
   1, NUM_SEGMENTS_IN_LANE, OUTPUT_T, TRAFFIC_LIGHT_ONE_HOT_DIM};
-inline constexpr std::array<int64_t, 4> ROUTE_TRAFFIC_LIGHT_FUTURE_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, OUTPUT_T, TRAFFIC_LIGHT_ONE_HOT_DIM};
 
 inline constexpr float POSITION_SCALE = 50.0F;
 inline constexpr float SPEED_SCALE = 15.0F;

@@ -177,7 +177,9 @@ On load, the node:
 
 If any check fails, the model is not loaded and inference is disabled.
 
-Each `lanes` and `route_lanes` point holds the left and right boundary points (4 values), without the centerline. Models that read the centerline and the boundary offsets (6 values) do not match this input.
+Each `lanes` point holds the left and right boundary points (4 values), without the centerline. Models that read the centerline and the boundary offsets (6 values) do not match this input.
+
+The route is given as `route_waypoints` (1 x 25 x 4): x, y, cos, sin of the route direction at points 5 m apart along the centerlines of the route lanelets, starting at the ego's projection on the route, with points beyond the end of the route set to zero. It replaces `route_lanes`, `route_lane_types`, `route_lanes_speed_limit`, `route_traffic_light_past` and `route_traffic_light_future`, so models that read those route lanelet inputs do not match this input.
 
 - **Major version**
   Incremented when there are changes in the model **inputs/outputs or architecture**.

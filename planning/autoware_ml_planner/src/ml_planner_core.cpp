@@ -535,10 +535,10 @@ int64_t MLPlannerCore::count_valid_elements(
   if (data_key == "lanes") {
     return postprocess::count_valid_elements(
       input_data_map.at("lanes"), LANES_SHAPE[1], LANES_SHAPE[2], LANES_SHAPE[3], batch_idx);
-  } else if (data_key == "route_lanes") {
+  } else if (data_key == "route_waypoints") {
     return postprocess::count_valid_elements(
-      input_data_map.at("route_lanes"), ROUTE_LANES_SHAPE[1], ROUTE_LANES_SHAPE[2],
-      ROUTE_LANES_SHAPE[3], batch_idx);
+      input_data_map.at("route_waypoints"), ROUTE_WAYPOINTS_SHAPE[1], 1, ROUTE_WAYPOINTS_SHAPE[2],
+      batch_idx);
   } else if (data_key == "intersection_area") {
     return postprocess::count_valid_elements(
       input_data_map.at("intersection_area"), INTERSECTION_AREA_SHAPE[1],

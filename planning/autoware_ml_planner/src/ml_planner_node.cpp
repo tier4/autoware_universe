@@ -650,10 +650,11 @@ void MLPlanner::publish_debug_markers(
 {
   if (debug_params_.publish_debug_route) {
     auto lifetime = rclcpp::Duration::from_seconds(0.2);
-    auto route_markers = utils::create_lane_marker(
-      ego_to_map_transform, input_data_map.at("route_lanes"),
-      std::vector<int64_t>(ROUTE_LANES_SHAPE.begin(), ROUTE_LANES_SHAPE.end()), timestamp, lifetime,
-      {0.8, 0.8, 0.8, 0.8}, "map");
+    // All waypoints of one batch entry as one polyline
+    auto route_markers = utils::create_map_polyline_marker(
+      ego_to_map_transform, input_data_map.at("route_waypoints"),
+      {1, 1, NUM_ROUTE_WAYPOINTS, ROUTE_WAYPOINTS_SHAPE[2]}, timestamp, lifetime,
+      {0.8f, 0.8f, 0.8f, 0.8f}, "route_waypoints", "map");
     pub_route_marker_->publish(route_markers);
   }
 
@@ -788,7 +789,7 @@ void MLPlanner::on_timer()
   diagnostics_inference_->add_key_value(
     "valid_lane_count", core_->count_valid_elements(input_data_map, "lanes"));
   diagnostics_inference_->add_key_value(
-    "valid_route_count", core_->count_valid_elements(input_data_map, "route_lanes"));
+    "valid_route_count", core_->count_valid_elements(input_data_map, "route_waypoints"));
   diagnostics_inference_->add_key_value(
     "valid_intersection_area_count",
     core_->count_valid_elements(input_data_map, "intersection_area"));
