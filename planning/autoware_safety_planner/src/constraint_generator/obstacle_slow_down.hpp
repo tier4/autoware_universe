@@ -16,8 +16,7 @@
 #define CONSTRAINT_GENERATOR__OBSTACLE_SLOW_DOWN_HPP_
 
 #include "constraint_generator_interface.hpp"
-
-#include <autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_slow_down_utils.hpp>
+#include "obstacle_slow_down_utils.hpp"
 
 #include <optional>
 #include <string>
@@ -34,8 +33,8 @@ public:
   ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 
 private:
-  using SlowDownParameters = trajectory_modifier::utils::obstacle_slow_down::SlowDownParameters;
-  using SlowDownPlanner = trajectory_modifier::utils::obstacle_slow_down::SlowDownPlanner;
+  using SlowDownParameters = obstacle_slow_down::SlowDownParameters;
+  using SlowDownPlanner = obstacle_slow_down::SlowDownPlanner;
 
   //! Built on the first call: params_ is set after construction
   const SlowDownParameters & slow_down_parameters();

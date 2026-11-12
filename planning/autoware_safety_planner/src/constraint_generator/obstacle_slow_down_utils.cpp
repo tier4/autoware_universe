@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_slow_down_utils.hpp"
+#include "obstacle_slow_down_utils.hpp"
 
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
@@ -38,7 +38,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::trajectory_modifier::utils::obstacle_slow_down
+namespace autoware::safety_planner::experimental::obstacle_slow_down
 {
 namespace
 {
@@ -766,4 +766,4 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
   return result;
 }
 
-}  // namespace autoware::trajectory_modifier::utils::obstacle_slow_down
+}  // namespace autoware::safety_planner::experimental::obstacle_slow_down

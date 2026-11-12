@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_UTILS__OBSTACLE_SLOW_DOWN_UTILS_HPP_
-#define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_UTILS__OBSTACLE_SLOW_DOWN_UTILS_HPP_
+#ifndef CONSTRAINT_GENERATOR__OBSTACLE_SLOW_DOWN_UTILS_HPP_
+#define CONSTRAINT_GENERATOR__OBSTACLE_SLOW_DOWN_UTILS_HPP_
 
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/time.hpp>
@@ -28,7 +28,7 @@
 #include <memory>
 #include <vector>
 
-namespace autoware::trajectory_modifier::utils::obstacle_slow_down
+namespace autoware::safety_planner::experimental::obstacle_slow_down
 {
 
 using autoware::vehicle_info_utils::VehicleInfo;
@@ -135,6 +135,6 @@ private:
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace autoware::trajectory_modifier::utils::obstacle_slow_down
+}  // namespace autoware::safety_planner::experimental::obstacle_slow_down
 
-#endif  // AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_UTILS__OBSTACLE_SLOW_DOWN_UTILS_HPP_
+#endif  // CONSTRAINT_GENERATOR__OBSTACLE_SLOW_DOWN_UTILS_HPP_

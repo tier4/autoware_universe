@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_slow_down_utils.hpp"
+#include "constraint_generator/obstacle_slow_down_utils.hpp"
 
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 
@@ -29,15 +29,15 @@
 
 namespace
 {
-using autoware::trajectory_modifier::utils::obstacle_slow_down::Motion;
-using autoware::trajectory_modifier::utils::obstacle_slow_down::ObjectTypeSpecificParams;
-using autoware::trajectory_modifier::utils::obstacle_slow_down::Side;
-using autoware::trajectory_modifier::utils::obstacle_slow_down::SlowDownInterval;
-using autoware::trajectory_modifier::utils::obstacle_slow_down::SlowDownParameters;
-using autoware::trajectory_modifier::utils::obstacle_slow_down::SlowDownPlanner;
-using autoware::trajectory_modifier::utils::obstacle_slow_down::TrajectoryPoints;
-using autoware::trajectory_modifier::utils::obstacle_slow_down::validate_parameters;
-using autoware::trajectory_modifier::utils::obstacle_slow_down::VelocityInterpolationParam;
+using autoware::safety_planner::experimental::obstacle_slow_down::Motion;
+using autoware::safety_planner::experimental::obstacle_slow_down::ObjectTypeSpecificParams;
+using autoware::safety_planner::experimental::obstacle_slow_down::Side;
+using autoware::safety_planner::experimental::obstacle_slow_down::SlowDownInterval;
+using autoware::safety_planner::experimental::obstacle_slow_down::SlowDownParameters;
+using autoware::safety_planner::experimental::obstacle_slow_down::SlowDownPlanner;
+using autoware::safety_planner::experimental::obstacle_slow_down::TrajectoryPoints;
+using autoware::safety_planner::experimental::obstacle_slow_down::validate_parameters;
+using autoware::safety_planner::experimental::obstacle_slow_down::VelocityInterpolationParam;
 using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;

@@ -43,7 +43,6 @@ ament_auto_add_library(autoware_trajectory_modifier_utils SHARED
   src/utils.cpp
   src/trajectory_modifier_utils/utils.cpp
   src/trajectory_modifier_utils/set_max_velocity.cpp
-  src/trajectory_modifier_utils/obstacle_slow_down_utils.cpp
   src/trajectory_modifier_utils/obstacle_stop_utils.cpp
   src/trajectory_modifier_utils/detection_area_utils.cpp
   src/trajectory_modifier_utils/planning_factor_utils.cpp

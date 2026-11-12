@@ -40,7 +40,7 @@ namespace autoware::safety_planner::experimental
 namespace
 {
 
-namespace slow_down = trajectory_modifier::utils::obstacle_slow_down;
+namespace slow_down = obstacle_slow_down;
 using autoware_perception_msgs::msg::ObjectClassification;
 using slow_down::ObstacleFilteringParam;
 
