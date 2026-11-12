@@ -55,12 +55,11 @@ inline constexpr int64_t EGO_HISTORY_DIM = 7;
 // Index for each field
 inline constexpr int64_t X = 0;
 inline constexpr int64_t Y = 1;
-// Lane and route lane points: left and right boundary points, without the centerline
-inline constexpr int64_t LB_X = 0;
-inline constexpr int64_t LB_Y = 1;
-inline constexpr int64_t RB_X = 2;
-inline constexpr int64_t RB_Y = 3;
-inline constexpr int64_t SEGMENT_POINT_DIM = 4;
+inline constexpr int64_t LB_X = 2;
+inline constexpr int64_t LB_Y = 3;
+inline constexpr int64_t RB_X = 4;
+inline constexpr int64_t RB_Y = 5;
+inline constexpr int64_t SEGMENT_POINT_DIM = 6;
 inline constexpr int64_t LINE_TYPE_LEFT_START = 0;
 inline constexpr int64_t LINE_TYPE_RIGHT_START = LINE_TYPE_NUM;
 inline constexpr int64_t LANE_TYPE_DIM = 2 * LINE_TYPE_NUM;

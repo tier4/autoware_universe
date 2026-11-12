@@ -22,7 +22,6 @@
 #include <array>
 #include <cstdint>
 #include <limits>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -35,7 +34,7 @@ using visualization_msgs::msg::MarkerArray;
 
 TEST(MarkerUtilsTest, CreateLaneMarkerBasic)
 {
-  // Lane vector: 1 segment, 2 points, 8 dims (LB_X, LB_Y, RB_X, RB_Y, ...), minimal
+  // Lane vector: 1 segment, 2 points, 8 dims (X, Y, LB_X, LB_Y, RB_X, RB_Y, ...), minimal
   xt::xarray<float> lane_vector = {1.0f, 2.0f, 0.5f, 0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
                                    2.0f, 3.0f, 0.5f, 0.5f, -0.5f, -0.5f, 0.0f, 0.0f};
   std::vector<int64_t> shape = {1, 1, 2, 8};  // batch, ?, points, dims
@@ -53,29 +52,6 @@ TEST(MarkerUtilsTest, CreateLaneMarkerBasic)
     EXPECT_GT(marker.points.size(), 0u);
     EXPECT_GT(marker.color.a, 0.0f);
   }
-}
-
-TEST(MarkerUtilsTest, CreateLaneMarkerFromBoundaries)
-{
-  // Lane vector: 1 segment, 2 points, 4 dims (LB_X, LB_Y, RB_X, RB_Y), no centerline
-  xt::xarray<float> lane_vector = {1.0f, 2.0f, 1.0f, -2.0f, 3.0f, 2.0f, 3.0f, -2.0f};
-  std::vector<int64_t> shape = {1, 1, 2, 4};
-  rclcpp::Time stamp(123456, 789, RCL_ROS_TIME);
-  rclcpp::Duration lifetime(1, 0);
-  Eigen::Matrix4d identity = Eigen::Matrix4d::Identity();
-  auto marker_array = create_lane_marker(identity, lane_vector, shape, stamp, lifetime);
-
-  // The bounds are the given points; the lane line is their midpoint
-  std::map<std::string, std::vector<std::array<double, 2>>> points_by_namespace;
-  for (const auto & marker : marker_array.markers) {
-    for (const auto & point : marker.points) {
-      points_by_namespace[marker.ns].push_back({point.x, point.y});
-    }
-  }
-  using Points = std::vector<std::array<double, 2>>;
-  EXPECT_EQ(points_by_namespace["lane_lb"], (Points{{1.0, 2.0}, {3.0, 2.0}}));
-  EXPECT_EQ(points_by_namespace["lane_rb"], (Points{{1.0, -2.0}, {3.0, -2.0}}));
-  EXPECT_EQ(points_by_namespace["lane"], (Points{{1.0, 0.0}, {3.0, 0.0}}));
 }
 
 }  // namespace autoware::ml_planner::test
