@@ -249,13 +249,14 @@ ProcessingResult ObstacleStop::process(
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::process", *get_time_keeper());
 
+  reset_cycle();
+
   if (!enabled_ || traj_points.size() < 2) return ProcessingResult::Unchanged;
 
   auto trajectory = traj_points;
   utils::obstacle_stop::trim_trajectory_and_remove_duplicates(trajectory);
   if (trajectory.size() < 2) return ProcessingResult::Unchanged;
 
-  reset_cycle();
   build_trajectory_shape(trajectory, input);
   detect_objects(trajectory, input);
 
