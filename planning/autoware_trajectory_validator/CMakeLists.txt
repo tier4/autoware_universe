@@ -94,6 +94,13 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
+  ament_add_gtest(test_road_following
+    test/plugins/collision_check_filter/test_road_following.cpp
+  )
+  target_link_libraries(test_road_following
+    autoware_trajectory_validator_plugins
+  )
+
   # ament_add_gtest(test_collision_check_filter
   #   test/collision_check_filter/test_collision_check_filter.cpp
   # )
