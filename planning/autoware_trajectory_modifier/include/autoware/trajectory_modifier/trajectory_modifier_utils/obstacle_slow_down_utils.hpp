@@ -50,7 +50,7 @@ struct VelocityInterpolationParam
 
 struct ObjectTypeSpecificParams
 {
-  // Indexed as [Side][Motion]. Populate all four entries from the legacy YAML.
+  // [Side][Motion]
   std::array<std::array<VelocityInterpolationParam, 2>, 2> velocity_params{};
   double wheel_off_track_scale{0.0};
 };
@@ -76,7 +76,7 @@ struct SlowDownPlanningParam
   double time_margin_on_target_velocity{0.0};
   double moving_object_speed_threshold{0.0};
   double moving_object_hysteresis_range{0.0};
-  // Key is ObjectClassification::label. No fabricated fallback defaults.
+  // Key is ObjectClassification::label
   std::map<std::uint8_t, ObjectTypeSpecificParams> object_type_specific_params{};
 };
 
@@ -97,8 +97,7 @@ struct SlowDownParameters
   TrajectoryPolygonParam trajectory_polygon{};
 };
 
-// Arc lengths are measured from the *input trajectory's* first point.
-// They are not the absolute arc coordinates of Safety Planner's reference path.
+// Arc lengths are measured from the first point of the input trajectory
 struct SlowDownInterval
 {
   ObjectId uuid{};
@@ -109,12 +108,10 @@ struct SlowDownInterval
   geometry_msgs::msg::Point end_point{};
 };
 
-// Throws std::invalid_argument when the parameters are inconsistent. Call it once at startup;
-// SlowDownPlanner::plan() assumes valid parameters.
+// Throws std::invalid_argument on inconsistent parameters
 void validate_parameters(const SlowDownParameters & params);
 
-// Keeps the UUID entry/exit counter and preceding outputs across planning cycles.
-// Construct once in the Safety Planner generator; do not recreate each frame.
+// Keeps the per-UUID state across cycles: construct once
 class SlowDownPlanner
 {
 public:
@@ -125,8 +122,7 @@ public:
   SlowDownPlanner(const SlowDownPlanner &) = delete;
   SlowDownPlanner & operator=(const SlowDownPlanner &) = delete;
 
-  // Pure utility-level input: no PlannerData, PluginModuleInterface or Node.
-  // `params` must have passed validate_parameters().
+  // `params` must have passed validate_parameters()
   std::vector<SlowDownInterval> plan(
     const TrajectoryPoints & trajectory, const PredictedObjects & objects,
     const geometry_msgs::msg::Pose & ego_pose, double ego_velocity, double ego_acceleration,

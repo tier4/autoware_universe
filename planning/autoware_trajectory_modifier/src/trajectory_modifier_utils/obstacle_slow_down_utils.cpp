@@ -123,7 +123,6 @@ geometry_msgs::msg::Point to_msg(const Point2d & point)
 
 bool is_lower_hysteresis(double value, bool previously_low, double high, double low)
 {
-  // Preserve the legacy comparison operators exactly.
   return previously_low ? !(high < value) : value < low;
 }
 
@@ -146,7 +145,6 @@ double possible_object_radius(const Shape & shape)
 std::pair<double, double> velocity_relative_to_trajectory(
   const PredictedObject & object, const TrajectoryPoints & trajectory)
 {
-  // Same transform and sign convention as legacy PlannerData::Object::calc_vel_relative_to_traj.
   const auto & pose = object.kinematics.initial_pose_with_covariance.pose;
   const auto & twist = object.kinematics.initial_twist_with_covariance.twist;
   const auto & nearest = trajectory.at(mu::findNearestIndex(trajectory, pose.position)).pose;
@@ -182,7 +180,7 @@ TrajectoryPoints decimate_trajectory(
   const auto index = mu::findFirstNearestSegmentIndexWithSoftConstraints(
     trajectory, ego_pose, p.ego_nearest_dist_threshold, p.ego_nearest_yaw_threshold);
   TrajectoryPoints trimmed(trajectory.begin() + index, trajectory.end());
-  if (trimmed.size() < 2) return trajectory;  // Same fallback as legacy utility.
+  if (trimmed.size() < 2) return trajectory;
   const auto msg = mu::convertToTrajectory(trimmed);
   auto points = mu::convertToTrajectoryPointArray(
     mu::resampleTrajectory(msg, p.decimate_trajectory_step_length));
@@ -277,7 +275,6 @@ std::vector<Polygon2d> swept_polygons(
   const geometry_msgs::msg::Pose & ego_pose, const double margin, const TrajectoryPolygonParam & p,
   const double off_track_scale)
 {
-  // This is the local equivalent of legacy polygon_utils::create_one_step_polygons.
   const auto errors = p.enable_to_consider_current_pose
                         ? error_poses(trajectory, ego_pose, p.time_to_convergence)
                         : std::vector<geometry_msgs::msg::Pose>{};
@@ -330,8 +327,7 @@ std::optional<CollisionLimits> collision_limits(
   const Polygon2d & object, const Box2d & object_box, const TrajectoryPoints & decimated,
   const Corridor & expanded_corridor)
 {
-  // IMPORTANT: polygon i is built from *decimated* poses i-1 and i.
-  // Never use polygon indices against the original, un-decimated trajectory.
+  // Polygon i spans the decimated poses i-1 and i
   const auto & expanded = expanded_corridor.polygons;
   std::vector<Polygon2d> first, last;
   size_t first_segment = 0, last_segment = 0;
@@ -348,7 +344,7 @@ std::optional<CollisionLimits> collision_limits(
       last = std::move(intersections);
       last_segment = i == 0 ? 0 : i - 1;
     } else if (!last.empty()) {
-      break;  // Legacy only tracks the first contiguous intersection span.
+      break;  // only the first contiguous intersection span
     }
   }
   if (first.empty() || last.empty() || decimated.size() < 2) return std::nullopt;
@@ -390,7 +386,6 @@ double reach_time(
   if (lower > upper || travel(lower) > distance || travel(upper) < distance) {
     throw std::logic_error("Obstacle SlowDown: invalid reach-time search range");
   }
-  // The original implementation loops until a 1e-5 residual. Bound the iteration count.
   for (int i = 0; i < 100; ++i) {
     const double t = (lower + upper) / 2.0;
     const double error = travel(t) - distance;
@@ -620,7 +615,6 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
   std::set<UuidKey> accepted_ids;
   std::vector<Obstacle> accepted;
 
-  // The resampled centerline is common to all objects and needs only one computation.
   std::vector<geometry_msgs::msg::Point> centerline_points;
   centerline_points.reserve(trajectory.size());
   for (const auto & p : trajectory) centerline_points.push_back(p.pose.position);
@@ -641,7 +635,6 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
     if (lower_bound > filtering.max_lat_margin) continue;
 
     const auto label = object.classification.front().label;
-    // Check class before retrieving type-specific parameters; legacy had an .at() crash here.
     if (
       std::find(filtering.object_types.begin(), filtering.object_types.end(), label) ==
       filtering.object_types.end())
@@ -679,7 +672,7 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
         int & count = impl_->counters[id];
         count = std::min(-1, count - 1);
         if (count <= -filtering.successive_num_to_exit_slow_down_condition) {
-          count = 0;  // Fix legacy map.emplace() reset (would not overwrite existing key).
+          count = 0;
         } else {
           enabled = true;
         }
@@ -731,7 +724,6 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
       planning);
     if (!candidate) continue;
 
-    // Keep legacy's insertTargetPoint + original speed check; no trajectory velocity is modified.
     const auto insert = [&](double s) -> std::optional<size_t> {
       const auto idx = mu::insertTargetPoint(0UL, s, working);
       if (!idx) return std::nullopt;

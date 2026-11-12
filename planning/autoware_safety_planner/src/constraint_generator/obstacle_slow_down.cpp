@@ -59,7 +59,7 @@ std::uint8_t to_label(const std::string & object_type)
   return labels.at(object_type);
 }
 
-//! The parameters of one class; each class is its own generated type, hence the template
+//! Each class is its own generated type, hence the template
 template <typename ClassParams>
 slow_down::ObjectTypeSpecificParams to_object_type_specific_params(const ClassParams & p)
 {
@@ -134,8 +134,7 @@ slow_down::SlowDownParameters to_slow_down_parameters(const Params & params)
   return out;
 }
 
-//! Band of the vehicle width along the reference_path over [s0, s1]: only where it crosses the
-//! centerline matters to the planners, the width is for the visualization
+//! Band along the reference_path over [s0, s1]
 Polygon2d make_region(
   const PathPointTrajectory & path, const double s0, const double s1, const double half_width_m)
 {
@@ -218,8 +217,7 @@ ConstraintGeneratorOutput ObstacleSlowDownConstraintGenerator::generate_constrai
   const auto & ego_pose = context.odometry.pose.pose;
   const double s_ego = compute_ego_frenet_state(context).s;
 
-  // The arc lengths of the slow down intervals are measured from the first of these points,
-  // i.e. from s_ego on the reference_path
+  // The slow down intervals are measured from s_ego
   const auto traj_points =
     make_trajectory_points(path, s_ego, ego_pose.position, RESAMPLE_INTERVAL_M);
   const PredictedObjects no_objects;

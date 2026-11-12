@@ -447,7 +447,6 @@ safety_planner:
         read_only: true
         description: "[s]"
 
-  # The obstacle_slow_down of motion_velocity_planner (objects only), emitted as SpeedLimitZones
   obstacle_slow_down:
     obstacle_filtering:
       object_types:
@@ -560,9 +559,7 @@ safety_planner:
         description: "[m/s] hysteresis on moving_object_speed_threshold"
         validation:
           gt_eq<>: [0.0]
-      # Per class, side of the trajectory and motion: the slow down velocity is interpolated
-      # linearly from min_ego_velocity at min_lat_margin to max_ego_velocity at max_lat_margin.
-      # "stationary" is "static" of the legacy parameters (a C++ keyword)
+      # Velocity interpolated from min_ego_velocity at min_lat_margin to max_ego_velocity at max_lat_margin
       object_type_specified_params:
         car: &slow_down_class_params
           left: &slow_down_side_params

@@ -25,8 +25,7 @@
 namespace autoware::safety_planner::experimental
 {
 
-//! The obstacle_slow_down of motion_velocity_planner (predicted objects only), emitting one
-//! SpeedLimitZone per obstacle the ego passes close by
+//! One SpeedLimitZone per predicted object the ego passes close by
 class ObstacleSlowDownConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
@@ -38,12 +37,10 @@ private:
   using SlowDownParameters = trajectory_modifier::utils::obstacle_slow_down::SlowDownParameters;
   using SlowDownPlanner = trajectory_modifier::utils::obstacle_slow_down::SlowDownPlanner;
 
-  //! Converted from params_ and validated on the first call, since params_ is only set after
-  //! construction
+  //! Built on the first call: params_ is set after construction
   const SlowDownParameters & slow_down_parameters();
 
   std::optional<SlowDownParameters> slow_down_parameters_;
-  //! Keeps the per-UUID entry/exit counters and the previous outputs across cycles
   SlowDownPlanner slow_down_planner_;
 };
 
