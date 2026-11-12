@@ -220,8 +220,7 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
 
     ObjectFilter object_filter(
       p.objects.target_objects.bbox, p.objects.target_objects.polygon,
-      p.objects.stopped_velocity_th, p.objects.safety_buffer,
-      p.objects.low_velocity_th);
+      p.objects.stopped_velocity_th, p.objects.safety_buffer, p.objects.low_velocity_th);
     auto filtered_objects = *context.predicted_objects;
     object_filter.filter_objects(filtered_objects);
     target_objects.reserve(filtered_objects.objects.size());
@@ -229,19 +228,15 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
       target_objects.emplace_back(object);
     }
     object_filter.filter_by_target_area(
-      target_objects, traj_points, vehicle_info, trajectory_shape, lateral_margin_map);
+      target_objects, traj_points, vehicle_info, trajectory_shape, lateral_margin_map,
+      object_decel_map);
 
     collision_point = get_nearest_object_collision(
-      target_objects, traj_points, vehicle_info, object_decel_map, p.rss_params.ego_decel,
-      p.delay_response_time, p.stop_margin, p.rss_params.safety_margin,
-      p.objects.stopped_velocity_th, p.rss_params.lookahead_horizon, p.rss_params.enable);
+      target_objects, traj_points, p.rss_params.ego_decel, p.delay_response_time, p.stop_margin,
+      p.rss_params.safety_margin, p.rss_params.enable);
     if (collision_point) {
-      const auto it = std::find_if(
-        target_objects.begin(), target_objects.end(),
-        [](const TargetObject & object) { return !object.is_safe; });
-      if (it != target_objects.end()) {
-        colliding_object_id = autoware_utils_uuid::to_hex_string(it->object.object_id);
-      }
+      colliding_object_id = autoware_utils_uuid::to_hex_string(
+        target_objects[collision_point->target_source_index].object.object_id);
     }
   }
 
