@@ -26,7 +26,7 @@
 namespace
 {
 using autoware::trajectory_modifier::utils::obstacle_stop::compute_cruise_velocity;
-using autoware::trajectory_modifier::utils::obstacle_stop::evaluate_object_states;
+using autoware::trajectory_modifier::utils::obstacle_stop::evaluate_object_state;
 using autoware::trajectory_modifier::utils::obstacle_stop::get_object_stopping_distance;
 using autoware::trajectory_modifier::utils::obstacle_stop::get_safe_distance;
 using autoware::trajectory_modifier::utils::obstacle_stop::ObjectDecelMap;
@@ -90,6 +90,22 @@ PredictedObject create_car(const double x, const double velocity, const bool onc
 }
 
 const ObjectDecelMap decel_map{{ObjectType::CAR, car_decel}};
+
+// The stored overlap is the whole box: a fully overlapping car contacts at its rear face.
+ObjectRssState evaluate(
+  const PredictedObject & object, const TrajectoryPoints & trajectory,
+  const TrajectoryShape & shape)
+{
+  TargetObject target(object);
+  const auto x = object.kinematics.initial_pose_with_covariance.pose.position.x;
+  auto & ring = target.intersection_polygon.outer();
+  ring.emplace_back(x - 2.0, -1.0);
+  ring.emplace_back(x + 2.0, -1.0);
+  ring.emplace_back(x + 2.0, 1.0);
+  ring.emplace_back(x - 2.0, 1.0);
+  ring.emplace_back(x - 2.0, -1.0);
+  return evaluate_object_state(target, trajectory, shape, decel_map, stopped_vel_th);
+}
 }  // namespace
 
 TEST(GetObjectStoppingDistance, ForwardMovingObject)
@@ -113,28 +129,13 @@ TEST(GetObjectStoppingDistance, ZeroWhenTypeHasNoDeceleration)
     get_object_stopping_distance(ObjectType::TRUCK, 10.0, decel_map, stopped_vel_th), 0.0);
 }
 
-TEST(EvaluateObjectStates, EmptyInputs)
+TEST(EvaluateObjectState, MovingCarAhead)
 {
   const auto trajectory = create_straight_trajectory(50.0, 10.0);
   const auto shape = create_shape(50.0, 0.0);
-  EXPECT_TRUE(evaluate_object_states({}, trajectory, shape, decel_map, stopped_vel_th).empty());
 
-  TargetObjects objects{TargetObject(create_car(20.0, 5.0))};
-  EXPECT_TRUE(
-    evaluate_object_states(objects, TrajectoryPoints{}, shape, decel_map, stopped_vel_th).empty());
-}
+  const auto s = evaluate(create_car(20.0, 5.0), trajectory, shape);
 
-TEST(EvaluateObjectStates, MovingCarAhead)
-{
-  const auto trajectory = create_straight_trajectory(50.0, 10.0);
-  const auto shape = create_shape(50.0, 0.0);
-  TargetObjects objects{TargetObject(create_car(20.0, 5.0))};
-
-  const auto states = evaluate_object_states(objects, trajectory, shape, decel_map, stopped_vel_th);
-
-  ASSERT_EQ(states.size(), 1U);
-  const auto & s = states.front();
-  EXPECT_EQ(s.index, 0U);
   EXPECT_EQ(s.type, ObjectType::CAR);
   EXPECT_NEAR(s.arc_length, 18.0, tolerance);
   EXPECT_NEAR(s.gap, 18.0 - ego_front_offset, tolerance);
@@ -143,48 +144,41 @@ TEST(EvaluateObjectStates, MovingCarAhead)
   EXPECT_TRUE(s.is_dynamic);
 }
 
-TEST(EvaluateObjectStates, StoppedCarIsStatic)
+TEST(EvaluateObjectState, StoppedCarIsStatic)
 {
   const auto trajectory = create_straight_trajectory(50.0, 10.0);
   const auto shape = create_shape(50.0, 0.0);
-  TargetObjects objects{TargetObject(create_car(20.0, 0.0))};
 
-  const auto states = evaluate_object_states(objects, trajectory, shape, decel_map, stopped_vel_th);
+  const auto s = evaluate(create_car(20.0, 0.0), trajectory, shape);
 
-  ASSERT_EQ(states.size(), 1U);
-  EXPECT_NEAR(states.front().lon_vel, 0.0, tolerance);
-  EXPECT_DOUBLE_EQ(states.front().stopping_distance, 0.0);
-  EXPECT_FALSE(states.front().is_dynamic);
+  EXPECT_NEAR(s.lon_vel, 0.0, tolerance);
+  EXPECT_DOUBLE_EQ(s.stopping_distance, 0.0);
+  EXPECT_FALSE(s.is_dynamic);
 }
 
-TEST(EvaluateObjectStates, OncomingCarHasNegativeVelocity)
+TEST(EvaluateObjectState, OncomingCarHasNegativeVelocity)
 {
   const auto trajectory = create_straight_trajectory(50.0, 10.0);
   const auto shape = create_shape(50.0, 0.0);
-  TargetObjects objects{TargetObject(create_car(20.0, 5.0, true))};
 
-  const auto states = evaluate_object_states(objects, trajectory, shape, decel_map, stopped_vel_th);
+  const auto s = evaluate(create_car(20.0, 5.0, true), trajectory, shape);
 
-  ASSERT_EQ(states.size(), 1U);
-  EXPECT_NEAR(states.front().lon_vel, -5.0, tolerance);
-  EXPECT_DOUBLE_EQ(states.front().stopping_distance, 0.0);
-  EXPECT_TRUE(states.front().is_dynamic);
+  EXPECT_NEAR(s.lon_vel, -5.0, tolerance);
+  EXPECT_DOUBLE_EQ(s.stopping_distance, 0.0);
+  EXPECT_TRUE(s.is_dynamic);
 }
 
-TEST(EvaluateObjectStates, GapIsMeasuredFromEgoFront)
+TEST(EvaluateObjectState, GapIsMeasuredFromEgoFront)
 {
   const auto trajectory = create_straight_trajectory(50.0, 10.0);
   const auto shape = create_shape(50.0, 10.0);
-  TargetObjects objects{TargetObject(create_car(20.0, 5.0)), TargetObject(create_car(14.0, 5.0))};
 
-  const auto states = evaluate_object_states(objects, trajectory, shape, decel_map, stopped_vel_th);
+  const auto ahead = evaluate(create_car(20.0, 5.0), trajectory, shape);
+  const auto beside_ego = evaluate(create_car(14.0, 5.0), trajectory, shape);
 
-  ASSERT_EQ(states.size(), 2U);
-  EXPECT_EQ(states[0].index, 0U);
-  EXPECT_NEAR(states[0].gap, 18.0 - (10.0 + ego_front_offset), tolerance);
-  EXPECT_EQ(states[1].index, 1U);
-  EXPECT_NEAR(states[1].arc_length, 12.0, tolerance);
-  EXPECT_DOUBLE_EQ(states[1].gap, 0.0);
+  EXPECT_NEAR(ahead.gap, 18.0 - (10.0 + ego_front_offset), tolerance);
+  EXPECT_NEAR(beside_ego.arc_length, 12.0, tolerance);
+  EXPECT_DOUBLE_EQ(beside_ego.gap, 0.0);
 }
 
 TEST(ComputeCruiseVelocity, InverseOfSafeDistance)
@@ -228,30 +222,29 @@ TEST(ComputeCruiseVelocity, IncreasesWithGapAndObjectStoppingDistance)
 
 namespace
 {
-ObjectRssState make_state(const size_t index, const double arc_length, const double lon_vel)
+TargetObject make_target(const double arc_length, const double lon_vel)
 {
-  ObjectRssState state;
-  state.index = index;
-  state.arc_length = arc_length;
-  state.lon_vel = lon_vel;
-  state.is_dynamic = std::abs(lon_vel) > stopped_vel_th;
-  return state;
+  TargetObject target(create_car(0.0, lon_vel));
+  target.rss_state.arc_length = arc_length;
+  target.rss_state.lon_vel = lon_vel;
+  target.rss_state.is_dynamic = std::abs(lon_vel) > stopped_vel_th;
+  return target;
 }
 }  // namespace
 
 TEST(SelectCruiseTarget, NoTargetWithoutForwardMovingObject)
 {
   EXPECT_FALSE(select_cruise_target({}).has_value());
-  EXPECT_FALSE(select_cruise_target({make_state(0, 20.0, 0.0), make_state(1, 30.0, -5.0)}));
-  EXPECT_FALSE(select_cruise_target({make_state(0, 20.0, 0.2)}));
+  EXPECT_FALSE(select_cruise_target({make_target(20.0, 0.0), make_target(30.0, -5.0)}));
+  EXPECT_FALSE(select_cruise_target({make_target(20.0, 0.2)}));
 }
 
 TEST(SelectCruiseTarget, NearestForwardMovingObject)
 {
   const auto target = select_cruise_target(
-    {make_state(0, 40.0, 5.0), make_state(1, 10.0, 0.0), make_state(2, 15.0, -5.0),
-     make_state(3, 25.0, 3.0)});
+    {make_target(40.0, 5.0), make_target(10.0, 0.0), make_target(15.0, -5.0),
+     make_target(25.0, 3.0)});
   ASSERT_TRUE(target.has_value());
-  EXPECT_EQ(target->index, 3U);
-  EXPECT_DOUBLE_EQ(target->lon_vel, 3.0);
+  EXPECT_NEAR(target->rss_state.arc_length, 25.0, tolerance);
+  EXPECT_DOUBLE_EQ(target->rss_state.lon_vel, 3.0);
 }
