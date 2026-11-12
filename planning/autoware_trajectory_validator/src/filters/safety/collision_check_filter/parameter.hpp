@@ -380,6 +380,27 @@ struct RssParams
   ErrorThreshold error_threshold{};
 };
 
+struct RoadFollowingParams
+{
+  EgoFootprintMargin ego_footprint_margin{-0.1, 0.0, 0.0};
+  double max_lateral_deviation{0.5};
+  double max_heading_deviation{0.1};
+  double window_distance{30.0};
+  double window_time{3.0};
+
+  RoadFollowingParams() = default;
+  explicit RoadFollowingParams(const validator::Params::CollisionCheck::RoadFollowing & params)
+  : ego_footprint_margin{
+      params.ego_footprint_margin.lateral, params.ego_footprint_margin.front,
+      params.ego_footprint_margin.rear},
+    max_lateral_deviation(params.max_lateral_deviation),
+    max_heading_deviation(params.max_heading_deviation),
+    window_distance(params.window_distance),
+    window_time(params.window_time)
+  {
+  }
+};
+
 template <typename PluginParam>
 std::map<std::string_view, PluginParam> create_param_map_per_object(
   const validator::Params & node_params)

@@ -426,6 +426,41 @@
               },
               "required": [],
               "additionalProperties": false
+            },
+            "road_following": {
+              "type": "object",
+              "description": "Road following test that replaces the blinker test in the map based DRAC assessment.",
+              "properties": {
+                "ego_footprint_margin": {
+                  "$ref": "#/definitions/ego_footprint_margin"
+                },
+                "max_lateral_deviation": {
+                  "type": "number",
+                  "description": "Maximum distance from the base link to the lane centerline [m].",
+                  "default": 0.5,
+                  "minimum": 0.0
+                },
+                "max_heading_deviation": {
+                  "type": "number",
+                  "description": "Maximum angle between the ego heading and the lane centerline tangent [rad].",
+                  "default": 0.1,
+                  "minimum": 0.0
+                },
+                "window_distance": {
+                  "type": "number",
+                  "description": "The window covers the trajectory points up to this arc length from the first point, or up to window_time, whichever is longer [m].",
+                  "default": 30.0,
+                  "minimum": 0.0
+                },
+                "window_time": {
+                  "type": "number",
+                  "description": "The window covers the trajectory points up to this time from the first point, or up to window_distance, whichever is longer [s].",
+                  "default": 3.0,
+                  "minimum": 0.0
+                }
+              },
+              "required": [],
+              "additionalProperties": false
             }
           },
           "required": [],

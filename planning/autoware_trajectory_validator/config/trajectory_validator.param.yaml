@@ -105,6 +105,15 @@
           base: -4.0
         error_threshold:
           ego_acceleration: -4.0
+      road_following:
+        ego_footprint_margin:
+          lateral: -0.1
+          front: 0.0
+          rear: 0.0
+        max_lateral_deviation: 0.5
+        max_heading_deviation: 0.1
+        window_distance: 30.0
+        window_time: 3.0
 
     trajectory_feasibility:
       max_speed: 16.7 # m/s
