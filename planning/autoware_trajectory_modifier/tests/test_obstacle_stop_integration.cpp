@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/obstacle_stop.hpp"
+#include "trajectory_modifier_test_utils.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
@@ -40,9 +41,11 @@
 namespace
 {
 using autoware::trajectory_modifier::TrajectoryModifierContext;
-using autoware::trajectory_modifier::plugin::InputData;
+using autoware::trajectory_modifier::TrajectoryModifierData;
+using autoware::trajectory_modifier::TrajectoryModifierParams;
 using autoware::trajectory_modifier::plugin::ObstacleStop;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
+using autoware::trajectory_modifier::test::process_plugin;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
@@ -130,7 +133,7 @@ PredictedObjects::ConstSharedPtr make_blocking_car(double x, double y)
   return std::make_shared<const PredictedObjects>(predicted_objects);
 }
 
-// Build a dense pointcloud cluster the obstacle_stop pipeline will detect.
+// Build a dense blocking pointcloud the obstacle_stop pipeline will detect.
 sensor_msgs::msg::PointCloud2::ConstSharedPtr make_blocking_pointcloud_cluster(
   double center_x, double center_y, double height)
 {
@@ -163,13 +166,13 @@ sensor_msgs::msg::PointCloud2::ConstSharedPtr make_blocking_pointcloud_cluster(
   return std::make_shared<const sensor_msgs::msg::PointCloud2>(cloud);
 }
 
-InputData create_input_data(
+TrajectoryModifierData create_input_data(
   Odometry::ConstSharedPtr current_odometry,
   AccelWithCovarianceStamped::ConstSharedPtr current_acceleration,
   PredictedObjects::ConstSharedPtr predicted_objects = nullptr,
   sensor_msgs::msg::PointCloud2::ConstSharedPtr obstacle_pointcloud = nullptr)
 {
-  InputData input;
+  TrajectoryModifierData input;
   input.current_odometry = std::move(current_odometry);
   input.current_acceleration = std::move(current_acceleration);
   input.predicted_objects = std::move(predicted_objects);
@@ -197,11 +200,12 @@ protected:
 
     set_up_default_params();
 
-    // Create the context and the plugin once. Tests build per-frame InputData inline,
+    // Create the context and the plugin once. Tests build per-frame TrajectoryModifierData inline,
     // and inject any required TF directly into context_->tf_buffer.
     context_ = std::make_shared<TrajectoryModifierContext>(node_.get());
     plugin_ = std::make_unique<ObstacleStop>();
-    plugin_->initialize("test_obstacle_stop", node_.get(), time_keeper_, context_, params_);
+    plugin_->initialize(
+      "test_obstacle_stop", node_.get(), time_keeper_, context_, TrajectoryModifierParams{params_});
   }
 
   void TearDown() override
@@ -229,7 +233,8 @@ protected:
     p.enable_stop_for_objects = true;
     p.enable_stop_for_pointcloud = true;
     p.stop_margin = 6.0;
-    p.lateral_margin = 0.5;
+    p.objects.lateral_margin.car = 0.5;
+    p.objects.lateral_margin.unknown = 0.5;
 
     p.obstacle_tracking.on_time_buffer = 0.01;
     p.obstacle_tracking.off_time_buffer = 1.0;
@@ -238,22 +243,12 @@ protected:
     p.obstacle_tracking.pcd_distance_th = 0.5;
     p.obstacle_tracking.grace_period = 0.5;
 
-    p.objects.object_types = {"car"};
-
-    p.pointcloud.height_buffer = 0.5;
-    p.pointcloud.min_height = 0.2;
-    p.pointcloud.voxel_grid_filter.x = 0.2;
-    p.pointcloud.voxel_grid_filter.y = 0.2;
-    p.pointcloud.voxel_grid_filter.z = 0.2;
-    p.pointcloud.voxel_grid_filter.min_size = 3;
-    p.pointcloud.clustering.tolerance = 0.3;
-    p.pointcloud.clustering.min_height = 0.5;
-    p.pointcloud.clustering.min_size = 10;
-    p.pointcloud.clustering.max_size = 10000;
+    p.objects.target_objects.bbox = {"car"};
+    p.objects.target_objects.polygon = {"car"};
+    p.objects.target_objects.pointcloud = {"unknown"};
 
     p.rss_params.enable = true;
     p.rss_params.object_decel.car = 1.5;
-    p.rss_params.reaction_time = 0.2;
     p.rss_params.safety_margin = 2.0;
     p.rss_params.ego_decel = 4.0;
     p.rss_params.lookahead_horizon = 2.0;
@@ -270,11 +265,11 @@ TEST_F(ObstacleStopIntegrationTest, TrajectoryNotModifiedWhenDisabled)
 {
   // Arrange
   params_.use_obstacle_stop = false;
-  plugin_->update_params(params_);
+  plugin_->update_params(TrajectoryModifierParams{params_});
   TrajectoryPoints trajectory;
 
   // Act
-  const bool modified = plugin_->modify_trajectory(trajectory, InputData{});
+  const bool modified = process_plugin(*plugin_, trajectory, TrajectoryModifierData{});
 
   // Assert
   EXPECT_FALSE(modified);
@@ -286,7 +281,7 @@ TEST_F(ObstacleStopIntegrationTest, TrajectoryNotModifiedForEmptyTrajectory)
   TrajectoryPoints empty_trajectory;
 
   // Act
-  const bool modified = plugin_->modify_trajectory(empty_trajectory, InputData{});
+  const bool modified = process_plugin(*plugin_, empty_trajectory, TrajectoryModifierData{});
 
   // Assert
   EXPECT_FALSE(modified);
@@ -299,7 +294,7 @@ TEST_F(ObstacleStopIntegrationTest, TrajectoryNotModifiedWhenNoObstaclesDetected
   const auto input = create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0));
 
   // Act
-  const bool modified = plugin_->modify_trajectory(trajectory, input);
+  const bool modified = process_plugin(*plugin_, trajectory, input);
 
   // Assert
   EXPECT_FALSE(modified);
@@ -314,12 +309,54 @@ TEST_F(ObstacleStopIntegrationTest, TrajectoryNotModifiedWhenObjectIsBesidePath)
     create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), car_beside_path);
 
   // Act
-  plugin_->modify_trajectory(trajectory, input);
+  process_plugin(*plugin_, trajectory, input);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = plugin_->modify_trajectory(trajectory, input);
+  const bool modified = process_plugin(*plugin_, trajectory, input);
 
   // Assert
   EXPECT_FALSE(modified);
+}
+
+TEST_F(ObstacleStopIntegrationTest, SlowTrajectoryIgnoresObjectOutsideLowSpeedMargin)
+{
+  // Vehicle half-width is 0.948 m. A 2 m wide car at y = 2.7 has its near edge at 1.7 m.
+  // That is outside the low-speed margin (0 m) and inside the normal margin (1.5 m).
+  auto & objects = params_.obstacle_stop.objects;
+  objects.lateral_margin.car = 1.5;
+  objects.low_velocity_lateral_margin.car = 0.0;
+  objects.low_velocity_th = 2.0;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 1.0);
+  const auto car_beside_path = make_blocking_car(20.0, 2.7);
+  const auto input =
+    create_input_data(make_odometry(0.0, 0.0, 1.0), make_acceleration(0.0), car_beside_path);
+
+  process_plugin(*plugin_, trajectory, input);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  const bool modified = process_plugin(*plugin_, trajectory, input);
+
+  EXPECT_FALSE(modified);
+}
+
+TEST_F(ObstacleStopIntegrationTest, FastTrajectoryStopsForObjectWithinNormalMargin)
+{
+  auto & objects = params_.obstacle_stop.objects;
+  objects.lateral_margin.car = 1.5;
+  objects.low_velocity_lateral_margin.car = 0.0;
+  objects.low_velocity_th = 2.0;
+  plugin_->update_params(TrajectoryModifierParams{params_});
+
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  const auto car_beside_path = make_blocking_car(20.0, 2.7);
+  const auto input =
+    create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), car_beside_path);
+
+  process_plugin(*plugin_, trajectory, input);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  const bool modified = process_plugin(*plugin_, trajectory, input);
+
+  EXPECT_TRUE(modified);
 }
 
 TEST_F(ObstacleStopIntegrationTest, TrajectoryModifiedWhenObjectBlocksPath)
@@ -332,9 +369,9 @@ TEST_F(ObstacleStopIntegrationTest, TrajectoryModifiedWhenObjectBlocksPath)
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  plugin_->modify_trajectory(trajectory, input);
+  process_plugin(*plugin_, trajectory, input);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = plugin_->modify_trajectory(trajectory, input);
+  const bool modified = process_plugin(*plugin_, trajectory, input);
 
   // Assert
   EXPECT_TRUE(modified);
@@ -351,9 +388,9 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedBeforeObject)
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  plugin_->modify_trajectory(trajectory, input);
+  process_plugin(*plugin_, trajectory, input);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = plugin_->modify_trajectory(trajectory, input);
+  const bool modified = process_plugin(*plugin_, trajectory, input);
 
   // Assert
   ASSERT_TRUE(modified);
@@ -378,9 +415,9 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedBeforeObject_ReachMaxDecel)
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  plugin_->modify_trajectory(trajectory, input);
+  process_plugin(*plugin_, trajectory, input);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = plugin_->modify_trajectory(trajectory, input);
+  const bool modified = process_plugin(*plugin_, trajectory, input);
 
   // Assert
   ASSERT_TRUE(modified);
@@ -403,9 +440,9 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  plugin_->modify_trajectory(trajectory, input);
+  process_plugin(*plugin_, trajectory, input);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = plugin_->modify_trajectory(trajectory, input);
+  const bool modified = process_plugin(*plugin_, trajectory, input);
 
   // Assert
   ASSERT_TRUE(modified);
@@ -440,9 +477,9 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  plugin_->modify_trajectory(trajectory, input);
+  process_plugin(*plugin_, trajectory, input);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = plugin_->modify_trajectory(trajectory, input);
+  const bool modified = process_plugin(*plugin_, trajectory, input);
 
   // Assert
   ASSERT_TRUE(modified);

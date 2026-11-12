@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/traffic_light_stop.hpp"
+#include "trajectory_modifier_test_utils.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
@@ -41,9 +43,11 @@
 namespace
 {
 using autoware::trajectory_modifier::TrajectoryModifierContext;
-using autoware::trajectory_modifier::plugin::InputData;
+using autoware::trajectory_modifier::TrajectoryModifierData;
+using autoware::trajectory_modifier::TrajectoryModifierParams;
 using autoware::trajectory_modifier::plugin::TrafficLightStop;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
+using autoware::trajectory_modifier::test::process_plugin;
 using autoware_perception_msgs::msg::TrafficLightElement;
 using autoware_perception_msgs::msg::TrafficLightGroup;
 using autoware_perception_msgs::msg::TrafficLightGroupArray;
@@ -177,14 +181,14 @@ LaneletRoute::ConstSharedPtr create_route(lanelet::Id lanelet_id)
   return route;
 }
 
-InputData create_input_data(
+TrajectoryModifierData create_input_data(
   Odometry::ConstSharedPtr current_odometry,
   AccelWithCovarianceStamped::ConstSharedPtr current_acceleration,
   std::shared_ptr<lanelet::LaneletMap> lanelet_map = nullptr,
   LaneletRoute::ConstSharedPtr route = nullptr,
   TrafficLightGroupArray::ConstSharedPtr traffic_light_signals = nullptr)
 {
-  InputData input;
+  TrajectoryModifierData input;
   input.current_odometry = std::move(current_odometry);
   input.current_acceleration = std::move(current_acceleration);
   input.lanelet_map = std::move(lanelet_map);
@@ -215,7 +219,9 @@ protected:
 
     context_ = std::make_shared<TrajectoryModifierContext>(node_.get());
     plugin_ = std::make_unique<TrafficLightStop>();
-    plugin_->initialize("test_traffic_light_stop", node_.get(), time_keeper_, context_, params_);
+    plugin_->initialize(
+      "test_traffic_light_stop", node_.get(), time_keeper_, context_,
+      TrajectoryModifierParams{params_});
     odometry_stamp_ = node_->now();
   }
 
@@ -250,7 +256,7 @@ protected:
     tl.th_stable_duration_unknown = 0.0;
     tl.amber_rejection.th_hysteresis = 0.0;
     tl.amber_rejection.reject_if_stop_detected = false;
-    tl.crossing_time_limit = 2.75;
+    tl.amber_rejection.crossing_time_limit = 2.75;
     tl.signal_timeout = 0.5;
   }
 
@@ -268,7 +274,7 @@ protected:
     traffic_light_signals_ = make_traffic_light_signal(id, color, stamp.value_or(node_->now()));
   }
 
-  InputData make_default_input(double velocity = 5.0)
+  TrajectoryModifierData make_default_input(double velocity = 5.0)
   {
     return create_input_data(
       make_odometry(0.0, 0.0, velocity, odometry_stamp_), make_acceleration(0.0), lanelet_map_,
@@ -276,16 +282,18 @@ protected:
   }
 
   void expect_not_modified(
-    TrajectoryPoints & trajectory, const InputData & input, const std::string & message = "")
+    TrajectoryPoints & trajectory, const TrajectoryModifierData & input,
+    const std::string & message = "")
   {
-    const bool modified = plugin_->modify_trajectory(trajectory, input);
+    const bool modified = process_plugin(*plugin_, trajectory, input);
     EXPECT_FALSE(modified) << message;
   }
 
   void expect_modified_with_stop_before_stop_line(
-    TrajectoryPoints & trajectory, const InputData & input, const std::string & message = "")
+    TrajectoryPoints & trajectory, const TrajectoryModifierData & input,
+    const std::string & message = "")
   {
-    const bool modified = plugin_->modify_trajectory(trajectory, input);
+    const bool modified = process_plugin(*plugin_, trajectory, input);
     ASSERT_TRUE(modified) << message;
     EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
     EXPECT_LT(trajectory.back().pose.position.x, stop_line_x_);
@@ -312,10 +320,11 @@ protected:
 TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWhenDisabled)
 {
   params_.use_traffic_light_stop = false;
-  plugin_->update_params(params_);
+  plugin_->update_params(TrajectoryModifierParams{params_});
 
   auto trajectory = create_straight_trajectory(0.0, 10.0, 5.0);
-  expect_not_modified(trajectory, InputData{}, "Plugin disabled should not modify trajectory");
+  expect_not_modified(
+    trajectory, TrajectoryModifierData{}, "Plugin disabled should not modify trajectory");
 }
 
 TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedForEmptyTrajectory)
@@ -458,10 +467,10 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithAmberLightAsRedLig
   set_traffic_light_signal(light_id, TrafficLightElement::AMBER);
 
   params_.traffic_light_stop.treat_amber_light_as_red = true;
-  plugin_->update_params(params_);
+  plugin_->update_params(TrajectoryModifierParams{params_});
 
   auto trajectory = create_straight_trajectory(0.0, 16.0, 10.0);
-  const bool modified = plugin_->modify_trajectory(trajectory, make_default_input(10.0));
+  const bool modified = process_plugin(*plugin_, trajectory, make_default_input(10.0));
   EXPECT_TRUE(modified) << "Amber treated as red should insert stop point even when not stoppable";
 }
 
@@ -488,10 +497,10 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithUnknownLightAsRedL
   set_traffic_light_signal(light_id, TrafficLightElement::UNKNOWN);
 
   params_.traffic_light_stop.treat_unknown_light_as_red = true;
-  plugin_->update_params(params_);
+  plugin_->update_params(TrajectoryModifierParams{params_});
 
   auto trajectory = create_straight_trajectory(0.0, 16.0, 10.0);
-  const bool modified = plugin_->modify_trajectory(trajectory, make_default_input(10.0));
+  const bool modified = process_plugin(*plugin_, trajectory, make_default_input(10.0));
   EXPECT_TRUE(modified)
     << "Unknown treated as red should insert stop point even when not stoppable";
 }
@@ -508,7 +517,7 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithAmberLightWhenPrev
   params_.traffic_light_stop.amber_rejection.th_hysteresis = 5.0;
   params_.traffic_light_stop.overshoot_tolerance = 0.5;
   params_.traffic_light_stop.allow_if_cannot_stop_distance = 0.0;
-  params_.traffic_light_stop.crossing_time_limit = 100.0;
+  params_.traffic_light_stop.amber_rejection.crossing_time_limit = 100.0;
   plugin_->update_params(params_);
 
   const auto ego_front_offset = context_->vehicle_info.max_longitudinal_offset_m;
@@ -518,9 +527,11 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryModifiedWithAmberLightWhenPrev
     "Input trajectory should not be modified when it already contains a valid stop point");
 
   auto crossing_trajectory = create_straight_trajectory(0.0, 10.0, 10.0);
-  const bool modified = plugin_->modify_trajectory(crossing_trajectory, make_default_input(10.0));
-  EXPECT_TRUE(modified) << "Should modify trajectory when a prior stop attempt is detected and "
-                           "reject_if_stop_detected is true";
+  auto input = make_default_input(10.0);
+  const auto result = plugin_->process(crossing_trajectory, input);
+  EXPECT_TRUE(result == autoware::trajectory_modifier::plugin::ProcessingResult::Modified)
+    << "Should modify trajectory when a prior stop attempt is detected and "
+       "reject_if_stop_detected is true";
   EXPECT_FLOAT_EQ(crossing_trajectory.back().longitudinal_velocity_mps, 0.0F);
 }
 
@@ -536,7 +547,7 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWhenRejectIfStopDet
   params_.traffic_light_stop.amber_rejection.th_hysteresis = 5.0;
   params_.traffic_light_stop.overshoot_tolerance = 0.5;
   params_.traffic_light_stop.allow_if_cannot_stop_distance = 0.0;
-  params_.traffic_light_stop.crossing_time_limit = 100.0;
+  params_.traffic_light_stop.amber_rejection.crossing_time_limit = 100.0;
   plugin_->update_params(params_);
 
   const auto ego_front_offset = context_->vehicle_info.max_longitudinal_offset_m;
@@ -551,21 +562,6 @@ TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWhenRejectIfStopDet
     "Input trajectory should not be modified when reject_if_stop_detected is false");
 }
 
-TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWithStaleSignals)
-{
-  const lanelet::Id light_id = 500;
-  const double stop_x = 15.0;
-
-  create_and_set_map(light_id, stop_x);
-  const auto age = rclcpp::Duration::from_seconds(params_.traffic_light_stop.signal_timeout + 1.0);
-  set_traffic_light_signal(light_id, TrafficLightElement::RED, node_->now() - age);
-
-  auto trajectory = create_straight_trajectory(0.0, 16.0, 5.0);
-  expect_not_modified(
-    trajectory, make_default_input(),
-    "Signals older than signal_timeout should skip the traffic light check");
-}
-
 TEST_F(TrafficLightStopIntegrationTest, HoldsPositionWhenStoppedNearTargetStopPoint)
 {
   const lanelet::Id light_id = 500;
@@ -578,14 +574,14 @@ TEST_F(TrafficLightStopIntegrationTest, HoldsPositionWhenStoppedNearTargetStopPo
   create_and_set_map(light_id, stop_x);
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
 
-  params_.stopping_constraints.ego_stopped_vel_th = 0.1;
   params_.traffic_light_stop.hold_position_when_stopped = true;
+  params_.stopping_constraints.ego_stopped_vel_th = 0.1;
   params_.traffic_light_stop.hold_position_distance_threshold = 2.0;
-  plugin_->update_params(params_);
+  plugin_->update_params(TrajectoryModifierParams{params_});
 
   // Lookahead trajectory crosses the stop line while ego odometry velocity is 0.
   auto trajectory = create_straight_trajectory(0.0, stop_x + 1.0, 1.0);
-  const bool modified = plugin_->modify_trajectory(trajectory, make_default_input(0.0));
+  const bool modified = process_plugin(*plugin_, trajectory, make_default_input(0.0));
   ASSERT_TRUE(modified) << "Should modify trajectory for red light while ego is stopped";
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
   EXPECT_NEAR(trajectory.back().pose.position.x, 0.0, 0.05)
@@ -604,15 +600,30 @@ TEST_F(TrafficLightStopIntegrationTest, PullsForwardWhenStoppedFarFromStopPoint)
   create_and_set_map(light_id, stop_x);
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
 
-  params_.stopping_constraints.ego_stopped_vel_th = 0.1;
   params_.traffic_light_stop.hold_position_when_stopped = true;
+  params_.stopping_constraints.ego_stopped_vel_th = 0.1;
   params_.traffic_light_stop.hold_position_distance_threshold = 2.0;
-  plugin_->update_params(params_);
+  plugin_->update_params(TrajectoryModifierParams{params_});
 
   auto trajectory = create_straight_trajectory(0.0, stop_x + 1.0, 1.0);
-  const bool modified = plugin_->modify_trajectory(trajectory, make_default_input(0.0));
+  const bool modified = process_plugin(*plugin_, trajectory, make_default_input(0.0));
   ASSERT_TRUE(modified) << "Should modify trajectory for red light while ego is stopped";
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
   EXPECT_NEAR(trajectory.back().pose.position.x, target_stop_arc_length, 0.5)
     << "Stopped ego far from the stop point should still be allowed to pull forward";
+}
+
+TEST_F(TrafficLightStopIntegrationTest, TrajectoryNotModifiedWithStaleSignals)
+{
+  const lanelet::Id light_id = 500;
+  const double stop_x = 15.0;
+
+  create_and_set_map(light_id, stop_x);
+  const auto age = rclcpp::Duration::from_seconds(params_.traffic_light_stop.signal_timeout + 1.0);
+  set_traffic_light_signal(light_id, TrafficLightElement::RED, node_->now() - age);
+
+  auto trajectory = create_straight_trajectory(0.0, 16.0, 5.0);
+  expect_not_modified(
+    trajectory, make_default_input(),
+    "Signals older than signal_timeout should skip the traffic light check");
 }

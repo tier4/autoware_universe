@@ -17,7 +17,7 @@
 
 #include "autoware/traffic_light_compliance_checker/structs.hpp"
 #include "autoware/traffic_light_compliance_checker/traffic_light_compliance_checker.hpp"
-#include "autoware/trajectory_modifier/trajectory_modifier_plugins/trajectory_modifier_plugin_base.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -30,6 +30,14 @@
 
 namespace autoware::trajectory_modifier::plugin
 {
+using autoware::trajectory_modifier::TrajectoryModifierData;
+using autoware::trajectory_modifier::TrajectoryModifierParams;
+using autoware::trajectory_modifier::plugin::ProcessingResult;
+using autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase;
+using autoware::trajectory_modifier::plugin::TrajectoryPoints;
+using ModifierParams = trajectory_modifier_params::Params;
+using autoware::traffic_light_compliance_checker::Violation;
+using autoware::traffic_light_compliance_checker::ViolationType;
 using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using visualization_msgs::msg::MarkerArray;
@@ -39,23 +47,23 @@ class TrafficLightStop : public TrajectoryModifierPluginBase
 public:
   TrafficLightStop() = default;
 
-  bool modify_trajectory(TrajectoryPoints & traj_points, const InputData & input) override;
+  ProcessingResult process(TrajectoryPoints & traj_points, TrajectoryModifierData & input) override;
 
   [[nodiscard]] bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, const InputData & input) override;
+    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
   void update_params(const TrajectoryModifierParams & params) override;
 
-  const TrajectoryModifierParams::TrafficLightStop & get_params() const { return params_; }
+  const ModifierParams::TrafficLightStop & get_params() const { return params_; }
 
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
-  TrajectoryModifierParams::TrafficLightStop params_;
-  TrajectoryModifierParams::StoppingConstraints stopping_params_;
+  ModifierParams::TrafficLightStop params_;
+  ModifierParams::StoppingConstraints stopping_params_;
 
-  std::optional<autoware::traffic_light_compliance_checker::Violation> nearest_violation_;
+  std::optional<Violation> nearest_violation_;
 
   std::unique_ptr<autoware::traffic_light_compliance_checker::TrafficLightComplianceChecker>
     checker_;
@@ -66,15 +74,17 @@ private:
     size_t violations_count = 0;
     double nearest_violation_arc_length = 0.0;
     double stop_point_arc_length = 0.0;
+    ViolationType nearest_violation_type;
   } debug_data_;
 
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
-  bool check_traffic_lights(const TrajectoryPoints & traj_points, const InputData & input);
+  bool check_traffic_lights(
+    const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
-  bool set_stop_point(TrajectoryPoints & traj_points, const InputData & input);
+  bool set_stop_point(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
-  bool check_inputs(const InputData & input);
+  bool check_inputs(const TrajectoryModifierData & input);
 
   void publish_debug_string() const;
 };

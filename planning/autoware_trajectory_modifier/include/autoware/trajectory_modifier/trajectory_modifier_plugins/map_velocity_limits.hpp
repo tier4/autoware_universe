@@ -35,13 +35,12 @@ using autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
 using ModifierParams = trajectory_modifier_params::Params;
 
-class MapVelocityLimits : public VelocityLimitPluginBase
+class MapVelocityLimits : public TrajectoryModifierPluginBase
 {
 public:
   MapVelocityLimits() = default;
 
-  ProcessingResult process(
-    TrajectoryPoints & traj_points, const TrajectoryModifierData & input) override;
+  ProcessingResult process(TrajectoryPoints & traj_points, TrajectoryModifierData & input) override;
 
   [[nodiscard]] bool is_trajectory_modification_required(
     const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
