@@ -177,8 +177,6 @@ On load, the node:
 
 If any check fails, the model is not loaded and inference is disabled.
 
-Each `lanes` and `route_lanes` point holds the left and right boundary points (4 values), without the centerline. Models that read the centerline and the boundary offsets (6 values) do not match this input.
-
 - **Major version**
   Incremented when there are changes in the model **inputs/outputs or architecture**.
 
