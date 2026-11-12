@@ -620,17 +620,29 @@ void PointCloudFilter::filter_pointcloud(
     pointcloud->end());
 }
 
+namespace {
+Polygon2d get_object_polygon(const PredictedObject & object, const double margin)
+{
+  const auto & shape = object.shape;
+  const auto & pose = object.kinematics.initial_pose_with_covariance.pose;
+  if (shape.type != Shape::POLYGON) {
+    auto s = shape;
+    s.dimensions.x += 2.0 * margin;
+    s.dimensions.y += 2.0 * margin;
+    return autoware_utils::to_polygon2d(pose, s);
+  }
+  auto polygon = autoware_utils::to_polygon2d(pose, shape);
+  if (polygon.outer().empty()) return polygon;
+  return autoware_utils::expand_polygon(polygon, margin);
+}
+}  // namespace
+
 void PointCloudFilter::filter_pointcloud_by_object(
   PointCloud::Ptr & pointcloud, const PredictedObjects & objects)
 {
   if (pointcloud->empty() || objects.objects.empty()) return;
 
-  const auto margin = 0.1;
-  auto get_object_polygon = [&](const auto & object) {
-    auto polygon = autoware_utils::to_polygon2d(object);
-    auto expanded_polygon = autoware_utils::expand_polygon(polygon, margin);
-    return expanded_polygon;
-  };
+  constexpr double margin = 0.1;
 
   for (const auto & obj : objects.objects) {
     const auto obj_pose = obj.kinematics.initial_pose_with_covariance.pose;
@@ -646,7 +658,7 @@ void PointCloudFilter::filter_pointcloud_by_object(
           if (std::abs(rel_p.x()) > x_th || std::abs(rel_p.y()) > y_th) {
             return false;
           }
-          if (!obj_polygon) obj_polygon = get_object_polygon(obj);
+          if (!obj_polygon) obj_polygon = get_object_polygon(obj, margin);
           return !boost::geometry::disjoint(p, *obj_polygon);
         }),
       pointcloud->end());
@@ -662,17 +674,6 @@ void ObjectFilter::filter_by_target_area(
   constexpr double time_margin = 0.5;
   constexpr double kinematic_horizon = 10.0;
   constexpr double kinematic_time_step = 0.5;
-
-  auto get_object_polygon = [&](const auto & pose, const auto & shape) {
-    if (shape.type != Shape::POLYGON) {
-      auto s = shape;
-      s.dimensions.x += safety_buffer_;
-      s.dimensions.y += safety_buffer_;
-      return autoware_utils::to_polygon2d(pose, s);
-    }
-    const auto polygon = autoware_utils::to_polygon2d(pose, shape);
-    return autoware_utils::expand_polygon(polygon, safety_buffer_);
-  };
 
   std::map<double, trajectory_time_overlap::TrajectoryCornerFootprint> ego_footprints;
   auto ego_footprint_for =
@@ -706,7 +707,8 @@ void ObjectFilter::filter_by_target_area(
   };
 
   auto is_exiting = [&](
-                      const auto & object, const LateralMargin lat_margin,
+                      const auto & object, const Polygon2d & object_polygon,
+                      const LateralMargin lat_margin,
                       std::vector<geometry_msgs::msg::Pose> & overlap_path) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
     const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
@@ -718,8 +720,7 @@ void ObjectFilter::filter_by_target_area(
       ego_footprint_for(std::max(lat_margin.normal, lat_margin.low_velocity));
     if (!ego_footprint) return false;
 
-    const auto local_outline =
-      outline_in_object_frame(object_pose, get_object_polygon(object_pose, object.shape));
+    const auto local_outline = outline_in_object_frame(object_pose, object_polygon);
     if (local_outline.empty()) return false;
 
     const autoware_perception_msgs::msg::PredictedPath * best_path = nullptr;
@@ -763,12 +764,11 @@ void ObjectFilter::filter_by_target_area(
       [&](auto & obj) {
         const auto & object = obj.object;
         const auto lat_margin = get_lateral_margin(lateral_margin_map, to_object_type(object));
-        const auto object_pose = object.kinematics.initial_pose_with_covariance.pose;
-        const auto object_polygon = get_object_polygon(object_pose, object.shape);
+        const auto object_polygon = get_object_polygon(object, safety_buffer_);
         const auto result = query_overlapping_footprint(
           trajectory_shape, object_polygon, lat_margin, traj_low_velocity_th_);
         if (!result) return true;
-        if (is_exiting(object, lat_margin, obj.predicted_path)) return true;
+        if (is_exiting(object, object_polygon, lat_margin, obj.predicted_path)) return true;
         obj.polygon = object_polygon;
         obj.ego_footprint = result->ego_footprint;
         obj.intersection_polygon = result->intersection_polygon;
