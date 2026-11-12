@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <optional>
@@ -74,7 +75,33 @@ struct PreviousOutput
   Motion motion{Motion::Static};
 };
 
-using PolygonCache = std::map<double, std::vector<Polygon2d>>;
+using Box2d = bg::model::box<Point2d>;
+
+struct Corridor
+{
+  std::vector<Polygon2d> polygons;
+  std::vector<Box2d> boxes;
+};
+
+using PolygonCache = std::map<double, Corridor>;
+
+std::vector<Box2d> bounding_boxes(const std::vector<Polygon2d> & polygons)
+{
+  std::vector<Box2d> boxes;
+  boxes.reserve(polygons.size());
+  for (const auto & polygon : polygons) boxes.push_back(bg::return_envelope<Box2d>(polygon));
+  return boxes;
+}
+
+//! Lower bound of the distance between any shapes inside the boxes
+double box_distance(const Box2d & a, const Box2d & b)
+{
+  const double dx = std::max(
+    {0.0, a.min_corner().x() - b.max_corner().x(), b.min_corner().x() - a.max_corner().x()});
+  const double dy = std::max(
+    {0.0, a.min_corner().y() - b.max_corner().y(), b.min_corner().y() - a.max_corner().y()});
+  return std::hypot(dx, dy);
+}
 
 UuidKey key(const ObjectId & id)
 {
@@ -277,25 +304,42 @@ std::vector<Polygon2d> swept_polygons(
   return result;
 }
 
-double clearance_to_trajectory(const Polygon2d & object, const std::vector<Polygon2d> & corridor)
+double clearance_to_trajectory(
+  const Polygon2d & object, const Box2d & object_box, const Corridor & corridor)
 {
-  double distance = std::numeric_limits<double>::max();
-  for (const auto & poly : corridor) distance = std::min(distance, bg::distance(poly, object));
+  // Skips polygons whose box distance cannot beat the best so far; the margin absorbs rounding
+  constexpr double BOUND_MARGIN_M = 1e-6;
+  const auto & polygons = corridor.polygons;
+  if (polygons.empty()) return std::numeric_limits<double>::max();
+  std::vector<double> bounds(polygons.size());
+  for (size_t i = 0; i < polygons.size(); ++i) {
+    bounds[i] = box_distance(corridor.boxes[i], object_box);
+  }
+  const auto seed = static_cast<size_t>(
+    std::distance(bounds.begin(), std::min_element(bounds.begin(), bounds.end())));
+  double distance = bg::distance(polygons[seed], object);
+  for (size_t i = 0; i < polygons.size(); ++i) {
+    if (i == seed || bounds[i] - BOUND_MARGIN_M >= distance) continue;
+    distance = std::min(distance, bg::distance(polygons[i], object));
+  }
   return distance;
 }
 
 using CollisionLimits = std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point>;
 std::optional<CollisionLimits> collision_limits(
-  const Polygon2d & object, const TrajectoryPoints & decimated,
-  const std::vector<Polygon2d> & expanded)
+  const Polygon2d & object, const Box2d & object_box, const TrajectoryPoints & decimated,
+  const Corridor & expanded_corridor)
 {
   // IMPORTANT: polygon i is built from *decimated* poses i-1 and i.
   // Never use polygon indices against the original, un-decimated trajectory.
+  const auto & expanded = expanded_corridor.polygons;
   std::vector<Polygon2d> first, last;
   size_t first_segment = 0, last_segment = 0;
   for (size_t i = 0; i < expanded.size(); ++i) {
     std::vector<Polygon2d> intersections;
-    bg::intersection(expanded.at(i), object, intersections);
+    if (!bg::disjoint(expanded_corridor.boxes.at(i), object_box)) {
+      bg::intersection(expanded.at(i), object, intersections);
+    }
     if (!intersections.empty()) {
       if (first.empty()) {
         first = intersections;
@@ -565,9 +609,11 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
   const auto clearance_trajectory =
     decimate_trajectory(trajectory, ego_pose, geometry, geometry.goal_extended_trajectory_length);
   const auto detection_trajectory = decimate_trajectory(trajectory, ego_pose, geometry, 0.0);
-  const auto expanded = swept_polygons(
+  Corridor expanded;
+  expanded.polygons = swept_polygons(
     detection_trajectory, vehicle_info, ego_pose,
     filtering.max_lat_margin + filtering.lat_hysteresis_margin, geometry, 0.0);
+  expanded.boxes = bounding_boxes(expanded.polygons);
   const double ego_radius =
     std::hypot(vehicle_info.max_longitudinal_offset_m, vehicle_info.vehicle_width_m / 2.0);
   PolygonCache clearance_cache;
@@ -604,12 +650,17 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
     const auto & class_param = planning.object_type_specific_params.at(label);
     const double scale = class_param.wheel_off_track_scale;
     if (clearance_cache.count(scale) == 0) {
-      clearance_cache.emplace(
-        scale, swept_polygons(clearance_trajectory, vehicle_info, ego_pose, 0.0, geometry, scale));
+      Corridor corridor;
+      corridor.polygons =
+        swept_polygons(clearance_trajectory, vehicle_info, ego_pose, 0.0, geometry, scale);
+      corridor.boxes = bounding_boxes(corridor.polygons);
+      clearance_cache.emplace(scale, std::move(corridor));
     }
     const auto polygon =
       geom::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape);
-    const double clearance = clearance_to_trajectory(polygon, clearance_cache.at(scale));
+    const auto polygon_box = bg::return_envelope<Box2d>(polygon);
+    const double clearance =
+      clearance_to_trajectory(polygon, polygon_box, clearance_cache.at(scale));
     const auto id = key(object.object_id);
     observed.insert(id);
     if (clearance <= filtering.min_lat_margin || bg::intersects(polygon, centerline)) continue;
@@ -643,7 +694,7 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
       }
     }
     if (!enabled) continue;
-    const auto limits = collision_limits(polygon, detection_trajectory, expanded);
+    const auto limits = collision_limits(polygon, polygon_box, detection_trajectory, expanded);
     if (!limits) continue;
 
     Obstacle o;
