@@ -41,6 +41,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -219,6 +220,85 @@ std::vector<LanePoint> convert_to_polyline(const T & line_string) noexcept
   }
   return output;
 }
+
+/**
+ * @brief Join line strings that share an end point into chains.
+ *
+ * Line strings are joined at an end point only when exactly two line string ends meet there. At a
+ * dead end or a branch (three or more ends) the chain stops. End points are matched by point ID.
+ * Line strings are reversed as needed, so the direction of a chain is arbitrary. A closed chain
+ * ends at its first point.
+ */
+std::vector<Polyline> join_line_strings(
+  const std::vector<lanelet::ConstLineString3d> & line_strings)
+{
+  // A line string end: the line string index and whether it is the front end.
+  using End = std::pair<size_t, bool>;
+  const auto end_point_id = [&line_strings](const End & end) {
+    const auto & line_string = line_strings[end.first];
+    return end.second ? line_string.front().id() : line_string.back().id();
+  };
+
+  std::unordered_map<lanelet::Id, std::vector<End>> ends_at_point;
+  for (size_t i = 0; i < line_strings.size(); ++i) {
+    if (line_strings[i].empty()) {
+      continue;
+    }
+    ends_at_point[end_point_id({i, true})].emplace_back(i, true);
+    ends_at_point[end_point_id({i, false})].emplace_back(i, false);
+  }
+  const auto is_joint = [&](const End & end) {
+    return ends_at_point.at(end_point_id(end)).size() == 2;
+  };
+
+  std::vector<bool> used(line_strings.size(), false);
+  std::vector<Polyline> chains;
+  // Follow the chain from line string `index`, entering it at its front unless `reversed`.
+  const auto follow_chain = [&](size_t index, bool reversed) {
+    Polyline chain;
+    while (true) {
+      used[index] = true;
+      Polyline points = convert_to_polyline(line_strings[index]);
+      if (reversed) {
+        std::reverse(points.begin(), points.end());
+      }
+      // The first point is shared with the previous line string.
+      chain.insert(chain.end(), points.begin() + (chain.empty() ? 0 : 1), points.end());
+
+      const End exit_end{index, reversed};
+      if (!is_joint(exit_end)) {
+        break;
+      }
+      const auto & meeting = ends_at_point.at(end_point_id(exit_end));
+      const End & next = meeting[0] == exit_end ? meeting[1] : meeting[0];
+      if (used[next.first]) {
+        break;
+      }
+      index = next.first;
+      reversed = !next.second;
+    }
+    chains.push_back(std::move(chain));
+  };
+
+  // Open chains start at a line string end that is not a joint.
+  for (size_t i = 0; i < line_strings.size(); ++i) {
+    if (used[i] || line_strings[i].empty()) {
+      continue;
+    }
+    if (!is_joint({i, true})) {
+      follow_chain(i, false);
+    } else if (!is_joint({i, false})) {
+      follow_chain(i, true);
+    }
+  }
+  // The remaining line strings form closed chains.
+  for (size_t i = 0; i < line_strings.size(); ++i) {
+    if (!used[i] && !line_strings[i].empty()) {
+      follow_chain(i, false);
+    }
+  }
+  return chains;
+}
 }  // namespace
 
 LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lanelet_map_ptr)
@@ -307,19 +387,26 @@ LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lan
   }
 
   // parse line string layers
+  std::vector<lanelet::ConstLineString3d> road_border_line_strings;
   for (const auto & line_string : lanelet_map_ptr->lineStringLayer) {
     const std::string line_string_type = line_string.attributeOr("type", "");
-    const Polyline points = convert_to_polyline(line_string);
     if (line_string_type == "stop_line") {
+      const Polyline points = convert_to_polyline(line_string);
       if (points.size() >= 2) {
         lanelet_map.stop_lines.push_back(MapPolyline{{points.front(), points.back()}});
       }
     } else if (line_string_type == "road_border") {
-      const auto segments =
-        split_line_string(points, POINTS_PER_ROAD_BORDER, constants::ROAD_BORDER_MAX_STEP_M);
-      for (const auto & segment : segments) {
-        lanelet_map.road_borders.push_back(MapPolyline{segment});
-      }
+      road_border_line_strings.push_back(line_string);
+    }
+  }
+
+  // Road borders that share an end point are joined before splitting, so that the pieces do not
+  // depend on where the map divides a border into line strings.
+  for (const auto & chain : join_line_strings(road_border_line_strings)) {
+    const auto segments =
+      split_line_string(chain, POINTS_PER_ROAD_BORDER, constants::ROAD_BORDER_MAX_STEP_M);
+    for (const auto & segment : segments) {
+      lanelet_map.road_borders.push_back(MapPolyline{segment});
     }
   }
 
