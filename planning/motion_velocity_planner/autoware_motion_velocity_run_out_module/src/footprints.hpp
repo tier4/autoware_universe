@@ -26,9 +26,6 @@
 
 namespace autoware::motion_velocity_planner::run_out
 {
-/// @brief Create the rtree for the segments of a trajectory
-void prepare_trajectory_footprint_rtree(TrajectoryCornerFootprint & footprint);
-
 /// @brief Calculate the corner footprint of the given trajectory
 TrajectoryCornerFootprint calculate_trajectory_corner_footprint(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,

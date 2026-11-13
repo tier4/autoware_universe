@@ -89,37 +89,13 @@ inline MarkerArray make_debug_objects_footprint_markers(
   m.color.r = 1.0;
   for (const auto & object : objects) {
     for (const auto & footprint : object.predicted_path_footprints) {
-      const auto & f = footprint.predicted_path_footprint;
-      for (auto i = 0UL; i + 1 < f.corner_linestrings[front_left].size(); ++i) {
-        m.points.push_back(
-          universe_utils::createPoint(
-            f.corner_linestrings[front_left][i].x(), f.corner_linestrings[front_left][i].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(
-            f.corner_linestrings[front_left][i + 1].x(),
-            f.corner_linestrings[front_left][i + 1].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(
-            f.corner_linestrings[front_right][i].x(), f.corner_linestrings[front_right][i].y(),
-            0.0));
-        m.points.push_back(
-          universe_utils::createPoint(
-            f.corner_linestrings[front_right][i + 1].x(),
-            f.corner_linestrings[front_right][i + 1].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(
-            f.corner_linestrings[rear_left][i].x(), f.corner_linestrings[rear_left][i].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(
-            f.corner_linestrings[rear_left][i + 1].x(), f.corner_linestrings[rear_left][i + 1].y(),
-            0.0));
-        m.points.push_back(
-          universe_utils::createPoint(
-            f.corner_linestrings[rear_right][i].x(), f.corner_linestrings[rear_right][i].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(
-            f.corner_linestrings[rear_right][i + 1].x(),
-            f.corner_linestrings[rear_right][i + 1].y(), 0.0));
+      for (const auto & linestring : footprint.outline_linestrings) {
+        for (auto i = 0UL; i + 1 < linestring.size(); ++i) {
+          m.points.push_back(
+            universe_utils::createPoint(linestring[i].x(), linestring[i].y(), 0.0));
+          m.points.push_back(
+            universe_utils::createPoint(linestring[i + 1].x(), linestring[i + 1].y(), 0.0));
+        }
       }
     }
   }
