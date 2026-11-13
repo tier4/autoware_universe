@@ -644,6 +644,86 @@ LaneSegmentContext::create_tensor_data_from_indices(
   return {std::move(tensor_data), std::move(lane_type_tensor), std::move(speed_limit_tensor)};
 }
 
+xt::xarray<float> LaneSegmentContext::create_route_waypoint_tensor(
+  const Eigen::Matrix4d & transform_matrix, const std::vector<int64_t> & segment_indices,
+  const int64_t num_waypoints, const double spacing_m) const
+{
+  std::vector<Eigen::Vector2d> line;
+  line.reserve(segment_indices.size() * static_cast<size_t>(POINTS_PER_SEGMENT));
+  for (const int64_t segment_idx : segment_indices) {
+    const LaneSegment & lane_segment = lanelet_map_.lane_segments[segment_idx];
+    if (
+      lane_segment.centerline.size() != POINTS_PER_SEGMENT ||
+      lane_segment.left_boundary.size() != POINTS_PER_SEGMENT ||
+      lane_segment.right_boundary.size() != POINTS_PER_SEGMENT) {
+      continue;
+    }
+    for (const LanePoint & point : lane_segment.centerline) {
+      const Eigen::Vector4d transformed =
+        transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
+      line.emplace_back(transformed.x(), transformed.y());
+    }
+  }
+  return sample_route_waypoints(line, num_waypoints, spacing_m);
+}
+
+xt::xarray<float> sample_route_waypoints(
+  const std::vector<Eigen::Vector2d> & line, const int64_t num_waypoints, const double spacing_m)
+{
+  constexpr int64_t cos_index = 2;
+  constexpr int64_t sin_index = 3;
+  constexpr double epsilon = 1e-9;
+
+  xt::xarray<float> waypoints =
+    xt::zeros<float>({static_cast<size_t>(num_waypoints), static_cast<size_t>(POSE_DIM)});
+  if (line.size() < 2) {
+    return waypoints;
+  }
+
+  // Distance along the line to each point
+  const size_t num_parts = line.size() - 1;
+  std::vector<double> arc(line.size(), 0.0);
+  for (size_t i = 0; i < num_parts; ++i) {
+    arc[i + 1] = arc[i] + (line[i + 1] - line[i]).norm();
+  }
+
+  // The ego stands where the origin projects onto the nearest line part (the first one on a tie)
+  double nearest_distance = std::numeric_limits<double>::infinity();
+  double ego_arc = 0.0;
+  for (size_t i = 0; i < num_parts; ++i) {
+    const Eigen::Vector2d step = line[i + 1] - line[i];
+    const double t =
+      std::clamp(-line[i].dot(step) / std::max(step.squaredNorm(), epsilon), 0.0, 1.0);
+    const double distance = (line[i] + t * step).norm();
+    if (distance < nearest_distance) {
+      nearest_distance = distance;
+      ego_arc = arc[i] + t * (arc[i + 1] - arc[i]);
+    }
+  }
+
+  size_t part = 0;
+  for (int64_t k = 0; k < num_waypoints; ++k) {
+    const double target = ego_arc + static_cast<double>(k) * spacing_m;
+    if (target >= arc.back()) {
+      break;  // The route ends before this waypoint: it and the ones after it stay zero
+    }
+    // The last line part that starts at or before the target
+    while (part + 1 < num_parts && arc[part + 1] <= target) {
+      ++part;
+    }
+    const Eigen::Vector2d step = line[part + 1] - line[part];
+    const double fraction =
+      std::clamp((target - arc[part]) / std::max(arc[part + 1] - arc[part], epsilon), 0.0, 1.0);
+    const Eigen::Vector2d position = line[part] + fraction * step;
+    const Eigen::Vector2d direction = step / std::max(step.norm(), epsilon);
+    waypoints(k, X) = static_cast<float>(position.x());
+    waypoints(k, Y) = static_cast<float>(position.y());
+    waypoints(k, cos_index) = static_cast<float>(direction.x());
+    waypoints(k, sin_index) = static_cast<float>(direction.y());
+  }
+  return waypoints;
+}
+
 namespace
 {
 xt::xarray<float> create_polyline_tensor(

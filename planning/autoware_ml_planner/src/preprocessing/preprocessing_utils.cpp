@@ -43,14 +43,12 @@ void normalize_input_data(TensorMap & input_data_map)
   scale_pose_xy(input_data_map.at("ego_agent_past"));
   scale_pose_xy(input_data_map.at("neighbor_agents_past"));
   scale_pose_xy(input_data_map.at("goal_pose"));
+  scale_pose_xy(input_data_map.at("route_waypoints"));
 
-  for (const char * key :
-       {"lanes", "route_lanes", "intersection_area", "stop_lines", "road_borders"}) {
+  for (const char * key : {"lanes", "intersection_area", "stop_lines", "road_borders"}) {
     divide_all(input_data_map.at(key), POSITION_SCALE);
   }
-  for (const char * key : {"lanes_speed_limit", "route_lanes_speed_limit"}) {
-    divide_all(input_data_map.at(key), SPEED_SCALE);
-  }
+  divide_all(input_data_map.at("lanes_speed_limit"), SPEED_SCALE);
   for (const char * key : {"agent_shape", "ego_shape"}) {
     divide_all(input_data_map.at(key), VEHICLE_SHAPE_SCALE);
   }
