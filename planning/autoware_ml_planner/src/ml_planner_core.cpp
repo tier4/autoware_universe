@@ -472,6 +472,8 @@ PlannerOutput MLPlannerCore::create_planner_output(
 
     if (i == 0) {
       // Publish the first trajectory's command on the standalone turn indicator topic.
+      turn_indicators_command.command = turn_indicator_hold_.apply(
+        turn_indicators_command.command, timestamp, params_.turn_indicator_hold_duration_sec);
       output.turn_indicators_command = turn_indicators_command;
     }
 

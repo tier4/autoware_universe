@@ -274,6 +274,9 @@ void MLPlanner::set_up_params()
   stop_fixing.min_deceleration_duration_sec =
     this->declare_parameter<double>("stop_point_fixing.min_deceleration_duration_sec", 1.0);
 
+  params_.turn_indicator_hold_duration_sec =
+    this->declare_parameter<double>("turn_indicator_hold_duration_sec", 0.0);
+
   // planning factor params
   planning_factor_params_.enable_stop =
     this->declare_parameter<bool>("planning_factor.enable_stop", false);
@@ -440,6 +443,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "stop_point_fixing.min_deceleration_duration_sec",
     stop_fixing.min_deceleration_duration_sec);
 
+  update_param<double>(
+    parameters, "turn_indicator_hold_duration_sec", new_params.turn_indicator_hold_duration_sec);
+
   update_param<bool>(
     parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);
   update_param<bool>(
@@ -568,6 +574,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   }
   if (stop_fixing.velocity_threshold_mps < 0.0 || stop_fixing.min_deceleration_duration_sec < 0.0) {
     return failure("stop point fixing thresholds must be non-negative");
+  }
+  if (new_params.turn_indicator_hold_duration_sec < 0.0) {
+    return failure("turn_indicator_hold_duration_sec must be non-negative");
   }
 
   const bool reload_model = new_params.base_model_directory != params_.base_model_directory ||
