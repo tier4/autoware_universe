@@ -114,6 +114,12 @@
         Modifies the trajectory to stop before obstacles in map-defined detection areas
       </description>
     </class>
+    <class type="autoware::trajectory_modifier::plugin::VirtualTrafficLightStop"
+          base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
+      <description>
+        Modifies the trajectory according to virtual traffic light coordination state
+      </description>
+    </class>
     <class type="autoware::trajectory_modifier::plugin::ModelPlanningFactorID"
           base_class_type="autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase">
       <description>
