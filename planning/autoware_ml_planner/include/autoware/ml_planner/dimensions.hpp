@@ -55,7 +55,7 @@ inline constexpr int64_t EGO_HISTORY_DIM = 7;
 // Index for each field
 inline constexpr int64_t X = 0;
 inline constexpr int64_t Y = 1;
-// Lane points: left and right boundary points, without the centerline
+// Lane and route lane points: left and right boundary points, without the centerline
 inline constexpr int64_t LB_X = 0;
 inline constexpr int64_t LB_Y = 1;
 inline constexpr int64_t RB_X = 2;
