@@ -360,4 +360,27 @@ Trajectory get_trajectory_from_poses(
 
 }  // namespace
 
+uint8_t TurnIndicatorHold::apply(
+  const uint8_t command, const rclcpp::Time & stamp, const double hold_duration_sec)
+{
+  if (
+    command == TurnIndicatorsCommand::ENABLE_LEFT ||
+    command == TurnIndicatorsCommand::ENABLE_RIGHT) {
+    if (held_command_ != command) {
+      held_command_ = command;
+      hold_start_ = stamp;
+    }
+    return command;
+  }
+  if (held_command_ && hold_start_) {
+    const double elapsed_sec = (stamp - *hold_start_).seconds();
+    if (elapsed_sec >= 0.0 && elapsed_sec < hold_duration_sec) {
+      return *held_command_;
+    }
+  }
+  held_command_.reset();
+  hold_start_.reset();
+  return command;
+}
+
 }  // namespace autoware::ml_planner::postprocess
