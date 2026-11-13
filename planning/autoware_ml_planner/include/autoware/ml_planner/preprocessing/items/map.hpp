@@ -203,6 +203,23 @@ public:
     const int64_t max_segments) const;
 
   /**
+   * @brief Create the route waypoint tensor from selected route segment indices.
+   *
+   * The centerlines of the segments are joined in the given order into one line in the ego
+   * frame, and sample_route_waypoints places the waypoints on it. Segments that
+   * create_tensor_data_from_indices would skip are skipped.
+   *
+   * @param transform_matrix Transformation matrix to apply to the points.
+   * @param segment_indices Route segment indices, in route order.
+   * @param num_waypoints Number of waypoints.
+   * @param spacing_m Distance between two consecutive waypoints along the route [m].
+   * @return Route waypoints with shape (num_waypoints, 4).
+   */
+  xt::xarray<float> create_route_waypoint_tensor(
+    const Eigen::Matrix4d & transform_matrix, const std::vector<int64_t> & segment_indices,
+    const int64_t num_waypoints, const double spacing_m) const;
+
+  /**
    * @brief Get (traffic light id, turn_direction) of the given lane segments.
    *
    * @param segment_indices Lane segment indices (as used for the lane tensor).
@@ -267,6 +284,23 @@ struct TrafficLightStatus
 TrafficLightStatus identify_current_light_status(
   const int64_t turn_direction,
   const std::vector<autoware_perception_msgs::msg::TrafficLightElement> & traffic_light_elements);
+
+/**
+ * @brief Place waypoints at equal spacing along a line, starting at the origin's projection on it.
+ *
+ * The origin (the ego in the ego frame) is projected onto the nearest part of the line, and
+ * waypoint k lies k * spacing_m further along the line. A join between two consecutive route
+ * segments, such as the sideways step of a lane change, is a part of the line like any other.
+ * Each waypoint holds x, y and the cos, sin of the direction of the line part it lies on.
+ * Waypoints beyond the end of the line stay all zero.
+ *
+ * @param line Points of the line in the ego frame, in route order.
+ * @param num_waypoints Number of waypoints.
+ * @param spacing_m Distance between two consecutive waypoints along the line [m].
+ * @return Route waypoints with shape (num_waypoints, 4).
+ */
+xt::xarray<float> sample_route_waypoints(
+  const std::vector<Eigen::Vector2d> & line, const int64_t num_waypoints, const double spacing_m);
 
 }  // namespace autoware::ml_planner::preprocess
 
