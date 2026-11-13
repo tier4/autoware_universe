@@ -1,0 +1,45 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_
+#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_
+
+#include <rcpputils/tl_expected/expected.hpp>
+
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+
+#include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_routing/Forward.h>
+
+#include <string>
+#include <vector>
+
+namespace autoware::trajectory_validator::plugin::safety::road_following
+{
+using autoware_planning_msgs::msg::LaneletRoute;
+
+/**
+ * @brief Split the route lanelets into lists that "next" joins, in driving order.
+ * @details A turn lanelet ends a list and is in no list. A branch point is the end of a lanelet
+ * with two or more next lanelets. A branch is one route lanelet that starts at a branch point. At
+ * a branch point, the list is copied for each branch. A lanelet with no previous list starts a
+ * new list.
+ * @return The lists, or the reason when a route lanelet id is not in the map.
+ */
+[[nodiscard]] tl::expected<std::vector<lanelet::ConstLanelets>, std::string> build_lanelet_lists(
+  const LaneletRoute & route, const lanelet::LaneletMap & lanelet_map,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph);
+}  // namespace autoware::trajectory_validator::plugin::safety::road_following
+
+#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_

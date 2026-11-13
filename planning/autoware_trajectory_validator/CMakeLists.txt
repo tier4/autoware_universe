@@ -39,6 +39,7 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
   src/filters/safety/collision_check_filter/reporter.cpp
   src/filters/safety/collision_check_filter/assessment.cpp
   src/filters/safety/collision_check_filter/stop_tracker.cpp
+  src/filters/safety/collision_check_filter/road_following.cpp
   src/filters/safety/collision_check_filter/trajectory_utils.cpp
   src/filters/traffic_rule/traffic_light_filter.cpp
   src/filters/traffic_rule/crosswalk_filter.cpp
