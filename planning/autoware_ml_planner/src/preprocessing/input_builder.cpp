@@ -98,24 +98,13 @@ InputBuilderResult create_input_data_map(
       infer_traffic_light_future(input_data_map.at("lane_traffic_light_past"));
   }
 
-  // Route data on ego reference frame
+  // Route waypoints on ego reference frame, along the centerlines of the route segments
   {
     const std::vector<int64_t> segment_indices = map_context.select_route_segment_indices(
       frame_inputs.route, map_to_ego_transform, center_x, center_y, center_z, center_yaw,
       NUM_SEGMENTS_IN_ROUTE);
-    auto [route_lanes, route_lane_types, route_lanes_speed_limit] =
-      map_context.create_tensor_data_from_indices(
-        map_to_ego_transform, segment_indices, NUM_SEGMENTS_IN_ROUTE);
-    input_data_map["route_lanes"] = std::move(route_lanes);
-    input_data_map["route_lane_types"] = std::move(route_lane_types);
-    input_data_map["route_lanes_speed_limit"] = std::move(route_lanes_speed_limit);
-
-    input_data_map["route_traffic_light_past"] = create_traffic_light_past(
-      frame_inputs.traffic_signals_history, map_context.get_traffic_light_ids(segment_indices),
-      NUM_SEGMENTS_IN_ROUTE, frame_inputs.frame_time, INPUT_T_WITH_CURRENT,
-      constants::PREDICTION_TIME_STEP_S, params.traffic_light_group_msg_timeout_seconds);
-    input_data_map["route_traffic_light_future"] =
-      infer_traffic_light_future(input_data_map.at("route_traffic_light_past"));
+    input_data_map["route_waypoints"] = map_context.create_route_waypoint_tensor(
+      map_to_ego_transform, segment_indices, NUM_ROUTE_WAYPOINTS, ROUTE_WAYPOINT_SPACING_M);
   }
 
   // Intersection areas, stop lines, and road borders
