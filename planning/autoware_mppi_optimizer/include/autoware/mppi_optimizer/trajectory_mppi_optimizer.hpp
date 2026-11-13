@@ -80,6 +80,9 @@ private:
   /** @brief Recreates state after a parameter, route, or map change. */
   void reset_optimizer();
 
+  /** @brief Logs the end of an active conditional run and clears its activation source. */
+  void deactivate_conditional_mppi(const std::string & reason);
+
   /** @brief Updates route-dependent boundary indexes when their inputs change. */
   void update_route_context(const autoware::trajectory_modifier::TrajectoryModifierData & data);
 
