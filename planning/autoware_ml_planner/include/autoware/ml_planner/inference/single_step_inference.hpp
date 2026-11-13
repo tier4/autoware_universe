@@ -59,11 +59,7 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> lanes_speed_limit_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> lane_traffic_light_past_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> lane_traffic_light_future_d_;
-  autoware::cuda_utils::CudaUniquePtr<float[]> route_lanes_d_;
-  autoware::cuda_utils::CudaUniquePtr<float[]> route_lane_types_d_;
-  autoware::cuda_utils::CudaUniquePtr<float[]> route_lanes_speed_limit_d_;
-  autoware::cuda_utils::CudaUniquePtr<float[]> route_traffic_light_past_d_;
-  autoware::cuda_utils::CudaUniquePtr<float[]> route_traffic_light_future_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> route_waypoints_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> intersection_area_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> stop_lines_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> road_borders_d_;

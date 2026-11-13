@@ -288,8 +288,10 @@ protected:
     p.cruise.min_distance = 8.0;
     p.cruise.time_headway = 1.0;
     p.cruise.ego_decel = 1.0;
+    p.cruise.max_acceleration = 1.0;
     p.cruise.max_deceleration = 1.5;
     p.cruise.max_jerk = 1.5;
+    p.cruise.reuse_previous_profile = false;
   }
 
   bool process_with_hysteresis(TrajectoryPoints & trajectory, const TrajectoryModifierData & input)
@@ -321,8 +323,10 @@ TEST_F(ObstacleStopIntegrationTest, CruiseParamsKeptWhenValid)
   EXPECT_DOUBLE_EQ(cruise.min_distance, 8.0);
   EXPECT_DOUBLE_EQ(cruise.time_headway, 1.0);
   EXPECT_DOUBLE_EQ(cruise.ego_decel, 1.0);
+  EXPECT_DOUBLE_EQ(cruise.max_acceleration, 1.0);
   EXPECT_DOUBLE_EQ(cruise.max_deceleration, 1.5);
   EXPECT_DOUBLE_EQ(cruise.max_jerk, 1.5);
+  EXPECT_FALSE(cruise.reuse_previous_profile);
 }
 
 TEST_F(ObstacleStopIntegrationTest, CruiseParamsClampedToStopParams)

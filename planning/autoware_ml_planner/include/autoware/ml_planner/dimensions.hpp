@@ -55,11 +55,12 @@ inline constexpr int64_t EGO_HISTORY_DIM = 7;
 // Index for each field
 inline constexpr int64_t X = 0;
 inline constexpr int64_t Y = 1;
-inline constexpr int64_t LB_X = 2;
-inline constexpr int64_t LB_Y = 3;
-inline constexpr int64_t RB_X = 4;
-inline constexpr int64_t RB_Y = 5;
-inline constexpr int64_t SEGMENT_POINT_DIM = 6;
+// Lane and route lane points: left and right boundary points, without the centerline
+inline constexpr int64_t LB_X = 0;
+inline constexpr int64_t LB_Y = 1;
+inline constexpr int64_t RB_X = 2;
+inline constexpr int64_t RB_Y = 3;
+inline constexpr int64_t SEGMENT_POINT_DIM = 4;
 inline constexpr int64_t LINE_TYPE_LEFT_START = 0;
 inline constexpr int64_t LINE_TYPE_RIGHT_START = LINE_TYPE_NUM;
 inline constexpr int64_t LANE_TYPE_DIM = 2 * LINE_TYPE_NUM;
@@ -81,10 +82,8 @@ inline constexpr std::array<int64_t, 2> TURN_INDICATOR_LOGIT_SHAPE = {1, TURN_IN
 
 inline constexpr std::array<int64_t, 4> INITIAL_NOISE_SHAPE = {
   1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
-// Model inputs. The preprocessing builds the ego states with the steering angle
-// (EGO_HISTORY_DIM columns) and ego_shape with the wheel base, but the model (major version 6)
-// reads neither: utils::drop_steering_and_wheel_base removes them before inference.
-inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, EGO_HISTORY_DIM - 1};
+// Model inputs
+inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, EGO_HISTORY_DIM};
 inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {
   1, MAX_NUM_NEIGHBORS, INPUT_T + 1, POSE_DIM};
 inline constexpr std::array<int64_t, 3> AGENT_SHAPE_SHAPE = {1, MAX_NUM_NEIGHBORS, 2};
@@ -94,14 +93,11 @@ inline constexpr std::array<int64_t, 4> LANES_SHAPE = {
 inline constexpr std::array<int64_t, 3> LANE_TYPES_SHAPE = {1, NUM_SEGMENTS_IN_LANE, LANE_TYPE_DIM};
 inline constexpr std::array<int64_t, 3> LANES_HAS_SPEED_LIMIT_SHAPE = {1, NUM_SEGMENTS_IN_LANE, 1};
 inline constexpr std::array<int64_t, 3> LANES_SPEED_LIMIT_SHAPE = {1, NUM_SEGMENTS_IN_LANE, 1};
-inline constexpr std::array<int64_t, 4> ROUTE_LANES_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM};
-inline constexpr std::array<int64_t, 3> ROUTE_LANE_TYPES_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, LANE_TYPE_DIM};
-inline constexpr std::array<int64_t, 3> ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, 1};
-inline constexpr std::array<int64_t, 3> ROUTE_LANES_SPEED_LIMIT_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, 1};
+// Route waypoints: x, y, cos, sin of the route direction at points ROUTE_WAYPOINT_SPACING_M apart
+// along the route, starting at the ego's projection on it. Points past the route end are zero.
+inline constexpr int64_t NUM_ROUTE_WAYPOINTS = 25;
+inline constexpr double ROUTE_WAYPOINT_SPACING_M = 5.0;
+inline constexpr std::array<int64_t, 3> ROUTE_WAYPOINTS_SHAPE = {1, NUM_ROUTE_WAYPOINTS, POSE_DIM};
 inline constexpr std::array<int64_t, 4> INTERSECTION_AREA_SHAPE = {
   1, NUM_INTERSECTION_AREAS, POINTS_PER_INTERSECTION_AREA, 2};
 inline constexpr std::array<int64_t, 4> STOP_LINES_SHAPE = {
@@ -109,19 +105,15 @@ inline constexpr std::array<int64_t, 4> STOP_LINES_SHAPE = {
 inline constexpr std::array<int64_t, 4> ROAD_BORDERS_SHAPE = {
   1, NUM_ROAD_BORDERS, POINTS_PER_ROAD_BORDER, 2};
 inline constexpr std::array<int64_t, 2> GOAL_POSE_SHAPE = {1, POSE_DIM};
-// ego_shape from the preprocessing: [base_link_to_front, vehicle_length, vehicle_width, wheel_base]
-inline constexpr int64_t EGO_SHAPE_IDX_WHEEL_BASE = 3;
-inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 3};
+// ego_shape: [base_link_to_front, vehicle_length, vehicle_width, wheel_base]
+inline constexpr int64_t EGO_SHAPE_DIM = 4;
+inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, EGO_SHAPE_DIM};
 inline constexpr std::array<int64_t, 2> TURN_INDICATORS_SHAPE = {1, INPUT_T + 1};
 // Per-segment history of the associated traffic light state
 inline constexpr std::array<int64_t, 4> LANE_TRAFFIC_LIGHT_PAST_SHAPE = {
   1, NUM_SEGMENTS_IN_LANE, INPUT_T + 1, TRAFFIC_LIGHT_ONE_HOT_DIM};
-inline constexpr std::array<int64_t, 4> ROUTE_TRAFFIC_LIGHT_PAST_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, INPUT_T + 1, TRAFFIC_LIGHT_ONE_HOT_DIM};
 inline constexpr std::array<int64_t, 4> LANE_TRAFFIC_LIGHT_FUTURE_SHAPE = {
   1, NUM_SEGMENTS_IN_LANE, OUTPUT_T, TRAFFIC_LIGHT_ONE_HOT_DIM};
-inline constexpr std::array<int64_t, 4> ROUTE_TRAFFIC_LIGHT_FUTURE_SHAPE = {
-  1, NUM_SEGMENTS_IN_ROUTE, OUTPUT_T, TRAFFIC_LIGHT_ONE_HOT_DIM};
 
 inline constexpr float POSITION_SCALE = 50.0F;
 inline constexpr float SPEED_SCALE = 15.0F;

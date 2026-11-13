@@ -155,7 +155,13 @@ def load_case(directory, name):
                     row[key] = finite(row[key], f"row {i}: {key}")
             valid = kind not in {"initial", "terminal"} and row["stage"] > 0
             require(row["command_rate_valid"] == int(valid), "invalid command history flag")
-            require(row["crash"] in (0, 1), "invalid crash flag")
+            # The producer writes mppi::safety's reason bits and earliest-event metadata.
+            # Legacy boolean statuses 0/1 are also valid.
+            require(
+                row["crash"].is_integer() and 0 <= row["crash"] <= 2147483647,
+                "invalid safety status",
+            )
+            require(row["crash"] == 0 or int(row["crash"]) & 15, "safety status lacks reason bits")
             require(
                 row["direct_available"] == int(kind in {"sample", "running"}),
                 "invalid direct cost availability",

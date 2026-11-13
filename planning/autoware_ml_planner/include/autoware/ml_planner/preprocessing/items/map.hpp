@@ -129,10 +129,11 @@ struct LaneletMap
 /**
  * @brief Convert a lanelet map to line segment data
  * @param lanelet_map_ptr Pointer of loaded lanelet map.
+ * @param line_string_max_step_m Maximum arc-length step per point for resampled line strings.
  * @return LaneletMap
  */
 [[nodiscard]] LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr, double line_string_max_step_m = 5.0);
+  const lanelet::LaneletMapConstPtr lanelet_map_ptr);
 
 }  // namespace autoware::ml_planner
 
@@ -157,15 +158,16 @@ public:
    * @brief Constructor that initializes the context with static data determined at initialization.
    *
    * @param lanelet_map_ptr Shared pointer to the lanelet map.
+   * @param line_string_max_step_m Maximum arc-length step per point for resampled line strings.
    */
   explicit LaneSegmentContext(
-    const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
-    double line_string_max_step_m = 5.0);
+    const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr);
 
   /**
    * @brief Select route segment indices based on route and constraints.
    *
    * @param route The lanelet route to process.
+   * @param transform_matrix Map-to-ego transform, used for the ego-frame range check.
    * @param center_x X-coordinate of the center point.
    * @param center_y Y-coordinate of the center point.
    * @param center_z Z-coordinate of the center point.
@@ -174,20 +176,19 @@ public:
    * @return Vector of lane segment indices.
    */
   std::vector<int64_t> select_route_segment_indices(
-    const LaneletRoute & route, const double center_x, const double center_y, const double center_z,
-    const double center_yaw, const int64_t max_segments) const;
+    const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+    const double center_y, const double center_z, const double center_yaw,
+    const int64_t max_segments) const;
 
   /**
    * @brief Select lane segment indices based on distances and constraints.
    *
-   * @param center_x X-coordinate of the center point.
-   * @param center_y Y-coordinate of the center point.
+   * @param transform_matrix Map-to-ego transform; the range check and distances use the ego frame.
    * @param max_segments Maximum number of segments to select.
    * @return Vector of lane segment indices.
    */
   std::vector<int64_t> select_lane_segment_indices(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-    const int64_t max_segments) const;
+    const Eigen::Matrix4d & transform_matrix, const int64_t max_segments) const;
 
   /**
    * @brief Create tensor data from selected segment indices.
@@ -203,6 +204,23 @@ public:
     const int64_t max_segments) const;
 
   /**
+   * @brief Create the route waypoint tensor from selected route segment indices.
+   *
+   * The centerlines of the segments are joined in the given order into one line in the ego
+   * frame, and sample_route_waypoints places the waypoints on it. Segments that
+   * create_tensor_data_from_indices would skip are skipped.
+   *
+   * @param transform_matrix Transformation matrix to apply to the points.
+   * @param segment_indices Route segment indices, in route order.
+   * @param num_waypoints Number of waypoints.
+   * @param spacing_m Distance between two consecutive waypoints along the route [m].
+   * @return Route waypoints with shape (num_waypoints, 4).
+   */
+  xt::xarray<float> create_route_waypoint_tensor(
+    const Eigen::Matrix4d & transform_matrix, const std::vector<int64_t> & segment_indices,
+    const int64_t num_waypoints, const double spacing_m) const;
+
+  /**
    * @brief Get (traffic light id, turn_direction) of the given lane segments.
    *
    * @param segment_indices Lane segment indices (as used for the lane tensor).
@@ -216,6 +234,7 @@ public:
    * @brief Get the first traffic light on the route from ego position forward.
    *
    * @param route The lanelet route.
+   * @param transform_matrix Map-to-ego transform, used for the ego-frame range check.
    * @param center_x X-coordinate of ego center.
    * @param center_y Y-coordinate of ego center.
    * @param center_z Z-coordinate of ego center.
@@ -225,31 +244,30 @@ public:
    *         empty (traffic_light_group_id=0, elements empty) if no traffic light on route.
    */
   autoware_perception_msgs::msg::TrafficLightGroup get_first_traffic_light_on_route(
-    const LaneletRoute & route, const double center_x, const double center_y, const double center_z,
-    const double center_yaw,
+    const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+    const double center_y, const double center_z, const double center_yaw,
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map) const;
 
   /**
-   * @brief Get the mapping from lanelet ID to array index.
+   * @brief Get the mapping from lanelet ID to array indices.
    *
-   * @return Map of lanelet IDs to their corresponding array indices.
+   * @return Map of lanelet IDs to the indices of their lane segments, in driving order. A lanelet
+   *         maps to several indices when it was split.
    */
-  const std::map<lanelet::Id, size_t> & get_lanelet_id_to_array_index() const
+  const std::map<lanelet::Id, std::vector<size_t>> & get_lanelet_id_to_array_index() const
   {
     return lanelet_id_to_array_index_;
   }
 
-  // Create intersection-area and map-polyline tensor data
-  xt::xarray<float> create_intersection_area_tensor(
-    const Eigen::Matrix4d & transform_matrix, double center_x, double center_y) const;
-  xt::xarray<float> create_stop_line_tensor(
-    const Eigen::Matrix4d & transform_matrix, double center_x, double center_y) const;
-  xt::xarray<float> create_road_border_tensor(
-    const Eigen::Matrix4d & transform_matrix, double center_x, double center_y) const;
+  // Create intersection-area and map-polyline tensor data. Polylines are kept when a point lies
+  // within the same ego-frame box as lane segments.
+  xt::xarray<float> create_intersection_area_tensor(const Eigen::Matrix4d & transform_matrix) const;
+  xt::xarray<float> create_stop_line_tensor(const Eigen::Matrix4d & transform_matrix) const;
+  xt::xarray<float> create_road_border_tensor(const Eigen::Matrix4d & transform_matrix) const;
 
 private:
   const autoware::ml_planner::LaneletMap lanelet_map_;
-  const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_;
+  const std::map<lanelet::Id, std::vector<size_t>> lanelet_id_to_array_index_;
 };
 
 /**
@@ -268,6 +286,23 @@ struct TrafficLightStatus
 TrafficLightStatus identify_current_light_status(
   const int64_t turn_direction,
   const std::vector<autoware_perception_msgs::msg::TrafficLightElement> & traffic_light_elements);
+
+/**
+ * @brief Place waypoints at equal spacing along a line, starting at the origin's projection on it.
+ *
+ * The origin (the ego in the ego frame) is projected onto the nearest part of the line, and
+ * waypoint k lies k * spacing_m further along the line. A join between two consecutive route
+ * segments, such as the sideways step of a lane change, is a part of the line like any other.
+ * Each waypoint holds x, y and the cos, sin of the direction of the line part it lies on.
+ * Waypoints beyond the end of the line stay all zero.
+ *
+ * @param line Points of the line in the ego frame, in route order.
+ * @param num_waypoints Number of waypoints.
+ * @param spacing_m Distance between two consecutive waypoints along the line [m].
+ * @return Route waypoints with shape (num_waypoints, 4).
+ */
+xt::xarray<float> sample_route_waypoints(
+  const std::vector<Eigen::Vector2d> & line, const int64_t num_waypoints, const double spacing_m);
 
 }  // namespace autoware::ml_planner::preprocess
 

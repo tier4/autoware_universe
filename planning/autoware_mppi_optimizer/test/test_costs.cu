@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/mppi_optimizer/detail/colored_noise_params.hpp"
 #include "cost_test_report.hpp"
 #include "projection_test_cases.hpp"
 
 #include <mppi/core/mppi_common.cuh>
+#include <mppi/sampling_distributions/colored_noise/colored_noise.cuh>
 #include <mppi/sampling_distributions/gaussian/gaussian.cuh>
 
 #include <memory>
@@ -367,7 +369,7 @@ TEST_F(CostEvaluation, LateralBarrierThresholdsAreSymmetric)
         expected(
           b, &Breakdown::lateral_boundary, "lateral_boundary",
           w * std::pow(std::max(0.0F, offset - 1.5F), 2));
-        report.expect("lateral_crash", report.rows.back().crash != 0, w > 0 && offset >= 2, 0);
+        report.expect("lateral_crash", report.rows.back().crash != 0, offset >= 2, 0);
       }
   }
 }
@@ -420,8 +422,7 @@ TEST_F(CostEvaluation, GeometryClearanceSweeps)
         const float want = w * std::pow(std::max(0.0F, 1 - effective), 2) * (kind == 3 ? 2 : 1);
         expected(b, value, name, want);
         if (kind < 2)
-          report.expect(
-            "exact_contact_flag", report.rows.back().crash != 0, w > 0 && wall_y <= 1.0F, 0);
+          report.expect("exact_contact_flag", report.rows.back().crash != 0, wall_y <= 1.0F, 0);
       }
     }
   cost->setRoadBorderSegments({});
@@ -837,8 +838,11 @@ protected:
   void SetUp() override
   {
     int count = 0;
-    if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0)
+    const auto error = cudaGetDeviceCount(&count);
+    if (error == cudaErrorNoDevice || (error == cudaSuccess && count == 0)) {
       GTEST_SKIP() << "CUDA device required for parity";
+    }
+    ASSERT_EQ(error, cudaSuccess) << cudaGetErrorString(error);
     CostEvaluation::SetUp();
     cost->GPUSetup();
     reference();
@@ -880,6 +884,77 @@ protected:
   }
 };
 
+TEST_F(GpuCostEvaluation, ProductionColoredNoiseExploresBothFirstCommands)
+{
+  using Sampler =
+    mppi::sampling_distributions::ColoredNoiseDistribution<FirstOrderDubinsBicycleParams>;
+  constexpr int count = 512;
+  FirstOrderDubinsMppiCostParams costs;
+  Sampler::SAMPLING_PARAMS_T sampling;
+  sampling.num_rollouts = count;
+  sampling.num_timesteps = H;
+  sampling.num_distributions = 1;
+  sampling.std_dev[0] = costs.accel_cmd_std_dev;
+  sampling.std_dev[1] = costs.steer_cmd_std_dev;
+  sampling.std_dev_decay = costs.std_dev_decay;
+  detail::configureColoredNoise(
+    sampling, costs, static_cast<int>(C::ACCELERATION_CMD), static_cast<int>(C::STEER_CMD));
+  Sampler sampler(sampling);
+  sampler.GPUSetup();
+  const auto mean = Eigen::Matrix<float, Model::CONTROL_DIM, H>::Zero().eval();
+  sampler.copyImportanceSamplerToDevice(mean.data(), 0, true);
+  struct Generator
+  {
+    curandGenerator_t value{};
+    ~Generator()
+    {
+      if (value) curandDestroyGenerator(value);
+    }
+  } generator;
+  HANDLE_CURAND_ERROR(curandCreateGenerator(&generator.value, CURAND_RNG_PSEUDO_DEFAULT));
+  HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(generator.value, 42));
+  std::vector<float> samples(count * H * Model::CONTROL_DIM);
+  for (int iteration : {0, 1}) {
+    sampler.generateSamples(0, iteration, generator.value, true);
+    HANDLE_ERROR(cudaMemcpy(
+      samples.data(), sampler.getControlSample(0, 0, 0), samples.size() * sizeof(float),
+      cudaMemcpyDeviceToHost));
+    for (int channel = 0; channel < Model::CONTROL_DIM; ++channel) {
+      double sum = 0.0, squared_sum = 0.0;
+      // Skip the deterministic nominal and zero-control special rollouts.
+      for (int rollout = 2; rollout < count; ++rollout) {
+        const float value = samples[(rollout * H) * Model::CONTROL_DIM + channel];
+        ASSERT_TRUE(std::isfinite(value));
+        sum += value;
+        squared_sum += value * value;
+      }
+      const double variance = squared_sum / (count - 2) - std::pow(sum / (count - 2), 2);
+      EXPECT_GT(variance, 1.0E-6) << "channel=" << channel << " iteration=" << iteration;
+    }
+  }
+}
+
+TEST_F(GpuCostEvaluation, ZeroSoftWeightsStillReportExactSafetyViolations)
+{
+  params = disabledParams();
+  params.boundary_threshold = 0.5F;
+  params.ego_length = params.ego_width = 1.0F;
+  params.ego_axle_to_box_center = 0.0F;
+  params.obstacle_collision_margin = params.road_border_collision_margin = 0.0F;
+  apply();
+  obstacle(0.0F, 1.0F);
+  cost->setRoadBorderSegments({{-1.0, 1.0, 1.0, 1.0}});
+  auto y = Cost::output_array::Zero().eval();
+  y(static_cast<int>(O::BASELINK_POS_I_Y)) = 1.0F;
+  const auto u = Cost::control_array::Zero().eval();
+  int status = 0;
+  EXPECT_FLOAT_EQ(cost->computeRunningCost(y, u, 0, &status), 0.0F);
+  EXPECT_NE(status & mppi::safety::kLateral, 0);
+  EXPECT_NE(status & mppi::safety::kObstacle, 0);
+  EXPECT_NE(status & mppi::safety::kRoadBorder, 0);
+  for (bool shared : {false, true}) parity(y, u, 0, "zero weights", 1.0E-4, shared);
+}
+
 TEST_F(GpuCostEvaluation, AdversarialProjectionCostsAndTerminalMatchHost)
 {
   auto y = Cost::output_array::Zero().eval();
@@ -920,7 +995,7 @@ TEST_F(GpuCostEvaluation, AdversarialProjectionCostsAndTerminalMatchHost)
   }
 }
 
-TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
+TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjectionAndSafetyFlags)
 {
   // Deterministic zero controls isolate projection from random sampling. Both production
   // launchers use the same bicycle/cost specialization and the deployed block dimensions.
@@ -943,6 +1018,7 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
     sampler.getControlSample(0, 0, 0), 0, rollouts * H * Model::CONTROL_DIM * sizeof(float)));
   params = disabledParams();
   params.lateral_distance_coeff = 1.0F;
+  params.boundary_threshold = 0.5F;  // Safety still applies with a zero lateral barrier weight.
   apply();
   const float x[] = {0, 10, 10, 0};
   const float y[] = {0, 0, 10, 10};
@@ -952,6 +1028,7 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
   state(static_cast<int>(S::POS_Y)) = 9.0F;
   DeviceBuffer<float> initial(Model::STATE_DIM), totals(rollouts);
   DeviceBuffer<float> outputs(rollouts * H * Model::OUTPUT_DIM);
+  DeviceBuffer<int> safety(rollouts);
   HANDLE_ERROR(cudaMemcpy(
     initial.data, state.data(), Model::STATE_DIM * sizeof(float), cudaMemcpyHostToDevice));
   for (bool texture : {true, false}) {
@@ -963,11 +1040,18 @@ TEST_F(GpuCostEvaluation, CombinedAndSplitRolloutsUseGlobalProjection)
       if (split) {
         mppi::kernels::launchSplitRolloutKernel(
           &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, outputs.data,
-          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true);
+          totals.data, dim3(32, 2, 1), dim3(80, 1, 1), 0, true, safety.data);
       } else {
         mppi::kernels::launchRolloutKernel(
           &model, cost.get(), &sampler, dt, H, rollouts, 1.0F, 1.0F, initial.data, totals.data,
-          dim3(32, 2, 1), 0, true);
+          dim3(32, 2, 1), 0, true, safety.data);
+      }
+      std::array<int, rollouts> statuses{};
+      HANDLE_ERROR(
+        cudaMemcpy(statuses.data(), safety.data, sizeof(statuses), cudaMemcpyDeviceToHost));
+      for (const auto status : statuses) {
+        EXPECT_NE(status & mppi::safety::kLateral, 0);
+        EXPECT_EQ(mppi::safety::timestep(status), 0);
       }
       std::array<float, rollouts> actual{};
       HANDLE_ERROR(cudaMemcpy(actual.data(), totals.data, sizeof(actual), cudaMemcpyDeviceToHost));

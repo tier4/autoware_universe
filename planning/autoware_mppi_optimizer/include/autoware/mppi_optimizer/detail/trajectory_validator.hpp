@@ -28,7 +28,7 @@ namespace autoware::mppi_optimizer::detail
 template <class Cost>
 [[nodiscard]] FirstOrderDubinsMppiValidationResult validateOptimizedTrajectory(
   const Cost & cost, const std::vector<OptimizedState> & states,
-  const float min_trajectory_progress_m = 0.0F)
+  const float min_trajectory_progress_m = 0.0F, const int interpolation_substeps = 1)
 {
   // states contains post-step samples x[1] through x[H], including the reconstructed terminal
   // state when the full horizon is published. Keep every sample and its obstacle time index.
@@ -41,12 +41,40 @@ template <class Cost>
       // Reject before calling geometry routines that may index buffers using these values.
       return {FirstOrderDubinsMppiInvalidityReason::nonfinite_state, i};
     }
+    // Optional additional samples between x[1] ... x[H]. This is sampled validation,
+    // not a continuous swept-volume guarantee. Report the interval's ending point on failure.
+    for (int substep = 1; i > 0U && substep < interpolation_substeps; ++substep) {
+      const auto & previous = states[i - 1U];
+      const double ratio = static_cast<double>(substep) / interpolation_substeps;
+      const auto x = previous.x + ratio * (static_cast<double>(state.x) - previous.x);
+      const auto y = previous.y + ratio * (static_cast<double>(state.y) - previous.y);
+      const auto yaw =
+        previous.yaw +
+        ratio * std::remainder(static_cast<double>(state.yaw) - previous.yaw, 2.0 * M_PI);
+      const float timestep = static_cast<float>(static_cast<double>(i - 1U) + ratio);
+      auto reasons = FirstOrderDubinsMppiInvalidityReason::none;
+      if (cost.exceedsLateralBoundary(x, y)) {
+        reasons = reasons | FirstOrderDubinsMppiInvalidityReason::lateral_boundary;
+      }
+      if (
+        cost.egoIntersectsObstacleAtFractionalStep(x, y, yaw, timestep) ||
+        cost.egoIntersectsVegetation(x, y, yaw)) {
+        reasons = reasons | FirstOrderDubinsMppiInvalidityReason::obstacle;
+      }
+      if (cost.egoIntersectsRoadBorder(x, y, yaw)) {
+        reasons = reasons | FirstOrderDubinsMppiInvalidityReason::road_border;
+      }
+      if (reasons != FirstOrderDubinsMppiInvalidityReason::none) return {reasons, i};
+    }
     const int timestep = static_cast<int>(i);
     auto reasons = FirstOrderDubinsMppiInvalidityReason::none;
     if (cost.exceedsLateralBoundary(state.x, state.y)) {
       reasons = reasons | FirstOrderDubinsMppiInvalidityReason::lateral_boundary;
     }
     if (cost.egoIntersectsObstacleAtStep(state.x, state.y, state.yaw, timestep)) {
+      reasons = reasons | FirstOrderDubinsMppiInvalidityReason::obstacle;
+    }
+    if (cost.egoIntersectsVegetation(state.x, state.y, state.yaw)) {
       reasons = reasons | FirstOrderDubinsMppiInvalidityReason::obstacle;
     }
     if (cost.egoIntersectsRoadBorder(state.x, state.y, state.yaw)) {

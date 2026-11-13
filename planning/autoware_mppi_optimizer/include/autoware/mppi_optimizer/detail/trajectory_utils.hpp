@@ -21,7 +21,9 @@
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <vector>
@@ -31,6 +33,39 @@ namespace autoware::mppi_optimizer::detail
 
 inline constexpr int kMppiHorizon = 80;
 inline constexpr float kMppiDt = 0.1F;
+
+/** True when a valid planar reference has no two distinct positions for selector geometry. */
+inline bool hasZeroPlanarExtent(const Trajectory & trajectory)
+{
+  if (trajectory.points.empty()) return true;
+  const auto & first = trajectory.points.front().pose.position;
+  if (!std::isfinite(first.x) || !std::isfinite(first.y)) return false;
+  for (const auto & point : trajectory.points) {
+    const auto & p = point.pose.position;
+    const auto & q = point.pose.orientation;
+    const double norm = std::hypot(std::hypot(q.x, q.y), std::hypot(q.z, q.w));
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(norm) || norm < 1e-6) {
+      return false;
+    }
+    if (std::hypot(p.x - first.x, p.y - first.y) >= 1e-6) return false;
+  }
+  return true;
+}
+
+/** Input times are preserved at publication; only their spacing is checked, not the time origin. */
+inline bool hasMppiTimeStep(const Trajectory & trajectory)
+{
+  std::int64_t previous = 0;
+  for (std::size_t i = 0; i < trajectory.points.size(); ++i) {
+    const auto & time = trajectory.points[i].time_from_start;
+    if (time.sec < 0 || time.nanosec >= 1000000000U) return false;
+    const std::int64_t current = static_cast<std::int64_t>(time.sec) * 1000000000LL + time.nanosec;
+    const auto difference = current - previous;
+    if (i > 0U && (difference < 99999000LL || difference > 100001000LL)) return false;
+    previous = current;
+  }
+  return true;
+}
 
 struct InitialState
 {
@@ -121,10 +156,15 @@ void setInitialEngageVelocity(
   const std::vector<float> & acceleration_delay_buffer = {}, float dt = kMppiDt,
   bool keep_active = false, const std::vector<float> & reference_velocities = {});
 
-/** Apply an active profile to trajectory velocity/acceleration fields; inactive is an exact no-op.
+/**
+ * Lower trajectory velocity and acceleration to an active profile.
+ * A candidate is written only when it is below the value already on the point, so a profile that
+ * holds current speed cannot raise a slower input. Indices before begin_index are left unchanged.
+ * An inactive profile is an exact no-op.
  */
 void applyActiveVelocityLimitProfile(
-  Trajectory & trajectory, const ActiveVelocityLimitProfile & profile);
+  Trajectory & trajectory, const ActiveVelocityLimitProfile & profile,
+  std::size_t begin_index = 0);
 
 /**
  * Build a cold nominal from a spatially smoothed curvature fit. Horizon samples advance by the

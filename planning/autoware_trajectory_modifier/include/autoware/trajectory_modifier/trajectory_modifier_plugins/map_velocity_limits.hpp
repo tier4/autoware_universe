@@ -52,7 +52,6 @@ public:
   [[nodiscard]] detail::ProfileStart last_profile_start() const { return last_profile_start_; }
 
 protected:
-  autoware_planning_msgs::msg::LaneletRoute::_uuid_type previous_route_uuid_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides

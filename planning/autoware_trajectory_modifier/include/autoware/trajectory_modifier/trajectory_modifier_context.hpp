@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_CONTEXT_HPP_
 #define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_CONTEXT_HPP_
 
+#include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -121,9 +122,13 @@ struct TrajectoryModifierContext
     tf_listener{tf_buffer},
     external_limit_sub{node, "~/input/external_velocity_limit_mps", rclcpp::QoS{1}},
     external_limit_clear_sub{
-      node, "~/input/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local()}
+      node, "~/input/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local()},
+    scenario_max_velocity_sub{node, "~/input/scenario_max_velocity_mps", rclcpp::QoS{1}}
   {
   }
+
+  /// Shared map and route preparation for the map-limit plugin and MPPI.
+  autoware::avoidance_target_detector::ExtendedRouteCache extended_route_cache;
 
   void refresh_external_velocity_limit()
   {
@@ -179,6 +184,22 @@ struct TrajectoryModifierContext
     }
   }
 
+  /// @brief Keep the latest finite, non-negative `/planning/scenario_planning/max_velocity` sample.
+  void refresh_scenario_max_velocity()
+  {
+    const auto msg = scenario_max_velocity_sub.take_data();
+    if (!msg || !std::isfinite(msg->max_velocity) || msg->max_velocity < 0.0F) {
+      return;
+    }
+    scenario_max_velocity_ = msg;
+  }
+
+  [[nodiscard]] const ExternalVelocityLimitState::Limit::ConstSharedPtr & scenario_max_velocity()
+    const
+  {
+    return scenario_max_velocity_;
+  }
+
   autoware::vehicle_info_utils::VehicleInfo vehicle_info;
   tf2_ros::Buffer tf_buffer;
   tf2_ros::TransformListener tf_listener;
@@ -189,6 +210,9 @@ struct TrajectoryModifierContext
   autoware_utils_rclcpp::InterProcessPollingSubscriber<
     ExternalVelocityLimitState::ClearCommand, autoware_utils_rclcpp::polling_policy::All>
     external_limit_clear_sub;
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<ExternalVelocityLimitState::Limit>
+    scenario_max_velocity_sub;
+  ExternalVelocityLimitState::Limit::ConstSharedPtr scenario_max_velocity_{nullptr};
 };
 
 }  // namespace autoware::trajectory_modifier
