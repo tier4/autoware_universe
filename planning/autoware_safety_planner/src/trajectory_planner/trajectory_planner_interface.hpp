@@ -20,6 +20,7 @@
 #include "../type_alias.hpp"
 
 #include <autoware_utils_debug/time_keeper.hpp>
+#include <tl/expected.hpp>
 
 #include <map>
 #include <memory>
@@ -31,11 +32,19 @@
 namespace autoware::safety_planner
 {
 
+/*
+  - a path: optimization successful
+  - nullopt: no optimization, as is
+  - unexpected: optimization failed
+*/
+using PathOptimizationResult = tl::expected<std::optional<PathPointTrajectory>, std::string>;
+
 struct TrajectoryPlannerInput
 {
   const PlannerContext & context;
   const std::vector<Constraint> & normal_constraints;    //!< certainty = DEFINITE only
   const std::vector<Constraint> & cautious_constraints;  //!< DEFINITE + POSSIBLE
+  std::optional<std::string> path_optimization_failure{};
 };
 
 struct TrajectoryPlannerDebug
@@ -82,6 +91,16 @@ public:
   }
 
   virtual std::string get_name() const = 0;
+
+  virtual PathOptimizationResult optimize_path(
+    [[maybe_unused]] const PlannerContext & context,
+    [[maybe_unused]] const std::vector<Constraint> & constraints,
+    [[maybe_unused]] TrajectoryPlannerDebug & debug)
+  {
+    return PathOptimizationResult{std::nullopt};
+  }
+
+  //! Stage 2: the trajectories along input.context.reference_path
   virtual TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) = 0;
 
 protected:

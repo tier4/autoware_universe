@@ -271,28 +271,54 @@ void SafetyPlanner::load_constraint_generator_plugins()
   constraint_generator_loader_ = std::make_unique<ConstraintGeneratorLoader>(
     "autoware_safety_planner", "autoware::safety_planner::ConstraintGeneratorInterface");
 
-  for (const auto & class_name : params_.constraint_generator_plugins) {
-    try {
-      auto plugin = constraint_generator_loader_->createSharedInstance(class_name);
-      plugin->on_initialize(time_keeper_, params_);
-      const auto name = plugin->get_name();
-      constraint_generator_plugins_.push_back(std::move(plugin));
-      RCLCPP_INFO(
-        logger, "Loaded constraint generator plugin: %s (%s)", name.c_str(), class_name.c_str());
-    } catch (const pluginlib::PluginlibException & e) {
-      RCLCPP_ERROR(
-        logger, "Failed to load constraint generator plugin '%s': %s", class_name.c_str(),
-        e.what());
+  const auto load = [&](
+                      const std::vector<std::string> & class_names,
+                      std::vector<std::shared_ptr<ConstraintGeneratorInterface>> & plugins) {
+    for (const auto & class_name : class_names) {
+      try {
+        auto plugin = constraint_generator_loader_->createSharedInstance(class_name);
+        plugin->on_initialize(time_keeper_, params_);
+        const auto name = plugin->get_name();
+        plugins.push_back(std::move(plugin));
+        RCLCPP_INFO(
+          logger, "Loaded constraint generator plugin: %s (%s)", name.c_str(), class_name.c_str());
+      } catch (const pluginlib::PluginlibException & e) {
+        RCLCPP_ERROR(
+          logger, "Failed to load constraint generator plugin '%s': %s", class_name.c_str(),
+          e.what());
+      }
     }
+  };
+  const auto & path_optimization_class_names =
+    params_.path_optimization_constraint_generator_plugins;
+  std::vector<std::string> class_names;
+  for (const auto & class_name : params_.constraint_generator_plugins) {
+    if (
+      std::find(
+        path_optimization_class_names.begin(), path_optimization_class_names.end(), class_name) !=
+      path_optimization_class_names.end()) {
+      RCLCPP_WARN(
+        logger,
+        "Constraint generator plugin '%s' is also in "
+        "path_optimization_constraint_generator_plugins. It is evaluated on the reference path "
+        "only",
+        class_name.c_str());
+      continue;
+    }
+    class_names.push_back(class_name);
   }
+  load(path_optimization_class_names, path_optimization_constraint_generator_plugins_);
+  load(class_names, constraint_generator_plugins_);
 }
 
 std::vector<std::string> SafetyPlanner::get_constraint_generator_plugin_names() const
 {
   std::vector<std::string> names;
-  names.reserve(constraint_generator_plugins_.size());
-  for (const auto & plugin : constraint_generator_plugins_) {
-    names.push_back(plugin->get_name());
+  for (const auto * plugins :
+       {&path_optimization_constraint_generator_plugins_, &constraint_generator_plugins_}) {
+    for (const auto & plugin : *plugins) {
+      names.push_back(plugin->get_name());
+    }
   }
   return names;
 }
@@ -452,24 +478,58 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
   }
   const PlannerContext context(input, std::move(reference_path.value()));
 
-  auto constraints = calculate_constraints(context);
-
   // Split by certainty: normal = DEFINITE only, cautious = DEFINITE + POSSIBLE
   std::vector<Constraint> normal_list;
   std::vector<Constraint> cautious_list;
-  for (const auto & [plugin_name, output] : constraints) {
-    for (const auto & constraint : output.constraints) {
-      if (constraint.certainty == Certainty::DEFINITE) {
-        normal_list.push_back(constraint);
+  const auto split_by_certainty =
+    [&](const std::map<std::string, ConstraintGeneratorOutput> & outputs) {
+      for (const auto & [plugin_name, output] : outputs) {
+        for (const auto & constraint : output.constraints) {
+          if (constraint.certainty == Certainty::DEFINITE) {
+            normal_list.push_back(constraint);
+          }
+          cautious_list.push_back(constraint);
+        }
       }
-      cautious_list.push_back(constraint);
+    };
+
+  auto constraints =
+    calculate_constraints(context, path_optimization_constraint_generator_plugins_);
+  split_by_certainty(constraints);
+
+  // The path the trajectories are planned along
+  // Other generators' constraints depend on the optimized path
+  std::optional<PlannerContext> optimized_context;
+  std::optional<std::string> path_optimization_failure;
+  TrajectoryPlannerDebug path_optimization_debug;
+  if (trajectory_planner_) {
+    auto optimized =
+      trajectory_planner_->optimize_path(context, normal_list, path_optimization_debug);
+    if (!optimized) {
+      path_optimization_failure = std::move(optimized.error());
+    } else if (*optimized) {
+      optimized_context.emplace(context);
+      optimized_context->reference_path = std::move(**optimized);
     }
+  }
+  const PlannerContext & planning_context = optimized_context ? *optimized_context : context;
+  {
+    auto outputs = calculate_constraints(planning_context, constraint_generator_plugins_);
+    split_by_certainty(outputs);
+    constraints.merge(outputs);
   }
 
   SafetyPlannerResult result;
   if (trajectory_planner_) {
-    const TrajectoryPlannerInput input{context, normal_list, cautious_list};
+    const TrajectoryPlannerInput input{
+      planning_context, normal_list, cautious_list, path_optimization_failure};
     auto planner_result = trajectory_planner_->plan_trajectories(input);
+    for (auto * debug : {&planner_result.normal_debug, &planner_result.cautious_debug}) {
+      debug->markers.insert(
+        path_optimization_debug.markers.begin(), path_optimization_debug.markers.end());
+      debug->trajectories.insert(
+        path_optimization_debug.trajectories.begin(), path_optimization_debug.trajectories.end());
+    }
     if (params_.engage_velocity.enable) {
       if (planner_result.normal_trajectory) {
         auto & trajectory = planner_result.normal_trajectory->trajectory;
@@ -494,12 +554,13 @@ tl::expected<SafetyPlannerResult, std::string> SafetyPlanner::plan(const SafetyP
 }
 
 std::map<std::string, ConstraintGeneratorOutput> SafetyPlanner::calculate_constraints(
-  const PlannerContext & context)
+  const PlannerContext & context,
+  const std::vector<std::shared_ptr<ConstraintGeneratorInterface>> & plugins)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
   std::map<std::string, ConstraintGeneratorOutput> constraints;
-  for (const auto & plugin : constraint_generator_plugins_) {
+  for (const auto & plugin : plugins) {
     constraints.emplace(plugin->get_name(), plugin->generate_constraints(context));
   }
 

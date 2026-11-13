@@ -156,16 +156,22 @@ safety_planner:
       validation:
         gt<>: [0.0]
 
-  constraint_generator_plugins:
+  path_optimization_constraint_generator_plugins:
     type: string_array
     default_value:
       - autoware::safety_planner::VehicleKinematicsConstraintGenerator
+      - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
+    read_only: true
+    description: list of constraint_generator that optimizes path shape
+
+  constraint_generator_plugins:
+    type: string_array
+    default_value:
       - autoware::safety_planner::ExternalVelocityLimitConstraintGenerator
       - autoware::safety_planner::experimental::LaneletSpeedLimitConstraintGenerator
-      - autoware::safety_planner::LaneFollowingDrivableAreaConstraintGenerator
       - autoware::safety_planner::experimental::ObstacleStopConstraintGenerator
     read_only: true
-    description: fully qualified class names of the constraint generator plugins to load
+    description: list of constraint_generator that do not optimize path shape
 
   trajectory_planner_plugin:
     type: string
