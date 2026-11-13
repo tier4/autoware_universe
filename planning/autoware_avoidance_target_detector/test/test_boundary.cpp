@@ -258,6 +258,62 @@ TEST_F(ExtendedRouteHandlerTest, CacheSharesVelocityDataAndUpgradesForMppi)
   EXPECT_EQ(cache.get_or_create(source_map_, map_bin_, route_, true), full_handler);
 }
 
+TEST_F(ExtendedRouteHandlerTest, RoadBorderHeightFilterSeparatesOverlappingLevels)
+{
+  auto map = make_map();
+  const auto add_border = [&map](const double z) {
+    const double y = z == 0.0 ? 3.0 : 3.5;
+    lanelet::LineString3d border{
+      lanelet::utils::getId(),
+      {lanelet::Point3d(lanelet::utils::getId(), 0.0, y, z),
+       lanelet::Point3d(lanelet::utils::getId(), 10.0, y, z)}};
+    border.setAttribute(lanelet::AttributeName::Type, "road_border");
+    map->add(border);
+  };
+  add_border(0.0);
+  add_border(5.0);
+
+  ExtendedRouteHandler handler(std::make_shared<ExtendedMapContext>(map), make_route());
+  handler.create_map();
+  Trajectory trajectory;
+  TrajectoryPoint point;
+  point.pose.position = make_point(5.0, 0.0, 0.0);
+  trajectory.points.push_back(point);
+
+  EXPECT_EQ(handler.get_road_borders_around_trajectory(trajectory, 4.0).size(), 2U);
+  const auto lower_borders = handler.get_road_borders_around_trajectory(trajectory, 4.0, 2.5);
+  ASSERT_EQ(lower_borders.size(), 1U);
+  const double lower_y = boost::geometry::get<0, 1>(lower_borders.front());
+  EXPECT_DOUBLE_EQ(lower_y, 3.0);
+  trajectory.points.front().pose.position.z = 5.0;
+  const auto upper_borders = handler.get_road_borders_around_trajectory(trajectory, 4.0, 2.5);
+  ASSERT_EQ(upper_borders.size(), 1U);
+  const double upper_y = boost::geometry::get<0, 1>(upper_borders.front());
+  EXPECT_DOUBLE_EQ(upper_y, 3.5);
+}
+
+TEST_F(ExtendedRouteHandlerTest, RoadBorderHeightFilterUsesLocalSlope)
+{
+  auto map = make_map();
+  lanelet::LineString3d border{
+    lanelet::utils::getId(),
+    {lanelet::Point3d(lanelet::utils::getId(), 0.0, 3.0, 0.0),
+     lanelet::Point3d(lanelet::utils::getId(), 10.0, 3.0, 5.0)}};
+  border.setAttribute(lanelet::AttributeName::Type, "road_border");
+  map->add(border);
+
+  ExtendedRouteHandler handler(std::make_shared<ExtendedMapContext>(map), make_route());
+  handler.create_map();
+  Trajectory trajectory;
+  TrajectoryPoint point;
+  point.pose.position = make_point(7.5, 0.0, 3.75);
+  trajectory.points.push_back(point);
+
+  EXPECT_EQ(handler.get_road_borders_around_trajectory(trajectory, 4.0, 0.5).size(), 1U);
+  trajectory.points.front().pose.position.z = 0.0;
+  EXPECT_TRUE(handler.get_road_borders_around_trajectory(trajectory, 4.0, 0.5).empty());
+}
+
 TEST_F(ExtendedRouteHandlerTest, CacheRebuildsChangedRouteWithSameUuid)
 {
   ExtendedRouteCache cache;

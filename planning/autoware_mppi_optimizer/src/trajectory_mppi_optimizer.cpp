@@ -700,8 +700,9 @@ ProcessingResult TrajectoryMppiOptimizer::process(
             params_.road_border_collision_margin, params_.road_border_safe_margin,
             params_.use_soft_margins_for_input_collision));
     }
-    const auto road_borders =
-      extended_route_handler_->get_road_borders_around_trajectory(input, boundary_query_margin);
+    // Exclude borders on bridges and underpasses before both the collision gate and MPPI use them.
+    const auto road_borders = extended_route_handler_->get_road_borders_around_trajectory(
+      input, boundary_query_margin, params_.road_border_max_height_difference_m);
     const auto mppi_road_borders = to_mppi_segments(road_borders);
 
     const bool reference_eligible =

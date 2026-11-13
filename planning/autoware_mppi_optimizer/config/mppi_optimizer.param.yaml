@@ -11,6 +11,7 @@
       trigger_on_static_object_collision: true
       use_soft_margins_for_input_collision: false
       min_input_collision_activation_duration_s: 0.0
+      road_border_max_height_difference_m: 2.5
       limit_velocity_from_map: false
       limit_velocity_from_external: false
       # Aligned debug override arrays: lanelet ID -> maximum velocity [m/s].

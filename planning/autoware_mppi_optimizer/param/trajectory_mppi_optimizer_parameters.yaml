@@ -45,6 +45,12 @@ trajectory_mppi_optimizer:
     description: Minimum time in seconds to keep conditional MPPI active after the last matching input collision
     validation: { gt_eq<>: [0.0] }
     read_only: false
+  road_border_max_height_difference_m:
+    type: double
+    default_value: 2.5
+    description: Maximum allowed height difference between a road border and the closest trajectory point
+    validation: { gt_eq<>: [0.0] }
+    read_only: false
   limit_velocity_from_map:
     type: bool
     default_value: false

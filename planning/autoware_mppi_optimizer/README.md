@@ -32,6 +32,8 @@ Only candidate index zero is processed; secondary candidates return before param
 
 The plugin requires odometry, tracked objects, route, and raw lanelet map data from the modifier. Acceleration, steering, and supplied predicted objects are used when available. Disabled, shadow-mode, conditional-gate skip, and error cycles preserve the upstream candidate. A rejected result preserves input geometry and may apply its deterministic velocity-limit fallback. A reference-length skip can still apply the existing short-reference steering hold.
 
+Road borders are filtered by elevation before they enter MPPI or its input collision trigger. For each border segment, the closest trajectory point in XY supplies a local height reference; a border whose interpolated height differs by more than `road_border_max_height_difference_m` is excluded. The parameter defaults to 2.5 m and can be changed at runtime. This keeps bridge and underpass borders from acting as obstacles on another level.
+
 Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory modifier node. The transient-local `enabled` debug topic is true only for a cycle where an optimized MPPI trajectory replaced the primary candidate; it is false when MPPI is disabled, skipped, rejected, or running in shadow mode.
 
 `limit_velocity_from_external` defaults to `false`. Set it to `true` to apply the latest subscribed `~/input/external_velocity_limit_mps` to MPPI. `limit_velocity_from_map` remains independent; map limits can still apply when external limits are disabled. Changes to either parameter take effect on the next primary-candidate processing cycle.

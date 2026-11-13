@@ -35,6 +35,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <set>
@@ -644,6 +646,29 @@ void ExtendedRouteHandler::create_boundary_map()
   original_route_bounds_ = build_route_bounds(original_primitive_lists);
   extended_route_bounds_ = build_route_bounds(extended_primitive_lists);
   road_borders_rtree_ = prepare_road_border_rtree(get_road_borders());
+  std::vector<ElevatedSegment> elevated_road_borders;
+  for (const auto & line_string : route_map_->lineStringLayer) {
+    const std::string type = line_string.attributeOr(lanelet::AttributeName::Type, "none");
+    if (type != "road_border") {
+      continue;
+    }
+    for (std::size_t index = 0; index + 1 < line_string.size(); ++index) {
+      const auto & first = line_string[index];
+      const auto & second = line_string[index + 1];
+      if (
+        !std::isfinite(first.x()) || !std::isfinite(first.y()) || !std::isfinite(second.x()) ||
+        !std::isfinite(second.y())) {
+        continue;
+      }
+      elevated_road_borders.emplace_back(
+        Segment(
+          autoware_utils_geometry::Point2d(first.x(), first.y()),
+          autoware_utils_geometry::Point2d(second.x(), second.y())),
+        std::array<double, 2>{first.z(), second.z()});
+    }
+  }
+  elevated_road_borders_rtree_ =
+    ElevatedSegmentRtree(elevated_road_borders.begin(), elevated_road_borders.end());
   original_bounds_rtree_ = prepare_drivable_area_rtree(original_route_bounds_);
   extended_bounds_rtree_ = prepare_drivable_area_rtree(extended_route_bounds_);
 
@@ -710,6 +735,76 @@ std::vector<Segment> ExtendedRouteHandler::get_road_borders_around_trajectory(
   const Trajectory & trajectory, const double margin) const
 {
   return get_segments_around_trajectory(road_borders_rtree_, trajectory, margin);
+}
+
+std::vector<Segment> ExtendedRouteHandler::get_road_borders_around_trajectory(
+  const Trajectory & trajectory, const double margin, const double max_height_difference) const
+{
+  if (trajectory.points.empty() || elevated_road_borders_rtree_.empty()) {
+    return {};
+  }
+  if (!std::any_of(trajectory.points.begin(), trajectory.points.end(), [](const auto & point) {
+        return std::isfinite(point.pose.position.z);
+      })) {
+    return get_road_borders_around_trajectory(trajectory, margin);
+  }
+
+  double min_x = std::numeric_limits<double>::max();
+  double min_y = std::numeric_limits<double>::max();
+  double max_x = std::numeric_limits<double>::lowest();
+  double max_y = std::numeric_limits<double>::lowest();
+  for (const auto & point : trajectory.points) {
+    min_x = std::min(min_x, point.pose.position.x);
+    min_y = std::min(min_y, point.pose.position.y);
+    max_x = std::max(max_x, point.pose.position.x);
+    max_y = std::max(max_y, point.pose.position.y);
+  }
+  const double query_margin = std::max(0.0, margin);
+  const lanelet::BoundingBox2d query_box(
+    lanelet::BasicPoint2d(min_x - query_margin, min_y - query_margin),
+    lanelet::BasicPoint2d(max_x + query_margin, max_y + query_margin));
+  std::vector<ElevatedSegment> candidates;
+  elevated_road_borders_rtree_.query(
+    boost::geometry::index::intersects(query_box), std::back_inserter(candidates));
+
+  std::vector<Segment> result;
+  result.reserve(candidates.size());
+  for (const auto & [segment, height] : candidates) {
+    if (!std::isfinite(height[0]) || !std::isfinite(height[1])) {
+      result.push_back(segment);
+      continue;
+    }
+    const auto & a = segment.first;
+    const auto & b = segment.second;
+    const double dx = b.x() - a.x();
+    const double dy = b.y() - a.y();
+    const double length_squared = dx * dx + dy * dy;
+    double nearest_distance_squared = std::numeric_limits<double>::infinity();
+    double nearest_height_difference = std::numeric_limits<double>::infinity();
+    for (const auto & point : trajectory.points) {
+      const auto & position = point.pose.position;
+      if (!std::isfinite(position.z)) {
+        continue;
+      }
+      const double ratio =
+        length_squared > 0.0
+          ? std::clamp(
+              ((position.x - a.x()) * dx + (position.y - a.y()) * dy) / length_squared, 0.0, 1.0)
+          : 0.0;
+      const double error_x = position.x - a.x() - ratio * dx;
+      const double error_y = position.y - a.y() - ratio * dy;
+      const double distance_squared = error_x * error_x + error_y * error_y;
+      if (distance_squared < nearest_distance_squared) {
+        nearest_distance_squared = distance_squared;
+        const double border_z = height[0] + ratio * (height[1] - height[0]);
+        nearest_height_difference = std::abs(position.z - border_z);
+      }
+    }
+    if (nearest_height_difference <= max_height_difference) {
+      result.push_back(segment);
+    }
+  }
+  return result;
 }
 
 std::vector<Segment> ExtendedRouteHandler::get_drivable_area_around_trajectory(
