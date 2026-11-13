@@ -46,6 +46,10 @@ constexpr double LANE_MASK_FORWARD_M = 150.0;
 // Lanelets whose centerline is longer than this are split into consecutive lane segments of
 // equal length, so a long lanelet keeps a fine point spacing in the fixed-size lane tensors.
 constexpr double LANE_SEGMENT_MAX_LENGTH_M = 40.0;
+// Maximum distance between consecutive road border points; longer gaps are divided evenly by
+// linear interpolation. Original points are always kept. A road border piece of
+// POINTS_PER_ROAD_BORDER points is at most (POINTS_PER_ROAD_BORDER - 1) * this long.
+constexpr double ROAD_BORDER_MAX_STEP_M = 2.5;
 
 }  // namespace autoware::ml_planner::constants
 
