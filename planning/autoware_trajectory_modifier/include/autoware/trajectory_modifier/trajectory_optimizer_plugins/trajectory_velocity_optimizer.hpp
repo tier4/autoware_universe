@@ -21,10 +21,8 @@
 #include "autoware/trajectory_modifier/trajectory_optimizer_plugins/plugin_utils/continuous_jerk_smoother.hpp"
 
 #include <autoware_utils/system/time_keeper.hpp>
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
@@ -42,7 +40,6 @@ using autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
 using autoware::trajectory_modifier::plugin::ContinuousJerkSmoother;
-using autoware_internal_planning_msgs::msg::VelocityLimit;
 
 struct TrajectoryVelocityOptimizerParams
 {
@@ -51,10 +48,8 @@ struct TrajectoryVelocityOptimizerParams
   double target_pull_out_speed_mps{1.0};
   double target_pull_out_acc_mps2{1.0};
   double max_lateral_accel_mps2{1.5};
-  double min_limited_speed_mps{3.0};      // Minimum speed when applying lateral acceleration limit
-  double default_max_velocity_mps{8.33};  // 30 km/h
+  double min_limited_speed_mps{3.0};  // Minimum speed when applying lateral acceleration limit
   bool set_engage_speed{false};
-  bool limit_speed{true};
   bool limit_lateral_acceleration{false};
   bool smooth_velocities{false};
 
@@ -77,9 +72,6 @@ protected:
 private:
   std::shared_ptr<ContinuousJerkSmoother> continuous_jerk_smoother_{nullptr};
   TrajectoryVelocityOptimizerParams velocity_params_;
-  std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
-    sub_planning_velocity_;
-  rclcpp::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
 };
 }  // namespace autoware::trajectory_modifier::plugin
 
