@@ -104,8 +104,13 @@ protected:
     const auto indices =
       context_->select_lane_segment_indices(map_to_ego(x, y, z), NUM_SEGMENTS_IN_LANE);
     std::vector<lanelet::Id> ids;
-    for (const auto & [id, index] : context_->get_lanelet_id_to_array_index()) {
-      if (std::find(indices.begin(), indices.end(), static_cast<int64_t>(index)) != indices.end()) {
+    for (const auto & [id, segment_indices] : context_->get_lanelet_id_to_array_index()) {
+      const bool selected =
+        std::any_of(segment_indices.begin(), segment_indices.end(), [&](const size_t index) {
+          return std::find(indices.begin(), indices.end(), static_cast<int64_t>(index)) !=
+                 indices.end();
+        });
+      if (selected) {
         ids.push_back(id);
       }
     }
