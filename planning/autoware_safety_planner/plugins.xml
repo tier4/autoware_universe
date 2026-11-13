@@ -16,6 +16,10 @@
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>Builds the drivable area from the lane bounds of the lanelets on the route</description>
     </class>
+    <class type="autoware::safety_planner::experimental::MapBasedStopConstraintGenerator"
+           base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
+      <description>Emits the stop point of the mandatory targets (stop line, walkway) and the one of the possibility targets (crosswalk, traffic light, intersection, private area, road shoulder)</description>
+    </class>
     <class type="autoware::safety_planner::experimental::ObstacleStopConstraintGenerator"
            base_class_type="autoware::safety_planner::ConstraintGeneratorInterface">
       <description>The obstacle_stop of autoware_minimum_rule_based_planner, emitting its stop point as a Gate</description>
