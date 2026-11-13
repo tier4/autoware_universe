@@ -131,8 +131,8 @@ public:
   void reset();
 
 private:
-  struct Impl;
-  std::unique_ptr<Impl> impl_;
+  struct SlowDownHistory;
+  std::unique_ptr<SlowDownHistory> history_;
 };
 
 }  // namespace autoware::safety_planner::experimental::obstacle_slow_down

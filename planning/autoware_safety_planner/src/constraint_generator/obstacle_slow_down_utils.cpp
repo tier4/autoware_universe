@@ -563,14 +563,18 @@ void validate_parameters(const SlowDownParameters & p)
   }
 }
 
-struct SlowDownPlanner::Impl
+// Per-object state carried over from the previous plan() call.
+struct SlowDownPlanner::SlowDownHistory
 {
+  // successive cycles the slow down condition held (> 0) or failed (< 0), for entry/exit
   std::map<UuidKey, int> counters;
+  // objects that caused a slow down in the previous cycle
   std::set<UuidKey> previous_obstacles;
+  // slow down result of the previous cycle (motion class, low-pass filtered velocity, section)
   std::map<UuidKey, PreviousOutput> previous_outputs;
 };
 
-SlowDownPlanner::SlowDownPlanner() : impl_(std::make_unique<Impl>())
+SlowDownPlanner::SlowDownPlanner() : history_(std::make_unique<SlowDownHistory>())
 {
 }
 SlowDownPlanner::~SlowDownPlanner() = default;
@@ -579,9 +583,9 @@ SlowDownPlanner & SlowDownPlanner::operator=(SlowDownPlanner &&) noexcept = defa
 
 void SlowDownPlanner::reset()
 {
-  impl_->counters.clear();
-  impl_->previous_obstacles.clear();
-  impl_->previous_outputs.clear();
+  history_->counters.clear();
+  history_->previous_obstacles.clear();
+  history_->previous_outputs.clear();
 }
 
 std::vector<SlowDownInterval> SlowDownPlanner::plan(
@@ -658,7 +662,7 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
     if (clearance <= filtering.min_lat_margin || bg::intersects(polygon, centerline)) continue;
 
     const auto [lon_velocity, lat_velocity] = velocity_relative_to_trajectory(object, trajectory);
-    const bool was_active = impl_->previous_obstacles.count(id) != 0;
+    const bool was_active = history_->previous_obstacles.count(id) != 0;
     const bool near = is_lower_hysteresis(
       clearance, was_active, filtering.max_lat_margin + filtering.lat_hysteresis_margin / 2.0,
       filtering.max_lat_margin - filtering.lat_hysteresis_margin / 2.0);
@@ -669,7 +673,7 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
       if (condition) {
         enabled = true;
       } else {
-        int & count = impl_->counters[id];
+        int & count = history_->counters[id];
         count = std::min(-1, count - 1);
         if (count <= -filtering.successive_num_to_exit_slow_down_condition) {
           count = 0;
@@ -678,7 +682,7 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
         }
       }
     } else if (condition) {
-      int & count = impl_->counters[id];
+      int & count = history_->counters[id];
       count = std::max(1, count + 1);
       if (count >= filtering.successive_num_to_entry_slow_down_condition) {
         count = 0;
@@ -703,21 +707,21 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
     accepted.push_back(std::move(o));
   }
 
-  for (auto it = impl_->counters.begin(); it != impl_->counters.end();) {
+  for (auto it = history_->counters.begin(); it != history_->counters.end();) {
     if (observed.count(it->first) == 0)
-      it = impl_->counters.erase(it);
+      it = history_->counters.erase(it);
     else
       ++it;
   }
-  impl_->previous_obstacles = std::move(accepted_ids);
+  history_->previous_obstacles = std::move(accepted_ids);
 
   auto working = trajectory;
   std::map<UuidKey, PreviousOutput> next_outputs;
   for (auto & object : accepted) {
     const auto id = key(object.uuid);
-    const auto old_it = impl_->previous_outputs.find(id);
+    const auto old_it = history_->previous_outputs.find(id);
     const PreviousOutput * old =
-      old_it == impl_->previous_outputs.end() ? nullptr : &old_it->second;
+      old_it == history_->previous_outputs.end() ? nullptr : &old_it->second;
     const auto motion = classify_motion(object, old, planning);
     const auto candidate = slowdown_candidate(
       object, old, motion, working, ego_pose, ego_velocity, ego_acceleration, vehicle_info,
@@ -762,7 +766,7 @@ std::vector<SlowDownInterval> SlowDownPlanner::plan(
       end_pose,
       motion};
   }
-  impl_->previous_outputs = std::move(next_outputs);
+  history_->previous_outputs = std::move(next_outputs);
   return result;
 }
 
