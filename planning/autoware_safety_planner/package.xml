@@ -21,6 +21,7 @@
   <depend>autoware_map_msgs</depend>
   <depend>autoware_motion_utils</depend>
   <depend>autoware_mppi_optimizer</depend>
+  <depend>autoware_obstacle_proximity_checker</depend>
   <depend>autoware_osqp_interface</depend>
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_planning_factor_interface</depend>
