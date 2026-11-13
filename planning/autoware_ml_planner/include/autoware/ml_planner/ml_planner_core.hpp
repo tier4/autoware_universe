@@ -120,6 +120,7 @@ struct MLPlannerParams
   optimization::TrajectoryOptimizationParams trajectory_optimization;
   postprocess::RoadBorderAvoidanceParams road_border_avoidance;
   postprocess::StopPointFixingParams stop_point_fixing;
+  double turn_indicator_hold_duration_sec;
 };
 
 /**
@@ -290,6 +291,7 @@ private:
 
   // Postprocessing
   std::vector<preprocess::SelectedAgent> selected_agents_;
+  postprocess::TurnIndicatorHold turn_indicator_hold_;
 
   // Raw message history buffers, bounded to the model input time window.
   // All derived history data is computed statelessly from these buffers.

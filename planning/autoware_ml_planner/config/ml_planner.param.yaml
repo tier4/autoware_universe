@@ -67,6 +67,7 @@
       enable: false
       velocity_threshold_mps: 0.3  # stop detection velocity threshold [m/s]
       min_deceleration_duration_sec: 1.0  # required continuous deceleration before fixing [s]
+    turn_indicator_hold_duration_sec: 0.0  # keep left or right on at least this long after it turns on; 0 disables [s]
     planning_factor:
       enable_stop: true
       enable_slowdown: false
