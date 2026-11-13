@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>autoware_brake_defect_detector</name>
+  <version>0.50.0</version>
+  <description>Passive brake actuation response defect detector</description>
+  <maintainer email="maxime.clement@tier4.jp">Maxime Clement</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>autoware_cmake</buildtool_depend>
+
+  <depend>autoware_control_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>std_msgs</depend>
+  <depend>tier4_vehicle_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
