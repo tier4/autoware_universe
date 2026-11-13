@@ -133,7 +133,7 @@ struct LaneletMap
  * @return LaneletMap
  */
 [[nodiscard]] LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr, double line_string_max_step_m = 5.0);
+  const lanelet::LaneletMapConstPtr lanelet_map_ptr);
 
 }  // namespace autoware::ml_planner
 
@@ -161,8 +161,7 @@ public:
    * @param line_string_max_step_m Maximum arc-length step per point for resampled line strings.
    */
   explicit LaneSegmentContext(
-    const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
-    double line_string_max_step_m = 5.0);
+    const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr);
 
   /**
    * @brief Select route segment indices based on route and constraints.
