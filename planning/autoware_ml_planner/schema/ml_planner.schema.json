@@ -356,6 +356,12 @@
           },
           "required": ["enable"]
         },
+        "turn_indicator_hold_duration_sec": {
+          "type": "number",
+          "default": 0.0,
+          "minimum": 0.0,
+          "description": "After left or right is turned on, it is kept on at least this long; a DISABLE from the model within it is replaced by the side. Switching to the other side is allowed and starts a new hold [s]"
+        },
         "planning_factor": {
           "type": "object",
           "properties": {
