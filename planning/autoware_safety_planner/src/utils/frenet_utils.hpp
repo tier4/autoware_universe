@@ -70,6 +70,14 @@ SlBox footprint_sl_box(const VehicleInfo & vehicle_info, double s, double l);
 //! Footprint swept while the rear axle moves inside reference_box
 SlBox footprint_sl_box(const VehicleInfo & vehicle_info, const SlBox & reference_box);
 
+//! Band of half_width_m on each side of the centerline poses
+Polygon2d make_band_polygon(const std::vector<Pose2d> & centerline, double half_width_m);
+
+//! The path from s_from to its end every interval_m; time_from_start is counted from ego_point
+TrajectoryPoints make_trajectory_points(
+  const PathPointTrajectory & path, double s_from, const geometry_msgs::msg::Point & ego_point,
+  double interval_m);
+
 }  // namespace autoware::safety_planner
 
 #endif  // UTILS__FRENET_UTILS_HPP_

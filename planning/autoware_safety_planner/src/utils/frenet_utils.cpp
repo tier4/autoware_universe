@@ -14,11 +14,16 @@
 
 #include "frenet_utils.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/closest.hpp>
+
+#include <boost/geometry/algorithms/correct.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
+#include <vector>
 
 namespace autoware::safety_planner
 {
@@ -135,6 +140,49 @@ SlBox footprint_sl_box(const VehicleInfo & vehicle_info, const SlBox & reference
   box.l_min = reference_box.l_min + vehicle_info.min_lateral_offset_m;
   box.l_max = reference_box.l_max + vehicle_info.max_lateral_offset_m;
   return box;
+}
+
+Polygon2d make_band_polygon(const std::vector<Pose2d> & centerline, const double half_width_m)
+{
+  Polygon2d polygon;
+  auto & ring = polygon.outer();
+  ring.reserve(2 * centerline.size() + 1);
+  for (const auto & pose : centerline) {
+    const double nx = -std::sin(pose.yaw);  // left normal
+    const double ny = std::cos(pose.yaw);
+    ring.emplace_back(pose.position.x() + half_width_m * nx, pose.position.y() + half_width_m * ny);
+  }
+  for (auto it = centerline.rbegin(); it != centerline.rend(); ++it) {
+    const double nx = -std::sin(it->yaw);
+    const double ny = std::cos(it->yaw);
+    ring.emplace_back(it->position.x() - half_width_m * nx, it->position.y() - half_width_m * ny);
+  }
+  boost::geometry::correct(polygon);
+  return polygon;
+}
+
+TrajectoryPoints make_trajectory_points(
+  const PathPointTrajectory & path, const double s_from,
+  const geometry_msgs::msg::Point & ego_point, const double interval_m)
+{
+  TrajectoryPoints points;
+  const auto push = [&](const double s) {
+    const auto & point = path.compute(s).point;
+    TrajectoryPoint trajectory_point;
+    trajectory_point.pose = point.pose;
+    trajectory_point.longitudinal_velocity_mps = point.longitudinal_velocity_mps;
+    trajectory_point.lateral_velocity_mps = point.lateral_velocity_mps;
+    trajectory_point.heading_rate_rps = point.heading_rate_rps;
+    points.push_back(trajectory_point);
+  };
+  const auto num_points = static_cast<std::size_t>(
+    std::max(std::ceil((path.length() - 1e-3 - s_from) / interval_m), 0.0));
+  for (std::size_t i = 0; i < num_points; ++i) {
+    push(s_from + static_cast<double>(i) * interval_m);
+  }
+  push(path.length());
+  autoware::motion_utils::calculate_time_from_start(points, ego_point);
+  return points;
 }
 
 }  // namespace autoware::safety_planner

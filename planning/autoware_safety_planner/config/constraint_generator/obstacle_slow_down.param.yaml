@@ -1,0 +1,223 @@
+/**:
+  ros__parameters:
+    obstacle_slow_down:
+      obstacle_filtering:
+        object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian"]
+        min_lat_margin: -10.0 # [m]
+        max_lat_margin: 1.0 # [m]
+        lat_hysteresis_margin: 0.2 # [m]
+        max_lat_velocity: 3.0 # [m/s]
+        successive_num_to_entry_slow_down_condition: 5
+        successive_num_to_exit_slow_down_condition: 5
+
+      slow_down_planning:
+        slow_down_min_acc: -1.0 # [m/s^2]
+        slow_down_min_jerk: -1.0 # [m/s^3]
+        lpf_gain_slow_down_vel: 0.0
+        lpf_gain_lateral_distance: 0.8
+        lpf_gain_dist_to_slow_down: 0.8
+        time_margin_on_target_velocity: 1.5 # [s]
+        moving_object_speed_threshold: 0.5 # [m/s]
+        moving_object_hysteresis_range: 0.1 # [m/s]
+
+        object_type_specified_params:
+          car:
+            left:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            right:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            wheel_off_track_scale: 0.0
+          truck:
+            left:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            right:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            wheel_off_track_scale: 0.0
+          bus:
+            left:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            right:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            wheel_off_track_scale: 0.0
+          trailer:
+            left:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            right:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            wheel_off_track_scale: 0.0
+          motorcycle:
+            left:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            right:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            wheel_off_track_scale: 0.6
+          bicycle:
+            left:
+              moving:
+                min_lat_margin: 0.5 # [m]
+                max_lat_margin: 2.8 # [m]
+                min_ego_velocity: 0.925 # [m/s]
+                max_ego_velocity: 9.72 # [m/s]
+              stationary:
+                min_lat_margin: 0.3 # [m]
+                max_lat_margin: 2.5 # [m]
+                min_ego_velocity: 0.925 # [m/s]
+                max_ego_velocity: 9.72 # [m/s]
+            right:
+              moving:
+                min_lat_margin: 0.5 # [m]
+                max_lat_margin: 2.8 # [m]
+                min_ego_velocity: 0.925 # [m/s]
+                max_ego_velocity: 9.72 # [m/s]
+              stationary:
+                min_lat_margin: 0.3 # [m]
+                max_lat_margin: 2.5 # [m]
+                min_ego_velocity: 0.925 # [m/s]
+                max_ego_velocity: 9.72 # [m/s]
+            wheel_off_track_scale: 0.6
+          pedestrian:
+            left:
+              moving:
+                min_lat_margin: 0.5 # [m]
+                max_lat_margin: 2.8 # [m]
+                min_ego_velocity: 0.925 # [m/s]
+                max_ego_velocity: 9.72 # [m/s]
+              stationary:
+                min_lat_margin: 0.3 # [m]
+                max_lat_margin: 2.5 # [m]
+                min_ego_velocity: 0.925 # [m/s]
+                max_ego_velocity: 9.72 # [m/s]
+            right:
+              moving:
+                min_lat_margin: 0.5 # [m]
+                max_lat_margin: 2.8 # [m]
+                min_ego_velocity: 0.925 # [m/s]
+                max_ego_velocity: 9.72 # [m/s]
+              stationary:
+                min_lat_margin: 0.3 # [m]
+                max_lat_margin: 2.5 # [m]
+                min_ego_velocity: 0.925 # [m/s]
+                max_ego_velocity: 9.72 # [m/s]
+            wheel_off_track_scale: 0.6
+          unknown:
+            left:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            right:
+              moving:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.5 # [m]
+                min_ego_velocity: 2.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+              stationary:
+                min_lat_margin: 0.2 # [m]
+                max_lat_margin: 1.8 # [m]
+                min_ego_velocity: 4.0 # [m/s]
+                max_ego_velocity: 12.0 # [m/s]
+            wheel_off_track_scale: 0.0
+
+      trajectory_polygon:
+        decimate_trajectory_step_length: 2.0 # [m]
+        goal_extended_trajectory_length: 6.0 # [m]
+        ego_nearest_dist_threshold: 3.0 # [m]
+        ego_nearest_yaw_threshold: 1.046 # [rad]
+        enable_to_consider_current_pose: true
+        time_to_convergence: 1.5 # [s]
