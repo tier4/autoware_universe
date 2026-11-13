@@ -79,14 +79,15 @@ LaneletSegment make_route_segment(const lanelet::Id id)
 }  // namespace
 
 // The route goes east on `eastbound_`, and later comes back north on `northbound_`, which crosses
-// `eastbound_` at (50, 0).
+// `eastbound_` at (50, 0). Both lanelets are shorter than LANE_SEGMENT_MAX_LENGTH_M, so each one
+// is a single lane segment.
 class RouteSegmentSelectionTest : public ::testing::Test
 {
 protected:
   void SetUp() override
   {
-    eastbound_ = make_straight_lanelet(0.0, 0.0, 100.0, 0.0);
-    northbound_ = make_straight_lanelet(50.0, -50.0, 50.0, 50.0);
+    eastbound_ = make_straight_lanelet(32.0, 0.0, 68.0, 0.0);
+    northbound_ = make_straight_lanelet(50.0, -18.0, 50.0, 18.0);
 
     auto lanelet_map = std::make_shared<lanelet::LaneletMap>();
     lanelet_map->add(eastbound_);
@@ -98,7 +99,7 @@ protected:
 
   int64_t array_index(const lanelet::Lanelet & lanelet) const
   {
-    return static_cast<int64_t>(context_->get_lanelet_id_to_array_index().at(lanelet.id()));
+    return static_cast<int64_t>(context_->get_lanelet_id_to_array_index().at(lanelet.id()).front());
   }
 
   lanelet::Lanelet eastbound_;
