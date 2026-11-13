@@ -45,6 +45,15 @@ private:
     const std::vector<Constraint> & constraints, std::optional<Trajectory> & previous_trajectory,
     std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const;
 
+  std::optional<PathPointTrajectory> optimize_path(
+    const PlannerContext & context, const std::vector<Constraint> & constraints,
+    std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const;
+
+  std::pair<PlannedTrajectory, PlanningFactorData> plan_trajectory_on_path(
+    TurnIndicatorDecider & turn_indicator_decider, const PlannerContext & context,
+    const std::vector<Constraint> & constraints, std::optional<PathPointTrajectory> optimized_path,
+    std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug) const;
+
   //! The reference_path shifted along its normal from the ego's offset and heading, so that the
   //! footprint keeps clear of the HARD lateral bounds ahead of the ego and the curvature within the
   //! steering, held near previous_path, or nullopt when the QP does not solve even with the end
