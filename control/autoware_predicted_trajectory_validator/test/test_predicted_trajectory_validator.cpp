@@ -253,7 +253,8 @@ TEST_F(PredictedTrajectoryValidatorNodeTest, ShortTrajectoryAndInvalidCountFollo
   publish_inputs(short_trajectory, 0.0, true);
   ASSERT_TRUE(trigger(short_trajectory, std::chrono::seconds(2)));
   spin_for(std::chrono::milliseconds(100));
-  EXPECT_TRUE(alerts_.empty());
+  ASSERT_FALSE(alerts_.empty());
+  EXPECT_TRUE(all_sectors_none(alerts_.back()));
   EXPECT_TRUE(statuses_.back().uncrossable_bound_departure_result.is_valid);
 
   double time_s = 0.1;
