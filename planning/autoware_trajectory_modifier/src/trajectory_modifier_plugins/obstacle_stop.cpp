@@ -305,9 +305,10 @@ bool ObstacleStop::apply_cruise(
   }
 
   const auto & state = target->rss_state;
+  const auto traj_vel = std::max(0.0f, traj_points.front().longitudinal_velocity_mps);
 
   const auto & cruise = params_.cruise;
-  const auto margin = std::max(cruise.min_distance, cruise.time_headway * state.lon_vel);
+  const auto margin = std::max(cruise.min_distance, cruise.time_headway * traj_vel);
   const auto v_cruise = compute_cruise_velocity(
     state.gap, cruise.ego_decel, state.stopping_distance, stopping_params_.delay_response_time,
     margin);
