@@ -20,7 +20,7 @@
 
   <arg name="enable_pseudo_emergency_stop" default="false"/>
 
-  <node pkg="autoware_trajectory_selector" exec="autoware_trajectory_selector_node" name="trajectory_selector_node" output="screen">
+  <node pkg="autoware_trajectory_selector" exec="autoware_trajectory_selector_node" name="trajectory_selector_node" output="both">
     <param from="$(var trajectory_selector_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_concatenator_param_path)" allow_substs="true"/>
     <param from="$(var trajectory_validator_param_path)" allow_substs="true"/>
