@@ -48,29 +48,6 @@ using autoware::trajectory_modifier::utils::obstacle_stop::TargetObject;
 using autoware::trajectory_modifier::utils::obstacle_stop::TargetObjects;
 using autoware::trajectory_modifier::utils::obstacle_stop::TrajectoryShape;
 
-TrajectoryPoints make_trajectory_points(
-  const PathPointTrajectory & path, const double s_ego, const geometry_msgs::msg::Point & ego_point)
-{
-  constexpr double RESAMPLE_INTERVAL_M = 0.5;
-
-  TrajectoryPoints points;
-  const auto push = [&](const double s) {
-    const auto & point = path.compute(s).point;
-    TrajectoryPoint trajectory_point;
-    trajectory_point.pose = point.pose;
-    trajectory_point.longitudinal_velocity_mps = point.longitudinal_velocity_mps;
-    trajectory_point.lateral_velocity_mps = point.lateral_velocity_mps;
-    trajectory_point.heading_rate_rps = point.heading_rate_rps;
-    points.push_back(trajectory_point);
-  };
-  for (double s = s_ego; s + 1e-3 < path.length(); s += RESAMPLE_INTERVAL_M) {
-    push(s);
-  }
-  push(path.length());
-  autoware::motion_utils::calculate_time_from_start(points, ego_point);
-  return points;
-}
-
 MarkerArray make_debug_markers(
   const TrajectoryShape & shape, const TargetObjects & target_objects,
   const builtin_interfaces::msg::Time & stamp, const double ego_z)
@@ -178,7 +155,9 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   const rclcpp::Time now(context.odometry.header.stamp);
 
   const double s_ego = compute_ego_frenet_state(context).s;
-  const auto traj_points = make_trajectory_points(context.reference_path, s_ego, ego_pose.position);
+  constexpr double RESAMPLE_INTERVAL_M = 0.5;
+  const auto traj_points =
+    make_trajectory_points(context.reference_path, s_ego, ego_pose.position, RESAMPLE_INTERVAL_M);
   // NOTE(odashima): Why not ego_accel as is: the deceleration for this very stop would shorten the
   // detection range until the obstacle drops out of it, releasing the stop mid-way
   const auto active_collision_point = get_nearest_collision_point();
