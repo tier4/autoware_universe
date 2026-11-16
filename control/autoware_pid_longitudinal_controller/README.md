@@ -53,7 +53,7 @@ For reliable stopping, the target acceleration calculated by the FeedForward sys
 
 When `enable_brake_keeping_before_stop` is true, the target acceleration is overridden with `brake_keeping_acc` if all of the following conditions are met:
 
-- The distance to the stop point (`stop_dist`) is within `brake_keep_dist` (`0 <= stop_dist <= brake_keep_dist`).
+- The distance to the stop point (`stop_dist`) is within the range from `-brake_keep_overshoot_dist` to `brake_keep_dist` (`-brake_keep_overshoot_dist <= stop_dist <= brake_keep_dist`).
 - The target acceleration is a weak deceleration, i.e. greater than `brake_keeping_acc` and less than 0 (`brake_keeping_acc < target acceleration < 0`).
 
 The stop point is not searched for in the trajectory by this function. The distance to the stop point calculated by the controller is used instead.
@@ -226,6 +226,7 @@ AutonomouStuff Lexus RX 450h for under 40 km/h driving.
 | ff_scale_max                          | double | Maximum clamp value for feedforward scaling applied during the time-to-arclength conversion.                                                                       | 2.0           |
 | brake_keeping_acc                     | double | If `enable_brake_keeping_before_stop` is true, a certain acceleration is kept during DRIVE state before the ego stops [m/s^2] See [Brake keeping](#brake-keeping). | 0.2           |
 | brake_keep_dist                       | double | If `enable_brake_keeping_before_stop` is true, brake keeping is applied only when the distance to the stop point is within this value [m]. See [Brake keeping](#brake-keeping). | 2.0           |
+| brake_keep_overshoot_dist             | double | If `enable_brake_keeping_before_stop` is true, brake keeping also applies up to this distance past the stop point [m]. 0 disables it. See [Brake keeping](#brake-keeping). | 0.0           |
 
 ### STOPPING Parameter (smooth stop)
 

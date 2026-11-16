@@ -141,6 +141,7 @@ PidLongitudinalController::PidLongitudinalController(
       node.declare_parameter<bool>("enable_brake_keeping_before_stop");         // [-]
     m_brake_keeping_acc = node.declare_parameter<double>("brake_keeping_acc");  // [m/s^2]
     m_brake_keep_dist = node.declare_parameter<double>("brake_keep_dist");      // [m]
+    m_brake_keep_overshoot_dist = node.declare_parameter<double>("brake_keep_overshoot_dist");  // [m]
   }
 
   // parameters for smooth stop state
@@ -1117,7 +1118,7 @@ PidLongitudinalController::Motion PidLongitudinalController::keepBrakeBeforeStop
   // Keep the brake near the stop position without relying on a zero-velocity stop point.
   // NaN stop_dist makes the range check false, so it never activates.
   const bool is_near_stop =
-    0.0 <= control_data.stop_dist && control_data.stop_dist <= m_brake_keep_dist;
+    -m_brake_keep_overshoot_dist <= control_data.stop_dist && control_data.stop_dist <= m_brake_keep_dist;
   const bool is_weak_deceleration =
     m_brake_keeping_acc < target_motion.acc && target_motion.acc < 0.0;
   if (is_near_stop && is_weak_deceleration) {

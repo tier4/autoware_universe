@@ -188,6 +188,7 @@ private:
   bool m_enable_brake_keeping_before_stop;
   double m_brake_keeping_acc;
   double m_brake_keep_dist;
+  double m_brake_keep_overshoot_dist;
 
   // smooth stop
   SmoothStop m_smooth_stop;
