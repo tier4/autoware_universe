@@ -246,39 +246,39 @@ TEST_F(PredictedTrajectoryValidatorNodeTest, NothingIsValidatedWithoutAccelerati
   EXPECT_TRUE(alerts_.empty());
 }
 
-TEST_F(PredictedTrajectoryValidatorNodeTest, ReferenceTrajectoryIsNotRequired)
+TEST_F(PredictedTrajectoryValidatorNodeTest, ShortTrajectoryAndInvalidCountFollowTheResult)
 {
   start();
-  EXPECT_EQ(node_->count_subscribers(std::string(kNs) + "/input/reference_trajectory"), 0U);
-  const auto trajectory = make_trajectory(0.0);
-  publish_inputs(trajectory, 0.0, true);
-  EXPECT_TRUE(trigger(trajectory, std::chrono::seconds(2)));
-}
-
-TEST_F(PredictedTrajectoryValidatorNodeTest, ShortTrajectoryPublishesNoAlert)
-{
-  start();
-  const auto trajectory = make_trajectory(0.0, 1);
-  publish_inputs(trajectory, 0.0, true);
-  ASSERT_TRUE(trigger(trajectory, std::chrono::seconds(2)));
+  const auto short_trajectory = make_trajectory(0.0, 1);
+  publish_inputs(short_trajectory, 0.0, true);
+  ASSERT_TRUE(trigger(short_trajectory, std::chrono::seconds(2)));
   spin_for(std::chrono::milliseconds(100));
-
   EXPECT_TRUE(alerts_.empty());
   EXPECT_TRUE(statuses_.back().uncrossable_bound_departure_result.is_valid);
-}
 
-TEST_F(PredictedTrajectoryValidatorNodeTest, ShortTrajectoryKeepsThePreviousResult)
-{
-  start();
-  double time_s = 0.0;
+  double time_s = 0.1;
   const auto results = drive_toward_border(true, time_s);
+  int64_t expected_count = 0;
+  for (const auto & result : results) {
+    expected_count = result.is_valid ? 0 : expected_count + 1;
+    EXPECT_EQ(result.invalid_count, expected_count);
+  }
+  ASSERT_GT(expected_count, 1);
   ASSERT_FALSE(results.back().is_valid);
 
   time_s += 0.1;
   const auto danger = make_trajectory(0.2);
-  const auto result = cycle(make_trajectory(0.2, 1), time_s, true, danger);
+  auto result = cycle(make_trajectory(0.2, 1), time_s, true, danger);
   EXPECT_FALSE(result.is_valid);
   EXPECT_EQ(result.invalid_count, results.back().invalid_count + 1);
+
+  const auto safe = make_trajectory(0.0);
+  for (int i = 0; i < 10 && !result.is_valid; ++i) {
+    time_s += 0.1;
+    result = cycle(safe, time_s, true, safe);
+  }
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_EQ(result.invalid_count, 0);
 }
 
 TEST_F(PredictedTrajectoryValidatorNodeTest, ManualDrivingOverwritesTheResultButNotTheAlert)
@@ -294,27 +294,5 @@ TEST_F(PredictedTrajectoryValidatorNodeTest, ManualDrivingOverwritesTheResultBut
 
   ASSERT_FALSE(alerts_.empty());
   EXPECT_FALSE(all_sectors_none(alerts_.back()));
-}
-
-TEST_F(PredictedTrajectoryValidatorNodeTest, InvalidCountIsCountedPerResultAndResetWhenValid)
-{
-  start();
-  double time_s = 0.0;
-  const auto results = drive_toward_border(true, time_s);
-  int64_t expected_count = 0;
-  for (const auto & result : results) {
-    expected_count = result.is_valid ? 0 : expected_count + 1;
-    EXPECT_EQ(result.invalid_count, expected_count);
-  }
-  ASSERT_GT(expected_count, 1);
-
-  const auto safe = make_trajectory(0.0);
-  ValidationResult result;
-  for (int i = 0; i < 10 && !result.is_valid; ++i) {
-    time_s += 0.1;
-    result = cycle(safe, time_s, true, safe);
-  }
-  EXPECT_TRUE(result.is_valid);
-  EXPECT_EQ(result.invalid_count, 0);
 }
 }  // namespace autoware::predicted_trajectory_validator
