@@ -102,10 +102,15 @@ protected:
     const double x, const double y, const double z) const
   {
     const auto indices =
-      context_->select_lane_segment_indices(map_to_ego(x, y, z), x, y, NUM_SEGMENTS_IN_LANE);
+      context_->select_lane_segment_indices(map_to_ego(x, y, z), NUM_SEGMENTS_IN_LANE);
     std::vector<lanelet::Id> ids;
-    for (const auto & [id, index] : context_->get_lanelet_id_to_array_index()) {
-      if (std::find(indices.begin(), indices.end(), static_cast<int64_t>(index)) != indices.end()) {
+    for (const auto & [id, segment_indices] : context_->get_lanelet_id_to_array_index()) {
+      const bool selected =
+        std::any_of(segment_indices.begin(), segment_indices.end(), [&](const size_t index) {
+          return std::find(indices.begin(), indices.end(), static_cast<int64_t>(index)) !=
+                 indices.end();
+        });
+      if (selected) {
         ids.push_back(id);
       }
     }
@@ -117,7 +122,7 @@ protected:
   size_t road_border_rows_at(
     const double x, const double y, const double z, const bool along_x, const double value) const
   {
-    const auto tensor = context_->create_road_border_tensor(map_to_ego(x, y, z), x, y);
+    const auto tensor = context_->create_road_border_tensor(map_to_ego(x, y, z));
     size_t count = 0;
     for (size_t i = 0; i < tensor.shape(0); ++i) {
       const bool valid = tensor(i, 0, 0) != 0.0f || tensor(i, 0, 1) != 0.0f;

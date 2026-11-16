@@ -82,17 +82,7 @@ std::vector<int64_t> input_shape(const std::string & name, const size_t size)
   if (name == "lane_traffic_light_future") {
     return batched_shape(LANE_TRAFFIC_LIGHT_FUTURE_SHAPE, size);
   }
-  if (name == "route_lanes") return batched_shape(ROUTE_LANES_SHAPE, size);
-  if (name == "route_lane_types") return batched_shape(ROUTE_LANE_TYPES_SHAPE, size);
-  if (name == "route_lanes_speed_limit") {
-    return batched_shape(ROUTE_LANES_SPEED_LIMIT_SHAPE, size);
-  }
-  if (name == "route_traffic_light_past") {
-    return batched_shape(ROUTE_TRAFFIC_LIGHT_PAST_SHAPE, size);
-  }
-  if (name == "route_traffic_light_future") {
-    return batched_shape(ROUTE_TRAFFIC_LIGHT_FUTURE_SHAPE, size);
-  }
+  if (name == "route_waypoints") return batched_shape(ROUTE_WAYPOINTS_SHAPE, size);
   if (name == "intersection_area") return batched_shape(INTERSECTION_AREA_SHAPE, size);
   if (name == "stop_lines") return batched_shape(STOP_LINES_SHAPE, size);
   if (name == "road_borders") return batched_shape(ROAD_BORDERS_SHAPE, size);
@@ -116,11 +106,7 @@ std::unordered_map<std::string, std::vector<float>> make_inputs(
     "lanes_speed_limit",
     "lane_traffic_light_past",
     "lane_traffic_light_future",
-    "route_lanes",
-    "route_lane_types",
-    "route_lanes_speed_limit",
-    "route_traffic_light_past",
-    "route_traffic_light_future",
+    "route_waypoints",
     "intersection_area",
     "stop_lines",
     "road_borders",

@@ -128,5 +128,30 @@ struct StopPointFixingParams
 std::optional<size_t> fix_stop_points(
   Trajectory & trajectory, const StopPointFixingParams & params);
 
+/**
+ * @brief Keeps the turn indicator on for a while after the model turns it on.
+ *
+ * Once left or right is commanded, DISABLE is replaced by that side until hold_duration_sec has
+ * passed since it was turned on, so that the indicator does not flicker off. Switching to the
+ * other side is let through at once and starts a new hold. A stamp before the start of the hold
+ * (time going back) ends the hold.
+ */
+class TurnIndicatorHold
+{
+public:
+  /**
+   * @brief The command to publish for the model's command at stamp.
+   *
+   * @param command The model's command (DISABLE, ENABLE_LEFT or ENABLE_RIGHT).
+   * @param stamp Time of the frame.
+   * @param hold_duration_sec How long left or right is kept on after it was turned on [s].
+   */
+  uint8_t apply(uint8_t command, const rclcpp::Time & stamp, double hold_duration_sec);
+
+private:
+  std::optional<uint8_t> held_command_;
+  std::optional<rclcpp::Time> hold_start_;
+};
+
 }  // namespace autoware::ml_planner::postprocess
 #endif  // AUTOWARE__ML_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_
