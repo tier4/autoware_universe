@@ -28,11 +28,13 @@
 #include <tf2/utils.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -475,10 +477,16 @@ inline bool loadMppiDebugRuntimeOptionsCsv(
   options.force_cold_start_each_step =
     as_bool("force_cold_start_each_step", options.force_cold_start_each_step);
   options.skip_if_invalid = as_bool("skip_if_invalid", options.skip_if_invalid);
+  const auto interpolation = kv.find("validation_interpolation_substeps");
+  if (interpolation != kv.end()) {
+    const auto value = interpolation->second;
+    if (!std::isfinite(value) || value < 1.0 || value > 100.0 || std::floor(value) != value) {
+      throw std::invalid_argument("Invalid validation_interpolation_substeps in runtime log");
+    }
+    options.validation_interpolation_substeps = static_cast<int>(value);
+  }
   options.use_last_control_as_nominal =
     as_bool("use_last_control_as_nominal", options.use_last_control_as_nominal);
-  options.use_temporal_mpt_as_nominal =
-    as_bool("use_temporal_mpt_as_nominal", options.use_temporal_mpt_as_nominal);
   options.prevent_reverse_velocity =
     as_bool("prevent_reverse_velocity", options.prevent_reverse_velocity);
   options.enable_input_delay_compensation =

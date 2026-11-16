@@ -15,7 +15,6 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__TRAJECTORY_MPPI_OPTIMIZER_HPP_
 
-#include "autoware/mppi_optimizer/curvature_adaptive_steering_filter.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/input_collision_activation_hold.hpp"
 #include "autoware/mppi_optimizer/mppi_application_status.hpp"
@@ -30,12 +29,10 @@
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
-#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/header.hpp>
-#include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <cstddef>
@@ -83,10 +80,13 @@ private:
   /** @brief Recreates state after a parameter, route, or map change. */
   void reset_optimizer();
 
+  /** @brief Logs the end of an active conditional run and clears its activation source. */
+  void deactivate_conditional_mppi(const std::string & reason);
+
   /** @brief Updates route-dependent boundary indexes when their inputs change. */
   void update_route_context(const autoware::trajectory_modifier::TrajectoryModifierData & data);
 
-  /** @brief Creates and configures the GPU optimizer on first use. */
+  /** @brief Creates and initializes the GPU optimizer before checking activation. */
   void ensure_optimizer();
 
   /** @brief Cache vehicle, cost, and object-filter parameters without creating a GPU optimizer. */
@@ -98,6 +98,9 @@ private:
 
   /** @brief Publishes whether an optimized MPPI trajectory replaced the primary candidate. */
   void publish_enabled(bool applied) const;
+
+  /** @brief Appends selector status and per-object reasons to the current diagnostics. */
+  void append_selector_diagnostics();
 
   /** @brief Publishes the MPPI cost breakdown and result status. */
   void publish_cost_diagnostics(
@@ -130,16 +133,16 @@ private:
   std::unique_ptr<FirstOrderDubinsMppiInterface> optimizer_;
   std::optional<FirstOrderDubinsMppiCostParams> cost_params_;
   std::optional<FirstOrderDubinsMppiVehicleParams> vehicle_params_;
-  CurvatureAdaptiveSteeringFilter steering_filter_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
-  autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr current_map_;
-  std::optional<unique_identifier_msgs::msg::UUID> current_route_uuid_;
-  std::vector<autoware_planning_msgs::msg::LaneletSegment> current_route_segments_;
+  std::optional<autoware::avoidance_target_detector::ObjectSelectionResult<
+    autoware_perception_msgs::msg::TrackedObjects>>
+    selection_result_;
   PreferredLaneCenterlineSelector preferred_lane_selector_;
   double preferred_lane_max_acceleration_{0.0};
   double object_filter_margin_m_{0.0};
+  double vegetation_filter_margin_m_{0.0};
   double object_filter_prediction_extension_s_{0.0};
   autoware::avoidance_target_detector::ExtendedRouteHandler::VelocityLimitOverrides
     map_velocity_limit_overrides_;

@@ -15,6 +15,8 @@
 #include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 
+#include <Eigen/Geometry>
+
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/lanelet_segment.hpp>
 
@@ -35,6 +37,15 @@ using autoware_planning_msgs::msg::LaneletSegment;
 
 namespace
 {
+// Map-to-ego transform of an ego at (x, y) heading `yaw`.
+Eigen::Matrix4d map_to_ego(const double x, const double y, const double yaw)
+{
+  Eigen::Isometry3d ego_to_map = Eigen::Isometry3d::Identity();
+  ego_to_map.translate(Eigen::Vector3d(x, y, 0.0));
+  ego_to_map.rotate(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
+  return ego_to_map.inverse().matrix();
+}
+
 lanelet::Lanelet make_straight_lanelet(
   const double start_x, const double start_y, const double end_x, const double end_y)
 {
@@ -68,14 +79,15 @@ LaneletSegment make_route_segment(const lanelet::Id id)
 }  // namespace
 
 // The route goes east on `eastbound_`, and later comes back north on `northbound_`, which crosses
-// `eastbound_` at (50, 0).
+// `eastbound_` at (50, 0). Both lanelets are shorter than LANE_SEGMENT_MAX_LENGTH_M, so each one
+// is a single lane segment.
 class RouteSegmentSelectionTest : public ::testing::Test
 {
 protected:
   void SetUp() override
   {
-    eastbound_ = make_straight_lanelet(0.0, 0.0, 100.0, 0.0);
-    northbound_ = make_straight_lanelet(50.0, -50.0, 50.0, 50.0);
+    eastbound_ = make_straight_lanelet(32.0, 0.0, 68.0, 0.0);
+    northbound_ = make_straight_lanelet(50.0, -18.0, 50.0, 18.0);
 
     auto lanelet_map = std::make_shared<lanelet::LaneletMap>();
     lanelet_map->add(eastbound_);
@@ -87,7 +99,7 @@ protected:
 
   int64_t array_index(const lanelet::Lanelet & lanelet) const
   {
-    return static_cast<int64_t>(context_->get_lanelet_id_to_array_index().at(lanelet.id()));
+    return static_cast<int64_t>(context_->get_lanelet_id_to_array_index().at(lanelet.id()).front());
   }
 
   lanelet::Lanelet eastbound_;
@@ -99,8 +111,8 @@ protected:
 TEST_F(RouteSegmentSelectionTest, SelectsSegmentAlignedWithEgoAtSelfCrossing)
 {
   // The ego drives east at the crossing point, where it is on both lanelets.
-  const auto indices =
-    context_->select_route_segment_indices(route_, 50.0, 0.3, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
+  const auto indices = context_->select_route_segment_indices(
+    route_, map_to_ego(50.0, 0.3, 0.0), 50.0, 0.3, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
 
   ASSERT_EQ(indices.size(), 2U);
   EXPECT_EQ(indices.front(), array_index(eastbound_));
@@ -110,7 +122,7 @@ TEST_F(RouteSegmentSelectionTest, SelectsSegmentAlignedWithEgoAtSelfCrossing)
 TEST_F(RouteSegmentSelectionTest, SelectsCrossingSegmentWhenEgoHeadsAlongIt)
 {
   const auto indices = context_->select_route_segment_indices(
-    route_, 50.3, 0.0, 0.0, M_PI / 2.0, NUM_SEGMENTS_IN_ROUTE);
+    route_, map_to_ego(50.3, 0.0, M_PI / 2.0), 50.3, 0.0, 0.0, M_PI / 2.0, NUM_SEGMENTS_IN_ROUTE);
 
   ASSERT_EQ(indices.size(), 1U);
   EXPECT_EQ(indices.front(), array_index(northbound_));
@@ -119,8 +131,8 @@ TEST_F(RouteSegmentSelectionTest, SelectsCrossingSegmentWhenEgoHeadsAlongIt)
 TEST_F(RouteSegmentSelectionTest, FallsBackToClosestSegmentWhenNoSegmentIsAligned)
 {
   // The ego heads west, which matches neither lanelet direction, and is only on `northbound_`.
-  const auto indices =
-    context_->select_route_segment_indices(route_, 50.0, 3.0, 0.0, M_PI, NUM_SEGMENTS_IN_ROUTE);
+  const auto indices = context_->select_route_segment_indices(
+    route_, map_to_ego(50.0, 3.0, M_PI), 50.0, 3.0, 0.0, M_PI, NUM_SEGMENTS_IN_ROUTE);
 
   ASSERT_EQ(indices.size(), 1U);
   EXPECT_EQ(indices.front(), array_index(northbound_));

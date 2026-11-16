@@ -48,10 +48,10 @@ struct OptimizationResult
  * @brief Optimizes the raw ML planner trajectory with an acados OCP.
  *
  * The raw model output is a noisy, pose-only 80-point sequence (t = 0.1..8.0 s) that
- * does not start at base_link. This class solves a kinematic bicycle OCP (inputs:
- * acceleration and steering rate) tracking that sequence, with the initial state fixed to
- * the current ego state. The result is an 80-point trajectory (t = 0.1..8.0 s, same timing
- * convention as the raw output) that is dynamically consistent with the current ego state
+ * does not start at base_link. This class solves a kinematic bicycle OCP (states include
+ * acceleration; inputs are jerk and steering rate) tracking that sequence, with the initial
+ * state fixed to the current ego state. The result is an 80-point trajectory (t = 0.1..8.0 s, same
+ * timing convention as the raw output) that is dynamically consistent with the current ego state
  * and carries velocity, acceleration and steering profiles.
  */
 class TrajectoryOptimizer
@@ -67,6 +67,8 @@ public:
    * @param raw_trajectory Raw trajectory from the model (>= 80 points, map frame).
    * @param ego_odometry Current ego kinematic state (base_link in map frame).
    * @param current_steering_angle_rad Measured steering angle.
+   * @param current_acceleration_mps2 Measured longitudinal acceleration. This is the initial
+   *        acceleration state of the jerk-input model.
    * @param batch_index Candidate index; warm starts are kept per candidate.
    * @param goal_pose Route goal in the same frame as the trajectory. Once the predicted
    *                  endpoint is within goal.snap_distance_m, the terminal pose is snapped
@@ -77,7 +79,7 @@ public:
    */
   OptimizationResult optimize(
     const Trajectory & raw_trajectory, const Odometry & ego_odometry,
-    double current_steering_angle_rad, size_t batch_index,
+    double current_steering_angle_rad, double current_acceleration_mps2, size_t batch_index,
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
 private:

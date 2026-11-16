@@ -30,6 +30,26 @@ constexpr int LOG_THROTTLE_INTERVAL_MS = 5000;
 // Geometric constants
 constexpr double LANE_MASK_RANGE_M = 100.0;
 constexpr double MAX_ROUTE_SEGMENT_YAW_DIFF_RAD = M_PI / 3.0;
+// A map element is on another level than the ego (an overpass or an underpass) and is not an
+// input when its point closest to the ego, in the ego frame, is higher or lower than the ego by
+// more than MAX_SAME_LEVEL_HEIGHT_DIFF_M plus SAME_LEVEL_HEIGHT_DIFF_PER_DISTANCE times its
+// horizontal distance. Levels of a grade separation differ by 5.5 m or more (4.5 m clearance), and
+// the distance term allows for a 5% change of grade on the ego's own road. On 2,699 frames of 16
+// sites this leaves out 0.1-0.6% of the lanelets within 150 m, all 6.4 m or more above or below.
+constexpr double MAX_SAME_LEVEL_HEIGHT_DIFF_M = 4.0;
+constexpr double SAME_LEVEL_HEIGHT_DIFF_PER_DISTANCE = 0.05;
+// Lane and route segments, intersection areas, stop lines and road borders are kept when a
+// point lies within this box in the ego frame: LANE_MASK_BACKWARD_M behind to
+// LANE_MASK_FORWARD_M ahead, and LANE_MASK_RANGE_M to either side.
+constexpr double LANE_MASK_BACKWARD_M = 50.0;
+constexpr double LANE_MASK_FORWARD_M = 150.0;
+// Lanelets whose centerline is longer than this are split into consecutive lane segments of
+// equal length, so a long lanelet keeps a fine point spacing in the fixed-size lane tensors.
+constexpr double LANE_SEGMENT_MAX_LENGTH_M = 40.0;
+// Maximum distance between consecutive road border points; longer gaps are divided evenly by
+// linear interpolation. Original points are always kept. A road border piece of
+// POINTS_PER_ROAD_BORDER points is at most (POINTS_PER_ROAD_BORDER - 1) * this long.
+constexpr double ROAD_BORDER_MAX_STEP_M = 2.5;
 
 }  // namespace autoware::ml_planner::constants
 

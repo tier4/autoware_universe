@@ -93,6 +93,9 @@ struct FirstOrderDubinsMppiCostParams
   float road_border_collision_margin{0.1F};
   float obstacle_safe_margin{0.4F};
   float obstacle_barrier_weight{};
+  float vegetation_collision_margin{0.2F};
+  float vegetation_safe_margin{0.4F};
+  float vegetation_barrier_weight{};
   float road_border_safe_margin{0.2F};
   float road_border_barrier_weight{};
   float drivable_area_safe_margin{0.0F};

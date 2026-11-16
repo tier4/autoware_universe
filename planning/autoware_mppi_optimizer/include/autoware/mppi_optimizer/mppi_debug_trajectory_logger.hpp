@@ -217,7 +217,7 @@ public:
         out << "ego_width," << vehicle.ego_width << "\n";
         out << "ego_axle_to_box_center," << vehicle.ego_axle_to_box_center << "\n";
         out << "wheel_base," << vehicle.wheel_base << "\n";
-        // First-order Dubins L=lf+lr and lags used by TemporalMptNominalSeeder.
+        // Retain lf/lr in logs for compatibility with existing offline comparison tools.
         {
           const float wb = std::max(vehicle.wheel_base, 1.0e-3F);
           float lr = vehicle.ego_axle_to_box_center;
@@ -262,6 +262,8 @@ public:
       out << "steering_hold_reference_length_threshold_m,"
           << options.steering_hold_reference_length_threshold_m << "\n";
       out << "min_trajectory_progress_m," << options.min_trajectory_progress_m << "\n";
+      out << "validation_interpolation_substeps," << options.validation_interpolation_substeps
+          << "\n";
       out << "use_last_control_as_nominal," << (options.use_last_control_as_nominal ? 1 : 0)
           << "\n";
       out << "nominal_initial_steering_max_deviation_rad,"
@@ -284,8 +286,6 @@ public:
           << options.last_control_warm_start_stop_enter_velocity_mps << "\n";
       out << "last_control_warm_start_stop_exit_velocity_mps,"
           << options.last_control_warm_start_stop_exit_velocity_mps << "\n";
-      out << "use_temporal_mpt_as_nominal," << (options.use_temporal_mpt_as_nominal ? 1 : 0)
-          << "\n";
       out << "prevent_reverse_velocity," << (options.prevent_reverse_velocity ? 1 : 0) << "\n";
       out << "enable_input_delay_compensation," << (options.enable_input_delay_compensation ? 1 : 0)
           << "\n";

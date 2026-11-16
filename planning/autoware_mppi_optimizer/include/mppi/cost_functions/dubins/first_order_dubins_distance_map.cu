@@ -5,10 +5,94 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <vector>
 
 namespace
 {
 using mppi::cost::detail::distancePointToSegment;
+
+void squaredDistanceTransform1d(
+  const float * input, const int input_stride, float * output, const int output_stride,
+  const int count, std::vector<int> & sites, std::vector<double> & boundaries)
+{
+  int last = 0;
+  sites[0] = 0;
+  boundaries[0] = -std::numeric_limits<double>::infinity();
+  boundaries[1] = std::numeric_limits<double>::infinity();
+  for (int index = 1; index < count; ++index) {
+    double crossing;
+    do {
+      const int previous = sites[last];
+      crossing = (static_cast<double>(input[index * input_stride]) + index * index -
+                  static_cast<double>(input[previous * input_stride]) - previous * previous) /
+                 (2.0 * (index - previous));
+      if (crossing > boundaries[last]) break;
+      --last;
+    } while (last >= 0);
+    if (last < 0) {
+      last = 0;
+      sites[0] = index;
+      boundaries[0] = -std::numeric_limits<double>::infinity();
+      boundaries[1] = std::numeric_limits<double>::infinity();
+    } else {
+      ++last;
+      sites[last] = index;
+      boundaries[last] = crossing;
+      boundaries[last + 1] = std::numeric_limits<double>::infinity();
+    }
+  }
+  int site = 0;
+  for (int index = 0; index < count; ++index) {
+    while (boundaries[site + 1] < index) ++site;
+    const int delta = index - sites[site];
+    output[index * output_stride] = delta * delta + input[sites[site] * input_stride];
+  }
+}
+
+std::vector<float> makeVegetationDistanceField(
+  const std::vector<autoware::mppi_optimizer::VegetationPoint> & points,
+  const DistanceMapTextureGrid & grid)
+{
+  constexpr float infinity = 1.0E12F;
+  const int width = grid.width;
+  const int height = grid.height;
+  std::vector<float> values(static_cast<std::size_t>(width) * height, infinity);
+  for (const auto & point : points) {
+    // Clamping exterior points to the edge can only reduce their apparent clearance.
+    const int x = std::clamp(
+      static_cast<int>(std::floor((point.x - grid.origin_x) / grid.resolution)), 0, width - 1);
+    const int y = std::clamp(
+      static_cast<int>(std::floor((point.y - grid.origin_y) / grid.resolution)), 0, height - 1);
+    values[static_cast<std::size_t>(y) * width + x] = 0.0F;
+  }
+  std::vector<float> intermediate(values.size());
+  std::vector<int> sites(static_cast<std::size_t>(std::max(width, height)));
+  std::vector<double> boundaries(sites.size() + 1U);
+  for (int y = 0; y < height; ++y) {
+    squaredDistanceTransform1d(
+      values.data() + static_cast<std::size_t>(y) * width, 1,
+      intermediate.data() + static_cast<std::size_t>(y) * width, 1, width, sites, boundaries);
+  }
+  for (int x = 0; x < width; ++x) {
+    squaredDistanceTransform1d(
+      intermediate.data() + x, width, values.data() + x, width, height, sites, boundaries);
+  }
+  for (auto & value : values) value = std::sqrt(value) * grid.resolution;
+  return values;
+}
+
+__global__ void writeVegetationDistanceMapKernel(
+  const float * distances, const cudaSurfaceObject_t output, const DistanceMapTextureGrid grid)
+{
+  const int x = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  const int y = static_cast<int>(blockIdx.y * blockDim.y + threadIdx.y);
+  if (x >= grid.width || y >= grid.height) return;
+  auto channels = surf2Dread<float4>(output, x * static_cast<int>(sizeof(float4)), y);
+  channels.z = distances[static_cast<std::size_t>(y) * grid.width + x];
+  surf2Dwrite(channels, output, x * static_cast<int>(sizeof(float4)), y);
+}
 
 template <class COST_T>
 __global__ void generatePreferredLaneCenterDistanceMapKernel(
@@ -144,9 +228,10 @@ __global__ void generateStaticDistanceMapKernel(
          gx += static_cast<int>(blockDim.x * gridDim.x)) {
       const float world_x = grid.origin_x + (static_cast<float>(gx) + 0.5F) * grid.resolution;
       const float world_y = grid.origin_y + (static_cast<float>(gy) + 0.5F) * grid.resolution;
-      float2 distances = make_float2(kDistanceMapEmptyDistance, kDistanceMapEmptyDistance);
+      float4 distances = make_float4(
+        kDistanceMapEmptyDistance, kDistanceMapEmptyDistance, kDistanceMapEmptyDistance, 0.0F);
       if (!update_road_border || !update_drivable_area) {
-        distances = surf2Dread<float2>(output, gx * static_cast<int>(sizeof(float2)), gy);
+        distances = surf2Dread<float4>(output, gx * static_cast<int>(sizeof(float4)), gy);
       }
 
       if (update_road_border) {
@@ -171,7 +256,7 @@ __global__ void generateStaticDistanceMapKernel(
         distances.y = minimum;
       }
 
-      surf2Dwrite(distances, output, gx * static_cast<int>(sizeof(float2)), gy);
+      surf2Dwrite(distances, output, gx * static_cast<int>(sizeof(float4)), gy);
     }
   }
 }
@@ -467,7 +552,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     return;
   }
 
-  const cudaChannelFormatDesc static_channel = cudaCreateChannelDesc<float2>();
+  const cudaChannelFormatDesc static_channel = cudaCreateChannelDesc<float4>();
   HANDLE_ERROR(cudaMallocArray(
     &this->texture_state_.static_distance_array_, &static_channel,
     this->texture_state_.kStaticDistanceMapWidth, this->texture_state_.kStaticDistanceMapHeight,
@@ -546,10 +631,75 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  rebuildStaticDistanceTexture(const bool update_road_border, const bool update_drivable_area)
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::uploadVegetationCollisionPoints()
 {
-  if (!this->GPUMemStatus_ || (!update_road_border && !update_drivable_area)) {
+  auto & data = this->runtimeData();
+  if (!this->GPUMemStatus_) {
+    data.vegetation_collision_points_ = nullptr;
+    data.num_vegetation_collision_points_ = 0;
+    return;
+  }
+  if (vegetation_points_.empty()) {
+    data.vegetation_collision_points_ = nullptr;
+    data.num_vegetation_collision_points_ = 0;
+    this->dataToDevice();
+    return;
+  }
+  if (vegetation_points_.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    throw std::length_error("MPPI vegetation point count exceeds GPU indexing capacity");
+  }
+
+  std::vector<float2> sorted_points;
+  sorted_points.reserve(vegetation_points_.size());
+  for (const auto & point : vegetation_points_) {
+    if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+      throw std::invalid_argument("MPPI vegetation point has non-finite coordinates");
+    }
+    sorted_points.push_back(make_float2(static_cast<float>(point.x), static_cast<float>(point.y)));
+  }
+  std::sort(sorted_points.begin(), sorted_points.end(), [](const float2 & a, const float2 & b) {
+    return a.x < b.x || (a.x == b.x && a.y < b.y);
+  });
+
+  if (vegetation_collision_upload_done_ != nullptr) {
+    // The previous H2D copy must stop reading pinned storage before it is rewritten or resized.
+    HANDLE_ERROR(cudaEventSynchronize(vegetation_collision_upload_done_));
+  }
+  if (sorted_points.size() > vegetation_collision_capacity_) {
+    float2 * allocation = nullptr;
+    HANDLE_ERROR(cudaMalloc(&allocation, sorted_points.size() * sizeof(float2)));
+    if (vegetation_collision_device_ != nullptr) {
+      // cudaFree waits for prior users of the old allocation before it is replaced.
+      HANDLE_ERROR(cudaFree(vegetation_collision_device_));
+    }
+    vegetation_collision_device_ = allocation;
+    vegetation_collision_capacity_ = sorted_points.size();
+  }
+  if (sorted_points.size() > vegetation_collision_upload_.size()) {
+    vegetation_collision_upload_.resize(sorted_points.size());
+  }
+  std::copy(sorted_points.begin(), sorted_points.end(), vegetation_collision_upload_.data());
+  if (vegetation_collision_upload_done_ == nullptr) {
+    HANDLE_ERROR(
+      cudaEventCreateWithFlags(&vegetation_collision_upload_done_, cudaEventDisableTiming));
+  }
+  HANDLE_ERROR(cudaMemcpyAsync(
+    vegetation_collision_device_, vegetation_collision_upload_.data(),
+    sorted_points.size() * sizeof(float2), cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaEventRecord(vegetation_collision_upload_done_, this->stream_));
+  data.vegetation_collision_points_ = vegetation_collision_device_;
+  data.num_vegetation_collision_points_ = static_cast<int>(sorted_points.size());
+  this->dataToDevice();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  rebuildStaticDistanceTexture(
+    const bool update_road_border, const bool update_drivable_area, const bool update_vegetation)
+{
+  if (
+    !this->GPUMemStatus_ || (!update_road_border && !update_drivable_area && !update_vegetation)) {
     return;
   }
   mppi::instrumentation::ScopedNvtxRange range(
@@ -562,10 +712,39 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
     (this->texture_state_.static_distance_map_grid_.height + static_cast<int>(block.y) - 1) /
       static_cast<int>(block.y),
     1);
-  generateStaticDistanceMapKernel<<<grid, block, 0, this->stream_>>>(
-    this->cost_d_, this->texture_state_.static_distance_surface_,
-    this->texture_state_.static_distance_map_grid_, update_road_border, update_drivable_area);
-  HANDLE_ERROR(cudaGetLastError());
+  if (update_road_border || update_drivable_area) {
+    generateStaticDistanceMapKernel<<<grid, block, 0, this->stream_>>>(
+      this->cost_d_, this->texture_state_.static_distance_surface_,
+      this->texture_state_.static_distance_map_grid_, update_road_border, update_drivable_area);
+    HANDLE_ERROR(cudaGetLastError());
+  }
+  // Recompute z when both segment channels are rewritten: that kernel initializes the full pixel.
+  const bool refresh_vegetation =
+    update_vegetation ||
+    (update_road_border && update_drivable_area && !vegetation_points_.empty());
+  if (refresh_vegetation) {
+    this->texture_state_.vegetation_texture_valid_ = false;
+    if (!vegetation_points_.empty()) {
+      const auto vegetation_distance_values = makeVegetationDistanceField(
+        vegetation_points_, this->texture_state_.static_distance_map_grid_);
+      vegetation_distance_upload_.resize(vegetation_distance_values.size());
+      std::copy(
+        vegetation_distance_values.begin(), vegetation_distance_values.end(),
+        vegetation_distance_upload_.data());
+      const std::size_t bytes = vegetation_distance_upload_.size() * sizeof(float);
+      if (vegetation_distance_device_ == nullptr) {
+        HANDLE_ERROR(cudaMalloc(&vegetation_distance_device_, bytes));
+      }
+      HANDLE_ERROR(cudaMemcpyAsync(
+        vegetation_distance_device_, vegetation_distance_upload_.data(), bytes,
+        cudaMemcpyHostToDevice, this->stream_));
+      writeVegetationDistanceMapKernel<<<grid, block, 0, this->stream_>>>(
+        vegetation_distance_device_, this->texture_state_.static_distance_surface_,
+        this->texture_state_.static_distance_map_grid_);
+      HANDLE_ERROR(cudaGetLastError());
+      this->texture_state_.vegetation_texture_valid_ = true;
+    }
+  }
   this->texture_state_.static_distance_visualization_dirty_ = true;
   this->texture_state_.road_border_texture_valid_ =
     this->texture_state_.road_border_texture_valid_ || update_road_border;
@@ -669,20 +848,22 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
   const bool pending_obstacle_geometry_changed = obstacle_geometry_dirty_;
   const bool pending_road_border_geometry_changed = road_border_geometry_dirty_;
   const bool pending_drivable_area_geometry_changed = drivable_area_geometry_dirty_;
+  const bool pending_vegetation_geometry_changed = vegetation_geometry_dirty_;
   distance_map_refresh_pending_ = false;
   obstacle_geometry_dirty_ = false;
   road_border_geometry_dirty_ = false;
   drivable_area_geometry_dirty_ = false;
+  vegetation_geometry_dirty_ = false;
   refreshDistanceMapTexturesNow(
     pending_obstacle_geometry_changed, pending_road_border_geometry_changed,
-    pending_drivable_area_geometry_changed);
+    pending_drivable_area_geometry_changed, pending_vegetation_geometry_changed);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   refreshDistanceMapTexturesNow(
     const bool obstacle_geometry_changed, const bool road_border_geometry_changed,
-    const bool drivable_area_geometry_changed)
+    const bool drivable_area_geometry_changed, const bool vegetation_geometry_changed)
 {
   if (!this->GPUMemStatus_) {
     return;
@@ -701,9 +882,12 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
   if (static_grid_changed) {
     this->texture_state_.road_border_texture_valid_ = false;
     this->texture_state_.drivable_area_texture_valid_ = false;
-    rebuildStaticDistanceTexture(true, true);
-  } else if (road_border_geometry_changed || drivable_area_geometry_changed) {
-    rebuildStaticDistanceTexture(road_border_geometry_changed, drivable_area_geometry_changed);
+    this->texture_state_.vegetation_texture_valid_ = false;
+    rebuildStaticDistanceTexture(true, true, true);
+  } else if (
+    road_border_geometry_changed || drivable_area_geometry_changed || vegetation_geometry_changed) {
+    rebuildStaticDistanceTexture(
+      road_border_geometry_changed, drivable_area_geometry_changed, vegetation_geometry_changed);
   }
 
   if (obstacle_grid_changed) {
@@ -714,7 +898,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, 
   }
   if (
     static_grid_changed || obstacle_grid_changed || road_border_geometry_changed ||
-    drivable_area_geometry_changed || obstacle_geometry_changed) {
+    drivable_area_geometry_changed || obstacle_geometry_changed || vegetation_geometry_changed) {
     distanceMapStateToDevice();
   }
 }
@@ -733,6 +917,8 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     this->texture_state_.preferred_lane_center_surface_ == 0 &&
     this->texture_state_.nearest_segment_surface_ == 0 &&
     this->texture_state_.static_distance_array_ == nullptr &&
+    vegetation_distance_device_ == nullptr && vegetation_collision_device_ == nullptr &&
+    vegetation_collision_upload_done_ == nullptr &&
     this->texture_state_.obstacle_distance_array_ == nullptr &&
     this->texture_state_.preferred_lane_center_array_ == nullptr &&
     this->texture_state_.nearest_segment_array_ == nullptr) {
@@ -793,6 +979,23 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
       cudaFreeArray(this->texture_state_.static_distance_array_), __FILE__, __LINE__, false);
     this->texture_state_.static_distance_array_ = nullptr;
   }
+  if (vegetation_distance_device_ != nullptr) {
+    gpuAssert(cudaFree(vegetation_distance_device_), __FILE__, __LINE__, false);
+    vegetation_distance_device_ = nullptr;
+  }
+  vegetation_distance_upload_.resetNoThrow();
+  if (vegetation_collision_device_ != nullptr) {
+    gpuAssert(cudaFree(vegetation_collision_device_), __FILE__, __LINE__, false);
+    vegetation_collision_device_ = nullptr;
+  }
+  if (vegetation_collision_upload_done_ != nullptr) {
+    gpuAssert(cudaEventDestroy(vegetation_collision_upload_done_), __FILE__, __LINE__, false);
+    vegetation_collision_upload_done_ = nullptr;
+  }
+  vegetation_collision_capacity_ = 0U;
+  vegetation_collision_upload_.resetNoThrow();
+  this->runtimeData().vegetation_collision_points_ = nullptr;
+  this->runtimeData().num_vegetation_collision_points_ = 0;
   if (this->texture_state_.obstacle_distance_array_ != nullptr) {
     gpuAssert(
       cudaFreeArray(this->texture_state_.obstacle_distance_array_), __FILE__, __LINE__, false);
@@ -810,6 +1013,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   }
   this->texture_state_.road_border_texture_valid_ = false;
   this->texture_state_.drivable_area_texture_valid_ = false;
+  this->texture_state_.vegetation_texture_valid_ = false;
   this->texture_state_.obstacle_texture_valid_ = false;
   this->texture_state_.obstacle_texture_has_obstacles_ = false;
   this->texture_state_.preferred_lane_center_texture_valid_ = false;

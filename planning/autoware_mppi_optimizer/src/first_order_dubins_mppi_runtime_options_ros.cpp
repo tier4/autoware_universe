@@ -50,6 +50,9 @@ void declare_first_order_dubins_mppi_runtime_options(
     param_name(prefix, "force_cold_start_each_step"), defaults.force_cold_start_each_step);
   node.declare_parameter(param_name(prefix, "skip_if_invalid"), defaults.skip_if_invalid);
   node.declare_parameter(
+    param_name(prefix, "validation_interpolation_substeps"),
+    defaults.validation_interpolation_substeps);
+  node.declare_parameter(
     param_name(prefix, "min_optimization_length"), defaults.min_optimization_length);
   node.declare_parameter(
     param_name(prefix, "steering_hold_reference_length_threshold_m"),
@@ -89,8 +92,6 @@ void declare_first_order_dubins_mppi_runtime_options(
     param_name(prefix, "last_control_warm_start_stop_exit_velocity_mps"),
     defaults.last_control_warm_start_stop_exit_velocity_mps);
   node.declare_parameter(
-    param_name(prefix, "use_temporal_mpt_as_nominal"), defaults.use_temporal_mpt_as_nominal);
-  node.declare_parameter(
     param_name(prefix, "prevent_reverse_velocity"), defaults.prevent_reverse_velocity);
   node.declare_parameter(
     param_name(prefix, "enable_input_delay_compensation"),
@@ -119,6 +120,8 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.force_cold_start_each_step =
     node.get_parameter(param_name(prefix, "force_cold_start_each_step")).as_bool();
   options.skip_if_invalid = node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();
+  options.validation_interpolation_substeps = static_cast<int>(
+    node.get_parameter(param_name(prefix, "validation_interpolation_substeps")).as_int());
   options.min_optimization_length = static_cast<float>(
     node.get_parameter(param_name(prefix, "min_optimization_length")).as_double());
   options.steering_hold_reference_length_threshold_m = static_cast<float>(
@@ -158,8 +161,6 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.last_control_warm_start_stop_exit_velocity_mps = static_cast<float>(
     node.get_parameter(param_name(prefix, "last_control_warm_start_stop_exit_velocity_mps"))
       .as_double());
-  options.use_temporal_mpt_as_nominal =
-    node.get_parameter(param_name(prefix, "use_temporal_mpt_as_nominal")).as_bool();
   options.prevent_reverse_velocity =
     node.get_parameter(param_name(prefix, "prevent_reverse_velocity")).as_bool();
   options.enable_input_delay_compensation =

@@ -14,8 +14,8 @@
 
 #include "autoware/avoidance_target_detector/object_filtering.hpp"
 
+#include <autoware/trajectory/interpolator/linear.hpp>
 #include <autoware/trajectory/trajectory_point.hpp>
-#include <autoware/trajectory/utils/closest.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_geometry/pose_deviation.hpp>
@@ -34,6 +34,7 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -80,13 +81,46 @@ bool is_object_of_interest(const ObjectT & object)
   return std::any_of(
     object.classification.begin(), object.classification.end(),
     [](const ObjectClassification & classification) {
-      if (classification.probability <= probability_threshold) {
+      if (
+        !std::isfinite(classification.probability) ||
+        classification.probability <= probability_threshold || classification.probability > 1.0F) {
         return false;
       }
       return std::find(
                labels_of_interest.begin(), labels_of_interest.end(), classification.label) !=
              labels_of_interest.end();
     });
+}
+
+template <typename ObjectT>
+bool has_valid_object_geometry(const ObjectT & object)
+{
+  const auto & pose = get_object_pose(object);
+  const auto & q = pose.orientation;
+  const auto & v = get_object_twist(object).linear;
+  const double norm = std::hypot(std::hypot(q.x, q.y), std::hypot(q.z, q.w));
+  if (
+    !std::isfinite(pose.position.x) || !std::isfinite(pose.position.y) || !std::isfinite(norm) ||
+    std::abs(norm - 1.0) > 1e-3 || !std::isfinite(v.x) || !std::isfinite(v.y) ||
+    !std::isfinite(v.z))
+    return false;
+  const auto & shape = object.shape;
+  if (shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
+    if (shape.footprint.points.size() < 3) return false;
+    for (const auto & p : shape.footprint.points) {
+      if (!std::isfinite(p.x) || !std::isfinite(p.y)) return false;
+    }
+  } else if (shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
+    if (
+      !std::isfinite(shape.dimensions.x) || shape.dimensions.x <= 0.0 ||
+      !std::isfinite(shape.dimensions.y) || shape.dimensions.y <= 0.0)
+      return false;
+  } else if (shape.type == autoware_perception_msgs::msg::Shape::CYLINDER) {
+    if (!std::isfinite(shape.dimensions.x) || shape.dimensions.x <= 0.0) return false;
+  } else {
+    return false;
+  }
+  return boost::geometry::is_valid(autoware_utils_geometry::to_polygon2d(object));
 }
 
 std::optional<autoware_utils_geometry::Polygon2d> build_near_segment_polygon(
@@ -103,6 +137,7 @@ std::optional<autoware_utils_geometry::Polygon2d> build_near_segment_polygon(
     outer.emplace_back(point.x(), point.y());
   }
   boost::geometry::correct(segment_polygon);
+  if (!boost::geometry::is_valid(segment_polygon)) return std::nullopt;
   return segment_polygon;
 }
 
@@ -262,6 +297,10 @@ ObjectsT filter_objects_in_range_impl(
   filtered.header = objects.header;
   filtered.objects.reserve(objects.objects.size());
   for (const auto & object : objects.objects) {
+    if (!has_valid_object_geometry(object)) {
+      filtered.objects.push_back(object);  // Keep invalid objects visible to selector diagnostics.
+      continue;
+    }
     const auto & pose = get_object_pose(object);
     const double speed = get_object_twist(object).linear.x;
     if (horizon <= k_motion_epsilon && std::abs(speed) > k_motion_epsilon) {
@@ -299,8 +338,36 @@ std::optional<aw_trajectory::Trajectory<TrajectoryPoint>> build_trajectory(
     return std::nullopt;
   }
 
-  const auto trajectory =
-    aw_trajectory::Trajectory<TrajectoryPoint>::Builder{}.build(trajectory_msg.points);
+  // All selector geometry is planar. Preserve the original messages for consumers.
+  std::vector<TrajectoryPoint> points;
+  points.reserve(trajectory_msg.points.size());
+  for (const auto & original : trajectory_msg.points) {
+    const auto & p = original.pose.position;
+    const auto & q = original.pose.orientation;
+    const double norm = std::hypot(std::hypot(q.x, q.y), std::hypot(q.z, q.w));
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(norm) || norm < 1e-6) {
+      return std::nullopt;
+    }
+    auto point = original;
+    point.pose.position.z = 0.0;
+    const double yaw =
+      std::atan2(2.0 * (q.w * q.z + q.x * q.y), norm * norm - 2.0 * (q.y * q.y + q.z * q.z));
+    point.pose.orientation = geometry_msgs::msg::Quaternion{};
+    point.pose.orientation.z = std::sin(yaw * 0.5);
+    point.pose.orientation.w = std::cos(yaw * 0.5);
+    if (
+      !points.empty() &&
+      std::hypot(p.x - points.back().pose.position.x, p.y - points.back().pose.position.y) < 1e-6) {
+      continue;
+    }
+    points.push_back(point);
+  }
+  if (points.size() < 2) return std::nullopt;
+  using aw_trajectory::interpolator::Linear;
+  const auto trajectory = aw_trajectory::Trajectory<TrajectoryPoint>::Builder{}
+                            .set_xy_interpolator<Linear>()
+                            .set_z_interpolator<Linear>()
+                            .build(points);
   if (!trajectory) {
     return std::nullopt;
   }
@@ -322,6 +389,7 @@ FrameEvaluationContext<ObjectT> make_frame_evaluation_context(
       context.trajectory_base_points.push_back(context.built_trajectory->compute(s).pose.position);
     }
   }
+  context.prediction_horizon_s = trajectory_horizon_seconds(trajectory);
   return context;
 }
 
@@ -336,15 +404,6 @@ geometry_msgs::msg::Point get_object_reference_point(const ObjectT & object)
   return get_object_pose(object).position;
 }
 
-double max_interpolator_safe_s(const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory)
-{
-  const auto bases = trajectory.get_underlying_bases();
-  if (bases.empty()) {
-    return trajectory.length();
-  }
-  return std::min(trajectory.length(), bases.back());
-}
-
 double max_interpolator_safe_s(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
   const std::vector<double> & trajectory_bases)
@@ -356,210 +415,69 @@ double max_interpolator_safe_s(
 }
 
 double clamp_trajectory_s(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const double s)
-{
-  return std::clamp(s, 0.0, max_interpolator_safe_s(trajectory));
-}
-
-double clamp_trajectory_s(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
   const std::vector<double> & trajectory_bases, const double s)
 {
   return std::clamp(s, 0.0, max_interpolator_safe_s(trajectory, trajectory_bases));
 }
 
-double closest_trajectory_s(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+/** XY projection with a separate, unclamped endpoint coordinate.
+ * Extrapolate only when the globally closest segment is a terminal segment. A point on a
+ * returning part of the reference therefore cannot be rejected by the start tangent plane.
+ */
+struct PlanarProjection
+{
+  double s{0.0};
+  double extended_s{0.0};
+  double distance{std::numeric_limits<double>::infinity()};
+};
+
+PlanarProjection project_planar(
+  const std::vector<double> & bases, const std::vector<geometry_msgs::msg::Point> & points,
   const geometry_msgs::msg::Point & point)
 {
-  const auto s =
-    aw_trajectory::closest_with_constraint(trajectory, point, [](const double &) { return true; });
-  if (!s.has_value()) {
-    return clamp_trajectory_s(trajectory, 0.0);
+  PlanarProjection best;
+  for (std::size_t i = 1; i < points.size(); ++i) {
+    const double dx = points[i].x - points[i - 1].x;
+    const double dy = points[i].y - points[i - 1].y;
+    const double squared_length = dx * dx + dy * dy;
+    if (squared_length < 1e-12) continue;
+    const double ratio =
+      ((point.x - points[i - 1].x) * dx + (point.y - points[i - 1].y) * dy) / squared_length;
+    const double clamped = std::clamp(ratio, 0.0, 1.0);
+    const double distance = std::hypot(
+      point.x - points[i - 1].x - clamped * dx, point.y - points[i - 1].y - clamped * dy);
+    if (distance >= best.distance) continue;
+    const double ds = bases[i] - bases[i - 1];
+    best = {bases[i - 1] + clamped * ds, bases[i - 1] + clamped * ds, distance};
+    if ((i == 1 && ratio < 0.0) || (i + 1 == points.size() && ratio > 1.0)) {
+      best.extended_s = bases[i - 1] + ratio * ds;
+    }
   }
-  return clamp_trajectory_s(trajectory, *s);
+  return best;
 }
 
-double closest_trajectory_s(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
-  const std::vector<double> & trajectory_bases, const geometry_msgs::msg::Point & point)
-{
-  const auto s =
-    aw_trajectory::closest_with_constraint(trajectory, point, [](const double &) { return true; });
-  if (!s.has_value()) {
-    return clamp_trajectory_s(trajectory, trajectory_bases, 0.0);
-  }
-  return clamp_trajectory_s(trajectory, trajectory_bases, *s);
-}
-
-/** Cached geometry and arc-length bounds for one trajectory segment. */
-struct TrajectorySegment
-{
-  double s_start;
-  double s_end;
-  geometry_msgs::msg::Point start;
-  geometry_msgs::msg::Point end;
-};
-
-/** Closest-point result for one trajectory segment. */
-struct SegmentProjection
-{
-  double s;
-  double distance;
-};
-
-/** Minimum and maximum trajectory arc lengths covered by an object footprint. */
 struct FootprintSRange
 {
   double min;
   double max;
 };
 
-/** Projects a point onto a segment using the same endpoint rules as the full trajectory lookup. */
-SegmentProjection project_onto_segment(
-  const TrajectorySegment & segment, const geometry_msgs::msg::Point & point)
-{
-  const double vx = segment.end.x - segment.start.x;
-  const double vy = segment.end.y - segment.start.y;
-  const double vz = segment.end.z - segment.start.z;
-  const double wx = point.x - segment.start.x;
-  const double wy = point.y - segment.start.y;
-  const double wz = point.z - segment.start.z;
-  const double c1 = wx * vx + wy * vy + wz * vz;
-  const double c2 = vx * vx + vy * vy + vz * vz;
-
-  double ratio = 0.0;
-  double s = segment.s_start;
-  if (c2 > std::numeric_limits<double>::epsilon()) {
-    if (c2 <= c1) {
-      ratio = 1.0;
-      s = segment.s_end;
-    } else if (c1 > 0.0) {
-      ratio = c1 / c2;
-      s = segment.s_start + ratio * (segment.s_end - segment.s_start);
-    }
-  }
-
-  const double dx = point.x - (segment.start.x + ratio * vx);
-  const double dy = point.y - (segment.start.y + ratio * vy);
-  const double dz = point.z - (segment.start.z + ratio * vz);
-  return {s, std::sqrt(dx * dx + dy * dy + dz * dz)};
-}
-
-/** Returns a lightweight segment view backed by frame-cached trajectory data. */
-TrajectorySegment get_trajectory_segment(
-  const std::vector<double> & bases,
-  const std::vector<geometry_msgs::msg::Point> & trajectory_base_points,
-  const std::size_t end_index)
-{
-  return {
-    bases[end_index - 1], bases[end_index], trajectory_base_points[end_index - 1],
-    trajectory_base_points[end_index]};
-}
-
-/** Finds the closest projection among segments intersecting the requested arc-length window. */
-std::optional<SegmentProjection> closest_projection_in_window(
-  const std::vector<double> & bases,
-  const std::vector<geometry_msgs::msg::Point> & trajectory_base_points,
-  const geometry_msgs::msg::Point & point, const double s_lo, const double s_hi)
-{
-  std::optional<SegmentProjection> closest;
-  if (bases.size() < 2 || trajectory_base_points.size() != bases.size()) {
-    return closest;
-  }
-
-  const auto first_end = std::lower_bound(std::next(bases.begin()), bases.end(), s_lo);
-  for (auto end = first_end; end != bases.end(); ++end) {
-    const std::size_t end_index = static_cast<std::size_t>(std::distance(bases.begin(), end));
-    const auto segment = get_trajectory_segment(bases, trajectory_base_points, end_index);
-    if (segment.s_start > s_hi) {
-      break;
-    }
-    const auto projection = project_onto_segment(segment, point);
-    if (!closest || projection.distance < closest->distance) {
-      closest = projection;
-    }
-  }
-  return closest;
-}
-
-/** Finds the center-point distance bound for every segment excluded from the local window. */
-double closest_distance_outside_window(
-  const std::vector<double> & bases,
-  const std::vector<geometry_msgs::msg::Point> & trajectory_base_points,
-  const geometry_msgs::msg::Point & point, const double s_lo, const double s_hi)
-{
-  double closest_distance = std::numeric_limits<double>::infinity();
-  for (std::size_t i = 1; i < bases.size(); ++i) {
-    const auto segment = get_trajectory_segment(bases, trajectory_base_points, i);
-    if (segment.s_end >= s_lo && segment.s_start <= s_hi) {
-      continue;
-    }
-    closest_distance = std::min(closest_distance, project_onto_segment(segment, point).distance);
-  }
-  return closest_distance;
-}
-
-/** Computes the 3D Euclidean distance used by the local-search correctness bound. */
-double point_distance(const geometry_msgs::msg::Point & lhs, const geometry_msgs::msg::Point & rhs)
-{
-  const double dx = lhs.x - rhs.x;
-  const double dy = lhs.y - rhs.y;
-  const double dz = lhs.z - rhs.z;
-  return std::sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-/**
- * @brief Compute the arc-length range of an object footprint along the trajectory.
- * @param trajectory Interpolated reference trajectory.
- * @param trajectory_bases Cached trajectory arc-length bases.
- * @param trajectory_base_points Cached positions at the trajectory bases.
- * @param object Object.
- * @return Minimum and maximum footprint s [m].
- */
 template <typename ObjectT>
 FootprintSRange get_footprint_s_range(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
-  const std::vector<double> & trajectory_bases,
-  const std::vector<geometry_msgs::msg::Point> & trajectory_base_points, const ObjectT & object,
-  const autoware_utils_geometry::Polygon2d & footprint)
+  [[maybe_unused]] const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const std::vector<double> & bases, const std::vector<geometry_msgs::msg::Point> & points,
+  const ObjectT & object, const autoware_utils_geometry::Polygon2d & footprint)
 {
   FootprintSRange range{std::numeric_limits<double>::max(), std::numeric_limits<double>::lowest()};
-  const auto reference_point = get_object_reference_point(object);
-  const double s_reference = closest_trajectory_s(trajectory, trajectory_bases, reference_point);
-  constexpr double k_local_s_window_m = 15.0;
-  const double s_lo = std::max(0.0, s_reference - k_local_s_window_m);
-  const double s_hi = std::min(
-    max_interpolator_safe_s(trajectory, trajectory_bases), s_reference + k_local_s_window_m);
-  const double closest_outside_distance = closest_distance_outside_window(
-    trajectory_bases, trajectory_base_points, reference_point, s_lo, s_hi);
-
-  const auto update_s_range = [&](const geometry_msgs::msg::Point & point) {
-    const auto local_projection =
-      closest_projection_in_window(trajectory_bases, trajectory_base_points, point, s_lo, s_hi);
-    const double reference_to_point_distance = point_distance(reference_point, point);
-
-    // The triangle inequality proves the local result is globally closest. On looping or
-    // self-near trajectories where that cannot be proven, preserve behavior with the full search.
-    const bool local_is_globally_closest =
-      local_projection &&
-      (std::isinf(closest_outside_distance) ||
-       local_projection->distance < closest_outside_distance - reference_to_point_distance);
-    const double s = local_is_globally_closest
-                       ? clamp_trajectory_s(trajectory, trajectory_bases, local_projection->s)
-                       : closest_trajectory_s(trajectory, trajectory_bases, point);
-    range.min = std::min(range.min, s);
-    range.max = std::max(range.max, s);
+  const auto update = [&](const geometry_msgs::msg::Point & point) {
+    const auto projection = project_planar(bases, points, point);
+    range.min = std::min(range.min, projection.extended_s);
+    range.max = std::max(range.max, projection.extended_s);
   };
-
-  if (footprint.outer().empty()) {
-    update_s_range(reference_point);
-    return range;
-  }
-
-  for (const auto & footprint_point : footprint.outer()) {
-    update_s_range(
-      autoware_utils_geometry::create_point(footprint_point.x(), footprint_point.y(), 0.0));
+  if (footprint.outer().empty()) update(get_object_reference_point(object));
+  for (const auto & point : footprint.outer()) {
+    update(autoware_utils_geometry::create_point(point.x(), point.y(), 0.0));
   }
   return range;
 }
@@ -585,67 +503,38 @@ bool is_beyond_trajectory_end(
 bool is_within_trajectory_s_range(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const FootprintSRange & range)
 {
-  return range.min >= -k_s_position_epsilon_m &&
-         range.max <= trajectory.length() + k_s_position_epsilon_m;
+  return range.max >= -k_s_position_epsilon_m &&
+         range.min <= trajectory.length() + k_s_position_epsilon_m;
 }
 
-/**
- * @brief Get the last M arc-length samples from the trajectory.
- * @param trajectory_bases Cached trajectory arc-length bases.
- * @return Vector of s values [m] (up to OnTrajectoryDValidationParams::sample_count_m).
- */
-std::vector<double> get_last_m_s_samples(const std::vector<double> & trajectory_bases)
+std::vector<double> uniform_s_samples(const double start, const double end)
 {
-  if (trajectory_bases.empty()) {
-    return {};
-  }
-
-  const std::size_t sample_count =
-    std::min(OnTrajectoryDValidationParams::sample_count_m, trajectory_bases.size());
-  return {
-    trajectory_bases.end() - static_cast<std::ptrdiff_t>(sample_count), trajectory_bases.end()};
-}
-
-/**
- * @brief Get trajectory s samples near the object footprint within S meters.
- * @param trajectory Interpolated reference trajectory.
- * @param trajectory_bases Cached trajectory arc-length bases.
- * @param range Cached footprint s range.
- * @return Vector of s values [m] in [s_min - S, s_max + S].
- */
-std::vector<double> get_s_samples_near_object(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
-  const std::vector<double> & trajectory_bases, const FootprintSRange & range)
-{
-  const double s_lo = std::max(0.0, range.min - OnTrajectoryDValidationParams::near_s_range_m);
-  const double s_hi = std::min(
-    max_interpolator_safe_s(trajectory, trajectory_bases),
-    range.max + OnTrajectoryDValidationParams::near_s_range_m);
-
-  if (s_hi < s_lo) {
-    return {};
-  }
-
-  const auto first = std::lower_bound(trajectory_bases.begin(), trajectory_bases.end(), s_lo);
-  const auto last = std::upper_bound(first, trajectory_bases.end(), s_hi);
   std::vector<double> samples;
-  samples.reserve(static_cast<std::size_t>(std::distance(first, last)));
-  samples.insert(samples.end(), first, last);
-
-  if (samples.size() < 2) {
-    samples.clear();
-    const auto fallback_sample_count =
-      static_cast<std::size_t>(
-        std::floor((s_hi - s_lo) / OnTrajectoryDValidationParams::s_sample_interval_m + 0.5)) +
-      1U;
-    samples.reserve(fallback_sample_count);
-    for (double s = s_lo; s <= s_hi + OnTrajectoryDValidationParams::s_sample_interval_m * 0.5;
-         s += OnTrajectoryDValidationParams::s_sample_interval_m) {
-      samples.push_back(std::min(s, s_hi));
-    }
+  if (end < start) return samples;
+  for (double s = start; s < end; s += OnTrajectoryDValidationParams::s_sample_interval_m) {
+    samples.push_back(s);
   }
-
+  samples.push_back(end);
   return samples;
+}
+
+std::vector<double> get_last_m_s_samples(const std::vector<double> & bases)
+{
+  if (bases.empty()) return {};
+  return uniform_s_samples(
+    std::max(
+      0.0, bases.back() - static_cast<double>(OnTrajectoryDValidationParams::sample_count_m)),
+    bases.back());
+}
+
+std::vector<double> get_s_samples_near_object(
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const std::vector<double> & bases,
+  const FootprintSRange & range)
+{
+  const double end = max_interpolator_safe_s(trajectory, bases);
+  return uniform_s_samples(
+    std::clamp(range.min - OnTrajectoryDValidationParams::near_s_range_m, 0.0, end),
+    std::clamp(range.max + OnTrajectoryDValidationParams::near_s_range_m, 0.0, end));
 }
 
 /**
@@ -684,8 +573,8 @@ bool has_valid_bounding_box_dimensions(const ObjectT & object)
 {
   constexpr double k_dimension_epsilon_m = 1e-6;
   const auto & dimensions = object.shape.dimensions;
-  return std::abs(dimensions.x) > k_dimension_epsilon_m &&
-         std::abs(dimensions.y) > k_dimension_epsilon_m;
+  return std::isfinite(dimensions.x) && std::isfinite(dimensions.y) &&
+         dimensions.x > k_dimension_epsilon_m && dimensions.y > k_dimension_epsilon_m;
 }
 
 /**
@@ -767,8 +656,8 @@ std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> get_object_rear_
 
 /**
  * @brief Compute |d| at a given trajectory s from the object rear edge.
- * @details When the rear edge straddles the trajectory (d_rear_left > 0 and d_rear_right < 0),
- *          |d| is 0. Otherwise |d| is taken from the rear corner closest to the trajectory.
+ * @details When the rear edge straddles the trajectory, |d| is 0 regardless of corner ordering.
+ *          Otherwise |d| is taken from the rear corner closest to the trajectory.
  */
 double calc_rear_edge_d_magnitude_at_s(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
@@ -782,17 +671,9 @@ double calc_rear_edge_d_magnitude_at_s(
   const double d_rear_right =
     autoware_utils_geometry::calc_lateral_deviation(trajectory_point.pose, rear_right);
 
-  if (d_rear_left > 0.0 && d_rear_right < 0.0) {
-    return 0.0;
-  }
-  if (d_rear_left > 0.0 && d_rear_right > 0.0) {
-    return std::abs(d_rear_right);
-  }
-  if (d_rear_left < 0.0 && d_rear_right < 0.0) {
-    return std::abs(d_rear_left);
-  }
-
-  return std::max(std::abs(d_rear_left), std::abs(d_rear_right));
+  const auto [lo, hi] = std::minmax(d_rear_left, d_rear_right);
+  if (lo <= 0.0 && hi >= 0.0) return 0.0;
+  return std::min(std::abs(lo), std::abs(hi));
 }
 
 /**
@@ -814,6 +695,7 @@ bool matches_small_d_pattern(
   }
 
   std::optional<double> previous_d_magnitude;
+  double previous_s = 0.0;
   for (const double s : s_samples) {
     const double d_magnitude =
       calc_rear_edge_d_magnitude_at_s(trajectory, trajectory_bases, s, rear_left, rear_right);
@@ -821,113 +703,38 @@ bool matches_small_d_pattern(
       return false;
     }
     if (
-      previous_d_magnitude && std::abs(d_magnitude - *previous_d_magnitude) >=
-                                OnTrajectoryDValidationParams::deviation_threshold_m) {
+      previous_d_magnitude &&
+      std::abs(d_magnitude - *previous_d_magnitude) >
+        OnTrajectoryDValidationParams::deviation_threshold_m * (s - previous_s)) {
       return false;
     }
     previous_d_magnitude = d_magnitude;
+    previous_s = s;
   }
 
   return true;
 }
 
+std::optional<autoware_utils_geometry::Polygon2d> make_route_polygon(const RouteBounds & bounds)
+{
+  if (bounds.first.size() < 2 || bounds.second.size() < 2) return std::nullopt;
+  autoware_utils_geometry::Polygon2d polygon;
+  for (const auto & p : bounds.first) polygon.outer().emplace_back(p.x(), p.y());
+  for (const auto & p : bounds.second.invert()) {
+    polygon.outer().emplace_back(p.x(), p.y());
+  }
+  boost::geometry::correct(polygon);
+  if (!boost::geometry::is_valid(polygon)) return std::nullopt;
+  return polygon;
+}
+
 template <typename ObjectT>
-std::vector<geometry_msgs::msg::Point> get_object_footprint_points(
-  const ObjectT & object, const autoware_utils_geometry::Polygon2d & footprint)
+autoware_utils_geometry::LineString2d reference_polyline(
+  const FrameEvaluationContext<ObjectT> & context)
 {
-  std::vector<geometry_msgs::msg::Point> footprint_points;
-  footprint_points.reserve(footprint.outer().size());
-
-  for (const auto & footprint_point : footprint.outer()) {
-    footprint_points.push_back(
-      autoware_utils_geometry::create_point(footprint_point.x(), footprint_point.y(), 0.0));
-  }
-
-  if (footprint_points.empty()) {
-    footprint_points.push_back(get_object_reference_point(object));
-  }
-
-  return footprint_points;
-}
-
-geometry_msgs::msg::Point get_closest_point_on_polyline(
-  const geometry_msgs::msg::Point & query, const std::vector<geometry_msgs::msg::Point> & polyline)
-{
-  if (polyline.empty()) {
-    return query;
-  }
-  if (polyline.size() == 1) {
-    return polyline.front();
-  }
-
-  geometry_msgs::msg::Point closest_point = polyline.front();
-  double min_dist_sq = std::numeric_limits<double>::max();
-
-  for (std::size_t i = 0; i + 1 < polyline.size(); ++i) {
-    const auto & seg_start = polyline[i];
-    const auto & seg_end = polyline[i + 1];
-
-    const double dx = seg_end.x - seg_start.x;
-    const double dy = seg_end.y - seg_start.y;
-    const double len_sq = dx * dx + dy * dy;
-
-    geometry_msgs::msg::Point projected_point = seg_start;
-    if (len_sq > 1e-12) {
-      const double t = std::clamp(
-        ((query.x - seg_start.x) * dx + (query.y - seg_start.y) * dy) / len_sq, 0.0, 1.0);
-      projected_point.x = seg_start.x + t * dx;
-      projected_point.y = seg_start.y + t * dy;
-      projected_point.z = seg_start.z + t * (seg_end.z - seg_start.z);
-    }
-
-    const double dist_sq = (query.x - projected_point.x) * (query.x - projected_point.x) +
-                           (query.y - projected_point.y) * (query.y - projected_point.y);
-    if (dist_sq < min_dist_sq) {
-      min_dist_sq = dist_sq;
-      closest_point = projected_point;
-    }
-  }
-
-  return closest_point;
-}
-
-bool is_footprint_point_inside_drivable_area(
-  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
-  const geometry_msgs::msg::Point & footprint_point,
-  const std::vector<geometry_msgs::msg::Point> & left_bound,
-  const std::vector<geometry_msgs::msg::Point> & right_bound, const double tolerance_m)
-{
-  const double s = closest_trajectory_s(trajectory, footprint_point);
-  const auto ref_pose = trajectory.compute(s).pose;
-
-  const double lateral_offset =
-    autoware_utils_geometry::calc_lateral_deviation(ref_pose, footprint_point);
-  const auto left_closest = get_closest_point_on_polyline(ref_pose.position, left_bound);
-  const auto right_closest = get_closest_point_on_polyline(ref_pose.position, right_bound);
-  const double left_bound_offset =
-    autoware_utils_geometry::calc_lateral_deviation(ref_pose, left_closest);
-  const double right_bound_offset =
-    autoware_utils_geometry::calc_lateral_deviation(ref_pose, right_closest);
-
-  const double left_limit = std::max(left_bound_offset, right_bound_offset);
-  const double right_limit = std::min(left_bound_offset, right_bound_offset);
-
-  return (right_limit - tolerance_m) <= lateral_offset &&
-         lateral_offset <= (left_limit + tolerance_m);
-}
-
-std::vector<geometry_msgs::msg::Point> to_geometry_points(const lanelet::LineString2d & linestring)
-{
-  std::vector<geometry_msgs::msg::Point> points;
-  points.reserve(linestring.size());
-  for (const auto & point : linestring) {
-    geometry_msgs::msg::Point geometry_point;
-    geometry_point.x = point.x();
-    geometry_point.y = point.y();
-    geometry_point.z = 0.0;
-    points.push_back(geometry_point);
-  }
-  return points;
+  autoware_utils_geometry::LineString2d line;
+  for (const auto & p : context.trajectory_base_points) line.emplace_back(p.x, p.y);
+  return line;
 }
 
 template <typename ObjectT>
@@ -984,26 +791,12 @@ bool should_filter_out_by_longitudinal_distance(
     return false;
   }
 
-  const auto & built_trajectory = *context.built_trajectory;
-  const auto start_pose = built_trajectory.compute(0.0).pose;
-  const auto end_pose = built_trajectory.compute(max_interpolator_safe_s(built_trajectory)).pose;
-  const auto footprint_points = get_object_footprint_points(object, footprint);
-
-  const bool all_before_start = std::all_of(
-    footprint_points.begin(), footprint_points.end(),
-    [&](const geometry_msgs::msg::Point & footprint_point) {
-      return autoware_utils_geometry::calc_longitudinal_deviation(start_pose, footprint_point) <
-             -params.tolerance_m;
-    });
-
-  const bool all_after_end = std::all_of(
-    footprint_points.begin(), footprint_points.end(),
-    [&](const geometry_msgs::msg::Point & footprint_point) {
-      return autoware_utils_geometry::calc_longitudinal_deviation(end_pose, footprint_point) >
-             params.tolerance_m;
-    });
-
-  return all_before_start || all_after_end;
+  if (boost::geometry::intersects(reference_polyline(context), footprint)) return false;
+  const auto range = get_footprint_s_range(
+    *context.built_trajectory, context.trajectory_bases, context.trajectory_base_points, object,
+    footprint);
+  return range.max < -params.tolerance_m ||
+         range.min > context.built_trajectory->length() + params.tolerance_m;
 }
 
 template <typename ObjectT>
@@ -1012,23 +805,81 @@ bool should_filter_out_by_lateral_distance(
   const ObjectT & object, const autoware_utils_geometry::Polygon2d & footprint,
   const LateralDistanceFilterParams & params)
 {
-  const auto left_bound = to_geometry_points(route_bounds.first);
-  const auto right_bound = to_geometry_points(route_bounds.second);
-  if (left_bound.size() < 2 || right_bound.size() < 2) {
-    return false;
-  }
+  (void)context;
+  (void)object;
+  const auto polygon = make_route_polygon(route_bounds);
+  if (!polygon) return false;  // evaluate() reports invalid nonempty bounds separately.
+  return boost::geometry::disjoint(footprint, *polygon) &&
+         boost::geometry::distance(footprint, *polygon) > params.tolerance_m;
+}
 
-  if (!context.built_trajectory) {
-    return false;
+/** Offset from the nearest traffic lane, independent of candidate trajectory points.
+ * Associate by lane polygon distance before measuring centerline offset. Considering containing
+ * lanes prevents adjacent-lane queues from looking parked, while excluding distant tangent
+ * extensions prevents an unrelated crossing lane from hiding a curbside parked vehicle.
+ */
+std::optional<double> lane_center_offset(
+  const lanelet::LaneletMap * map, const geometry_msgs::msg::Point & position)
+{
+  if (!map) return std::nullopt;
+  const lanelet::BasicPoint2d search_point{position.x, position.y};
+  constexpr double association_tolerance_m = 1e-3;
+  double nearest_lane_distance = std::numeric_limits<double>::infinity();
+  std::optional<double> offset;
+  for (const auto & lane : map->laneletLayer.nearest(search_point, 10)) {
+    if (lane.attributeOr("subtype", std::string{"road"}) != "road") continue;
+    const double lane_distance = lanelet::geometry::distance2d(lane, search_point);
+    if (lane_distance > nearest_lane_distance + association_tolerance_m) continue;
+    const auto center = lane.centerline2d();
+    double closest = std::numeric_limits<double>::infinity();
+    double lateral = 0.0;
+    for (std::size_t i = 1; i < center.size(); ++i) {
+      const double dx = center[i].x() - center[i - 1].x();
+      const double dy = center[i].y() - center[i - 1].y();
+      const double length = std::hypot(dx, dy);
+      if (length < 1e-6) continue;
+      const double wx = position.x - center[i - 1].x();
+      const double wy = position.y - center[i - 1].y();
+      const double ratio = std::clamp((wx * dx + wy * dy) / (length * length), 0.0, 1.0);
+      const double distance = std::hypot(wx - ratio * dx, wy - ratio * dy);
+      if (distance < closest) {
+        closest = distance;
+        lateral = std::abs(wx * dy - wy * dx) / length;
+      }
+    }
+    // Limit lane association to the local scene, including curbside objects outside lane polygons.
+    if (closest > 10.0) continue;
+    if (lane_distance < nearest_lane_distance - association_tolerance_m) offset.reset();
+    nearest_lane_distance = std::min(nearest_lane_distance, lane_distance);
+    if (!offset || lateral < *offset) offset = lateral;
   }
+  return offset;
+}
 
-  const auto footprint_points = get_object_footprint_points(object, footprint);
-  return std::all_of(
-    footprint_points.begin(), footprint_points.end(),
-    [&](const geometry_msgs::msg::Point & footprint_point) {
-      return !is_footprint_point_inside_drivable_area(
-        *context.built_trajectory, footprint_point, left_bound, right_bound, params.tolerance_m);
-    });
+void update_temporal_state(
+  const rclcpp::Time & time, const bool candidate, const double dwell_seconds,
+  std::pair<rclcpp::Time, bool> & state, bool & initialized,
+  std::optional<rclcpp::Time> & pending_since, std::size_t & count)
+{
+  if (!initialized) {
+    state = {time, candidate};
+    initialized = true;
+    return;
+  }
+  if (candidate == state.second) {
+    pending_since.reset();
+    count = 0;
+    return;
+  }
+  if (!pending_since) pending_since = time;
+  count = std::min(count + 1, static_cast<std::size_t>(FilterManagerParams::count_threshold));
+  if (
+    count >= FilterManagerParams::count_threshold &&
+    (time - *pending_since).seconds() >= dwell_seconds) {
+    state = {time, candidate};
+    pending_since.reset();
+    count = 0;
+  }
 }
 
 }  // namespace
@@ -1108,6 +959,7 @@ template <typename ObjectT>
 void TwoClassFilter<ObjectT>::observe_and_update(
   const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
+  if (is_initialized_ && context.current_time <= last_update_time_) return;
   calculate_likelihood(context, object);
 
   if (!is_initialized_) {
@@ -1209,7 +1061,10 @@ void DeviationFilter<ObjectT>::calculate_likelihood(
   const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
   this->target_likelihood_ =
-    should_filter_out_on_trajectory_object(context, object) ? k_low_likelihood : k_high_likelihood;
+    !context.built_trajectory
+      ? k_neutral_likelihood
+      : (should_filter_out_on_trajectory_object(context, object) ? k_low_likelihood
+                                                                 : k_high_likelihood);
   this->non_target_likelihood_ = 1.0 - this->target_likelihood_;
 }
 
@@ -1262,138 +1117,76 @@ template <typename ObjectT>
 void AvoidanceTargetDetectorBase<ObjectT>::observe_and_update_all(
   const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
 {
+  if (target_filter_->is_initialized() && context.current_time <= stale_check_time_) return;
   stale_check_time_ = context.current_time;
-
   target_filter_->observe_and_update(context, object);
   stationary_filter_->observe_and_update(context, object);
   deviation_filter_->observe_and_update(context, object);
+  if (linear_velocity_norm(object) >= MovingObjectFilterParams::max_linear_velocity_mps) {
+    last_moving_observation_ = context.current_time;
+  }
+  evaluate_geometry(context, object);
+  track_avoidance_targets();
+  track_driving_along_vehicles();
+}
+
+template <typename ObjectT>
+void AvoidanceTargetDetectorBase<ObjectT>::evaluate_geometry(
+  const FrameEvaluationContext<ObjectT> & context, const ObjectT & object)
+{
+  lane_center_offset_m_ = lane_center_offset(context.route_map, get_object_pose(object).position);
+  const bool recently_moving =
+    last_moving_observation_ && (context.current_time - *last_moving_observation_).seconds() <
+                                  ParkedObjectPolicyParams::recently_moving_seconds;
+  parked_candidate_now_ =
+    lane_center_offset_m_ &&
+    *lane_center_offset_m_ >= ParkedObjectPolicyParams::minimum_lane_center_offset_m &&
+    !recently_moving;
 
   is_driving_along_candidate_now_ = false;
-  is_on_polygon_now_ = false;
-  if (!is_object_of_interest() || is_stationary()) {
-    return;
-  }
-
   is_on_polygon_now_ = context.near_segment_polygon &&
                        overlaps_near_segment_polygon(object, *context.near_segment_polygon);
-  if (!is_on_polygon_now_) {
+  if (
+    !is_object_of_interest() || is_stationary() || !is_on_polygon_now_ || !context.route_map ||
+    !context.routing_graph || context.ego_lanelets.empty())
     return;
-  }
-
-  if (!context.route_map) {
-    return;
-  }
-
   const auto object_lanelets =
     get_nearest_lanelets(*context.route_map, get_object_pose(object).position);
-  if (object_lanelets.empty()) {
-    return;
-  }
-
-  if (!context.routing_graph || context.ego_lanelets.empty()) {
-    return;
-  }
-
-  const bool is_routably_connected = std::any_of(
-    context.ego_lanelets.begin(), context.ego_lanelets.end(),
-    [&](const lanelet::ConstLanelet & ego_lanelet) {
-      return std::any_of(
-        object_lanelets.begin(), object_lanelets.end(),
-        [&](const lanelet::ConstLanelet & object_lanelet) {
-          return is_routably_connected_to_ego_without_lane_change(
-            context, ego_lanelet, object_lanelet);
-        });
+  if (object_lanelets.empty()) return;
+  const bool connected = std::any_of(
+    context.ego_lanelets.begin(), context.ego_lanelets.end(), [&](const auto & ego_lanelet) {
+      return std::any_of(object_lanelets.begin(), object_lanelets.end(), [&](const auto & lanelet) {
+        return is_routably_connected_to_ego_without_lane_change(context, ego_lanelet, lanelet);
+      });
     });
-  is_driving_along_candidate_now_ = !is_routably_connected;
+  is_driving_along_candidate_now_ = !connected;
 }
 
 template <typename ObjectT>
 void AvoidanceTargetDetectorBase<ObjectT>::track_avoidance_targets()
 {
-  const auto & current_time = stale_check_time_;
-  const bool is_target_now = is_object_of_interest() && is_stationary() && is_deviated();
-
-  if (!is_avoidance_tracking_initialized_) {
-    is_stationary_avoidance_target_stamped_.first = current_time;
-    is_stationary_avoidance_target_stamped_.second = is_target_now;
-    is_avoidance_tracking_initialized_ = true;
-    return;
-  }
-
-  avoidance_state_change_count_ = (is_target_now != is_stationary_avoidance_target_stamped_.second)
-                                    ? avoidance_state_change_count_ + 1
-                                    : 0;
-
-  if (
-    rclcpp::Time(current_time) - rclcpp::Time(is_stationary_avoidance_target_stamped_.first) <
-    rclcpp::Duration::from_seconds(FilterManagerParams::static_hysteresis_seconds)) {
-    return;
-  }
-
-  if (avoidance_state_change_count_ < FilterManagerParams::count_threshold) {
-    return;
-  }
-
-  is_stationary_avoidance_target_stamped_.first = current_time;
-  is_stationary_avoidance_target_stamped_.second = is_target_now;
+  update_temporal_state(
+    stale_check_time_, is_object_of_interest() && is_stationary() && parked_candidate_now_,
+    FilterManagerParams::static_hysteresis_seconds, is_stationary_avoidance_target_stamped_,
+    is_avoidance_tracking_initialized_, avoidance_pending_since_, avoidance_state_change_count_);
 }
 
 template <typename ObjectT>
 void AvoidanceTargetDetectorBase<ObjectT>::track_driving_along_vehicles()
 {
-  const auto & current_time = stale_check_time_;
-  const bool is_moving_vehicle_now = is_driving_along_candidate_now_;
-
-  if (!is_moving_vehicle_tracking_initialized_) {
-    is_moving_vehicle_stamped_.first = current_time;
-    is_moving_vehicle_stamped_.second = is_moving_vehicle_now;
+  if (is_stationary() || !is_object_of_interest()) {
+    is_moving_vehicle_stamped_ = {stale_check_time_, false};
     is_moving_vehicle_tracking_initialized_ = true;
+    moving_pending_since_.reset();
+    moving_vehicle_state_change_count_ = 0;
     return;
   }
-
-  moving_vehicle_state_change_count_ = (is_moving_vehicle_now != is_moving_vehicle_stamped_.second)
-                                         ? moving_vehicle_state_change_count_ + 1
-                                         : 0;
-
-  // Keep stamped moving-vehicle state when a previously tracked vehicle leaves the near-segment
-  // polygon.
-  if (is_moving_vehicle_stamped_.second && !is_on_polygon_now_) {
-    is_moving_vehicle_stamped_.first = current_time;
-    is_moving_vehicle_stamped_.second = true;
-    return;
-  }
-
-  if (
-    is_moving_vehicle_stamped_.second &&
-    rclcpp::Time(current_time) - rclcpp::Time(is_moving_vehicle_stamped_.first) <
-      rclcpp::Duration::from_seconds(FilterManagerParams::moving_hysteresis_seconds)) {
-    return;
-  }
-
-  if (moving_vehicle_state_change_count_ < FilterManagerParams::count_threshold) {
-    return;
-  }
-
-  is_moving_vehicle_stamped_.first = current_time;
-  is_moving_vehicle_stamped_.second = is_moving_vehicle_now;
-}
-
-template <typename ObjectT>
-void ObjectSelectorBase<ObjectT>::track_avoidance_targets()
-{
-  for (auto & [object_id, detector] : object_filters_) {
-    (void)object_id;
-    detector.track_avoidance_targets();
-  }
-}
-
-template <typename ObjectT>
-void ObjectSelectorBase<ObjectT>::track_driving_along_vehicles()
-{
-  for (auto & [object_id, detector] : object_filters_) {
-    (void)object_id;
-    detector.track_driving_along_vehicles();
-  }
+  update_temporal_state(
+    stale_check_time_, is_driving_along_candidate_now_,
+    is_moving_vehicle_stamped_.second ? FilterManagerParams::moving_hysteresis_seconds
+                                      : FilterManagerParams::static_hysteresis_seconds,
+    is_moving_vehicle_stamped_, is_moving_vehicle_tracking_initialized_, moving_pending_since_,
+    moving_vehicle_state_change_count_);
 }
 
 template <typename ObjectT>
@@ -1401,101 +1194,280 @@ void ObjectSelectorBase<ObjectT>::update_objects(
   const rclcpp::Time & current_time, const Objects & objects, const Trajectory & trajectory,
   const ExtendedRouteHandler & extended_route_handler)
 {
+  if (last_evaluation_time_ && current_time < *last_evaluation_time_) {
+    object_filters_.clear();
+    last_measurement_time_.reset();
+  }
+  last_evaluation_time_ = current_time;
+  measurement_header_ = objects.header;
+  const rclcpp::Time measurement_time{objects.header.stamp, current_time.get_clock_type()};
+  measurement_age_s_ = (current_time - measurement_time).seconds();
+  const bool new_measurement =
+    !last_measurement_time_ || measurement_time > *last_measurement_time_;
+
+  // Prune before observing: a reappearing UUID must not revive expired history.
+  for (auto it = object_filters_.begin(); it != object_filters_.end();) {
+    if (it->second.is_stale(current_time))
+      it = object_filters_.erase(it);
+    else
+      ++it;
+  }
+  if (measurement_age_s_ > FilterManagerParams::stale_threshold_seconds) {
+    status_ = SelectionStatus::stale_objects;
+    context_.reset();
+    return;
+  }
+  if (measurement_age_s_ < -FilterManagerParams::future_stamp_tolerance_seconds) {
+    status_ = SelectionStatus::future_objects;
+    context_.reset();
+    return;
+  }
+  if (last_measurement_time_ && measurement_time < *last_measurement_time_) {
+    status_ = SelectionStatus::out_of_order_objects;
+    context_.reset();
+    return;
+  }
+  if (objects.header.frame_id.empty() || objects.header.frame_id != trajectory.header.frame_id) {
+    status_ = SelectionStatus::frame_mismatch;
+    context_.reset();
+    return;
+  }
+
   const auto route_map = extended_route_handler.getRouteMap();
   const auto routing_graph = extended_route_handler.getRouteMapRoutingGraph();
-  auto context = make_frame_evaluation_context<ObjectT>(current_time, trajectory);
+  auto context = make_frame_evaluation_context<ObjectT>(measurement_time, trajectory);
   context.route_map = route_map.get();
   context.routing_graph = routing_graph.get();
-
-  if (!trajectory.points.empty()) {
+  if (context.built_trajectory) {
     context.near_segment_polygon =
       build_near_segment_polygon(extended_route_handler.get_near_segment_polygon(
         trajectory.points.front().pose.position, trajectory.points.back().pose.position));
     if (route_map) {
       context.ego_lanelets =
-        get_nearest_lanelets(*route_map, trajectory.points.back().pose.position);
-      constexpr std::size_t k_max_object_lanelets = 5;
-      context.routability_cache.reserve(context.ego_lanelets.size() * k_max_object_lanelets);
+        get_nearest_lanelets(*route_map, trajectory.points.front().pose.position);
     }
   }
-
   for (const auto & object : objects.objects) {
-    if (!is_object_of_interest(object)) {
+    if (!has_valid_object_geometry(object)) continue;
+    auto it = object_filters_.find(object.object_id.uuid);
+    if (new_measurement) {
+      // Existing tracks receive negative classification evidence as well.
+      if (it == object_filters_.end() && !is_object_of_interest(object)) continue;
+      if (it == object_filters_.end()) {
+        it = object_filters_.try_emplace(object.object_id.uuid, object, measurement_time).first;
+      }
+      it->second.observe_and_update_all(context, object);
+    } else if (it != object_filters_.end()) {
+      it->second.evaluate_geometry(context, object);
+    }
+  }
+  if (new_measurement) last_measurement_time_ = measurement_time;
+  status_ = context.built_trajectory ? SelectionStatus::ready : SelectionStatus::invalid_reference;
+  context.current_time = current_time;
+  context_.emplace(std::move(context));
+}
+
+template <typename ObjectT>
+ObjectSelectionResult<typename ObjectSelectorBase<ObjectT>::Objects>
+ObjectSelectorBase<ObjectT>::evaluate(
+  const Objects & objects, const RouteBounds & route_bounds,
+  const SelectionGeometryParams & geometry) const
+{
+  ObjectSelectionResult<Objects> result;
+  result.status = status_;
+  result.avoidance_targets.header = objects.header;
+  result.driving_along_vehicles.header = objects.header;
+  result.yield_targets.header = objects.header;
+  if (objects.header != measurement_header_) result.status = SelectionStatus::out_of_order_objects;
+  if (
+    geometry.trajectory_envelope_radius_m &&
+    (!std::isfinite(*geometry.trajectory_envelope_radius_m) ||
+     *geometry.trajectory_envelope_radius_m < 0.0)) {
+    throw std::invalid_argument("Selection envelope radius must be finite and nonnegative");
+  }
+  if (!std::isfinite(geometry.prediction_extension_s) || geometry.prediction_extension_s < 0.0) {
+    throw std::invalid_argument("Selection prediction extension must be finite and nonnegative");
+  }
+  const auto reference_line =
+    context_ ? reference_polyline(*context_) : autoware_utils_geometry::LineString2d{};
+  const auto route_polygon = geometry.trajectory_envelope_radius_m
+                               ? std::optional<autoware_utils_geometry::Polygon2d>{}
+                               : make_route_polygon(route_bounds);
+  if (
+    result.status == SelectionStatus::ready && !geometry.trajectory_envelope_radius_m &&
+    (!route_bounds.first.empty() || !route_bounds.second.empty()) && !route_polygon) {
+    result.status = SelectionStatus::invalid_route_bounds;
+  }
+  for (const auto & object : objects.objects) {
+    ObjectSelectionDecision decision;
+    decision.object_id = object.object_id.uuid;
+    decision.measurement_age_s = measurement_age_s_;
+    if (result.status != SelectionStatus::ready || !context_) {
+      decision.reason = to_string(result.status);
+      result.decisions.push_back(std::move(decision));
       continue;
     }
-    const auto it = object_filters_.try_emplace(object.object_id.uuid, object, current_time).first;
-    it->second.observe_and_update_all(context, object);
-  }
+    if (!has_valid_object_geometry(object)) {
+      decision.reason = "invalid_object_geometry";
+      result.decisions.push_back(std::move(decision));
+      continue;
+    }
+    const auto it = object_filters_.find(object.object_id.uuid);
+    if (it == object_filters_.end()) {
+      decision.disposition = ObjectDisposition::ignored;
+      decision.reason = "no_eligible_track";
+      result.decisions.push_back(std::move(decision));
+      continue;
+    }
+    const auto & detector = it->second;
+    decision.interest_probability = detector.get_is_target_probability();
+    decision.stationary_probability = detector.get_is_stationary_probability();
+    decision.deviation_probability = detector.get_is_deviated_probability();
+    decision.lane_center_offset_m = detector.lane_center_offset_m_;
+    const auto footprint = autoware_utils_geometry::to_polygon2d(object);
+    decision.trajectory_distance_m = boost::geometry::distance(reference_line, footprint);
 
-  for (auto it = object_filters_.begin(); it != object_filters_.end();) {
-    if (it->second.is_stale(current_time)) {
-      it = object_filters_.erase(it);
+    if (!is_object_of_interest(object) || !detector.is_object_of_interest()) {
+      decision.disposition = ObjectDisposition::ignored;
+      decision.reason = "classification_not_eligible";
+    } else if (
+      detector.is_stationary() &&
+      linear_velocity_norm(object) < MovingObjectFilterParams::max_linear_velocity_mps) {
+      if (!detector.lane_center_offset_m_) {
+        decision.reason = "lane_context_unavailable";
+      } else if (!detector.parked_candidate_now_) {
+        decision.disposition = ObjectDisposition::yield;
+        decision.reason = "traffic_lane_or_recent_motion";
+      } else if (!detector.is_stationary_avoidance_target()) {
+        decision.disposition = ObjectDisposition::yield;
+        decision.reason = "awaiting_stationary_avoidance_confirmation";
+      } else {
+        decision.disposition = ObjectDisposition::avoidance;
+        decision.reason = "parked_off_lane_center";
+      }
+    } else if (detector.is_moving_vehicle() && !detector.is_stationary()) {
+      decision.disposition = ObjectDisposition::driving_along;
+      decision.reason = "moving_disconnected_lane";
     } else {
-      ++it;
+      decision.disposition = ObjectDisposition::yield;
+      decision.reason = "moving_or_uncertain_vehicle";
+    }
+
+    if (decision.disposition == ObjectDisposition::avoidance) {
+      if (geometry.trajectory_envelope_radius_m) {
+        double envelope_distance = *decision.trajectory_distance_m;
+        const auto & pose = get_object_pose(object);
+        const auto & q = pose.orientation;
+        const double yaw =
+          std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+        const double travel = get_object_twist(object).linear.x *
+                              (context_->prediction_horizon_s + geometry.prediction_extension_s);
+        if (std::abs(travel) > k_motion_epsilon) {
+          const autoware_utils_geometry::Segment2d motion{
+            {pose.position.x, pose.position.y},
+            {pose.position.x + std::cos(yaw) * travel, pose.position.y + std::sin(yaw) * travel}};
+          envelope_distance = std::max(
+            0.0,
+            boost::geometry::distance(reference_line, motion) - circular_footprint_radius(object));
+        }
+        const bool predicted_path_reaches =
+          std::find(
+            geometry.predicted_path_target_ids.begin(), geometry.predicted_path_target_ids.end(),
+            object.object_id.uuid) != geometry.predicted_path_target_ids.end();
+        if (!predicted_path_reaches && envelope_distance > *geometry.trajectory_envelope_radius_m) {
+          decision.disposition = ObjectDisposition::ignored;
+          decision.reason = "outside_trajectory_envelope";
+        }
+      } else if (should_filter_out_by_longitudinal_distance(
+                   *context_, object, footprint, LongitudinalDistanceFilterParams{})) {
+        decision.disposition = ObjectDisposition::ignored;
+        decision.reason = "outside_longitudinal_extent";
+      } else if (route_polygon && boost::geometry::disjoint(footprint, *route_polygon)) {
+        decision.disposition = ObjectDisposition::ignored;
+        decision.reason = "outside_route_corridor";
+      }
+    }
+    if (decision.disposition == ObjectDisposition::avoidance) {
+      result.avoidance_targets.objects.push_back(object);
+    } else if (decision.disposition == ObjectDisposition::driving_along) {
+      result.driving_along_vehicles.objects.push_back(object);
+    } else if (decision.disposition == ObjectDisposition::yield) {
+      result.yield_targets.objects.push_back(object);
+    }
+    result.decisions.push_back(std::move(decision));
+  }
+  if (
+    result.status == SelectionStatus::ready &&
+    std::any_of(result.decisions.begin(), result.decisions.end(), [](const auto & decision) {
+      return decision.reason == "invalid_object_geometry";
+    })) {
+    result.status = SelectionStatus::invalid_objects;
+    result.avoidance_targets.objects.clear();
+    result.driving_along_vehicles.objects.clear();
+    result.yield_targets.objects.clear();
+    for (auto & decision : result.decisions) {
+      if (decision.reason != "invalid_object_geometry") {
+        decision.reason = "selection_unavailable_invalid_objects";
+        decision.disposition = ObjectDisposition::unknown;
+      }
     }
   }
+  return result;
 }
 
 template <typename ObjectT>
 typename ObjectSelectorBase<ObjectT>::Objects ObjectSelectorBase<ObjectT>::get_avoidance_targets(
-  const Objects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds)
+  const Objects & objects, [[maybe_unused]] const Trajectory & trajectory,
+  const RouteBounds & route_bounds) const
 {
-  track_avoidance_targets();
-
-  Objects avoidance_targets = objects;
-  avoidance_targets.objects.erase(
-    std::remove_if(
-      avoidance_targets.objects.begin(), avoidance_targets.objects.end(),
-      [&](const ObjectT & object) {
-        const auto it = object_filters_.find(object.object_id.uuid);
-        return it == object_filters_.end() || !it->second.is_stationary_avoidance_target();
-      }),
-    avoidance_targets.objects.end());
-
-  if (avoidance_targets.objects.empty()) {
-    return avoidance_targets;
-  }
-
-  const rclcpp::Time evaluation_time{0, 0, RCL_ROS_TIME};
-  const auto context = make_frame_evaluation_context<ObjectT>(evaluation_time, trajectory);
-  avoidance_targets.objects.erase(
-    std::remove_if(
-      avoidance_targets.objects.begin(), avoidance_targets.objects.end(),
-      [&](const ObjectT & object) {
-        const auto footprint = autoware_utils_geometry::to_polygon2d(object);
-        if (should_filter_out_by_longitudinal_distance(
-              context, object, footprint, LongitudinalDistanceFilterParams{})) {
-          return true;
-        }
-        if (should_filter_out_by_lateral_distance(
-              route_bounds, context, object, footprint, LateralDistanceFilterParams{})) {
-          return true;
-        }
-        return false;
-      }),
-    avoidance_targets.objects.end());
-
-  return avoidance_targets;
+  return evaluate(objects, route_bounds).avoidance_targets;
 }
 
 template <typename ObjectT>
 typename ObjectSelectorBase<ObjectT>::Objects
-ObjectSelectorBase<ObjectT>::get_driving_along_vehicles(const Objects & objects)
+ObjectSelectorBase<ObjectT>::get_driving_along_vehicles(const Objects & objects) const
 {
-  track_driving_along_vehicles();
+  return evaluate(objects, {}).driving_along_vehicles;
+}
 
-  Objects driving_along_vehicles = objects;
-  driving_along_vehicles.objects.erase(
-    std::remove_if(
-      driving_along_vehicles.objects.begin(), driving_along_vehicles.objects.end(),
-      [&](const ObjectT & object) {
-        const auto it = object_filters_.find(object.object_id.uuid);
-        return it == object_filters_.end() || !it->second.is_moving_vehicle() ||
-               it->second.is_stationary_avoidance_target();
-      }),
-    driving_along_vehicles.objects.end());
+const char * to_string(const SelectionStatus status)
+{
+  switch (status) {
+    case SelectionStatus::ready:
+      return "ready";
+    case SelectionStatus::stale_objects:
+      return "stale_objects";
+    case SelectionStatus::future_objects:
+      return "future_objects";
+    case SelectionStatus::out_of_order_objects:
+      return "out_of_order_objects";
+    case SelectionStatus::invalid_reference:
+      return "invalid_reference";
+    case SelectionStatus::frame_mismatch:
+      return "frame_mismatch";
+    case SelectionStatus::invalid_route_bounds:
+      return "invalid_route_bounds";
+    case SelectionStatus::invalid_objects:
+      return "invalid_objects";
+  }
+  return "unknown";
+}
 
-  return driving_along_vehicles;
+const char * to_string(const ObjectDisposition disposition)
+{
+  switch (disposition) {
+    case ObjectDisposition::ignored:
+      return "ignored";
+    case ObjectDisposition::avoidance:
+      return "avoidance";
+    case ObjectDisposition::yield:
+      return "yield";
+    case ObjectDisposition::driving_along:
+      return "driving_along";
+    case ObjectDisposition::unknown:
+      return "unknown";
+  }
+  return "unknown";
 }
 
 // Explicit instantiations for the supported object message types.

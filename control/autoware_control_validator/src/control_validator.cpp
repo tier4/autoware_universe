@@ -540,6 +540,18 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     RCLCPP_INFO_SKIPFIRST_THROTTLE(get_logger(), *get_clock(), 5000, "waiting for %s", topic_name);
     return;
   };
+  const auto publish_empty_hazard_alert = [this]() {
+    if (
+      !params_.collision_validator.enable_warning &&
+      !params_.uncrossable_bound_departure_validator.enable_warning) {
+      return;
+    }
+    const auto alert =
+      hazard_warning.make_alert(HazardWarningSources::empty(), vehicle_info_, get_clock()->now());
+    if (alert) {
+      pub_hazard_alert_->publish(*alert);
+    }
+  };
 
   Control::ConstSharedPtr control_cmd_msg = msg;
   if (!control_cmd_msg) {
@@ -559,6 +571,9 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "reference_trajectory size is less than 2. Cannot validate.");
+    // TODO(TIER IV): Evaluate collision and departure (including MRM) even when the
+    // reference_trajectory has less than 2 points.
+    publish_empty_hazard_alert();
     return;
   }
   OperationModeState::ConstSharedPtr operation_mode_msg = sub_operational_state_->take_data();
@@ -593,6 +608,7 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     // TODO(takagi): This check should be moved into each of the individual validate() functions.
     // Passing the rclcpp::Logger as an argument to the validate() function is necessary.
     RCLCPP_DEBUG(get_logger(), "predicted_trajectory size is less than 2. Cannot validate.");
+    publish_empty_hazard_alert();
   } else {
     trajectory_validator.validate(
       validation_status_, *predicted_trajectory_msg, *reference_trajectory_msg);

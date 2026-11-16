@@ -99,6 +99,10 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
     param_name(prefix, "road_border_collision_margin"), defaults.road_border_collision_margin);
   node.declare_parameter(param_name(prefix, "obstacle_safe_margin"), defaults.obstacle_safe_margin);
   node.declare_parameter(
+    param_name(prefix, "vegetation_collision_margin"), defaults.vegetation_collision_margin);
+  node.declare_parameter(
+    param_name(prefix, "vegetation_safe_margin"), defaults.vegetation_safe_margin);
+  node.declare_parameter(
     param_name(prefix, "road_border_safe_margin"), defaults.road_border_safe_margin);
   node.declare_parameter(
     param_name(prefix, "drivable_area_safe_margin"), defaults.drivable_area_safe_margin);
@@ -202,6 +206,10 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "road_border_collision_margin")).as_double());
   params.obstacle_safe_margin =
     static_cast<float>(node.get_parameter(param_name(prefix, "obstacle_safe_margin")).as_double());
+  params.vegetation_collision_margin = static_cast<float>(
+    node.get_parameter(param_name(prefix, "vegetation_collision_margin")).as_double());
+  params.vegetation_safe_margin = static_cast<float>(
+    node.get_parameter(param_name(prefix, "vegetation_safe_margin")).as_double());
   params.road_border_safe_margin = static_cast<float>(
     node.get_parameter(param_name(prefix, "road_border_safe_margin")).as_double());
   params.drivable_area_safe_margin = static_cast<float>(

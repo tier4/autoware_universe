@@ -12,10 +12,6 @@ ament_auto_add_library(mppi_trajectory_utils SHARED
   src/first_order_dubins/trajectory_utils.cpp
 )
 
-ament_auto_add_library(mppi_curvature_adaptive_steering_filter SHARED
-  src/curvature_adaptive_steering_filter.cpp
-)
-
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
@@ -50,12 +46,10 @@ if(BUILD_TESTING)
     mppi_trajectory_utils
   )
 
-  ament_add_gtest(test_curvature_adaptive_steering_filter
-    test/test_curvature_adaptive_steering_filter.cpp
-  )
-  target_link_libraries(test_curvature_adaptive_steering_filter
-    mppi_curvature_adaptive_steering_filter
-  )
+  ament_add_gtest(test_predicted_objects_obstacles test/test_predicted_objects_obstacles.cpp)
+  target_link_libraries(test_predicted_objects_obstacles mppi_trajectory_utils)
+  set_target_properties(test_predicted_objects_obstacles PROPERTIES CXX_STANDARD 17)
+  set_tests_properties(test_predicted_objects_obstacles PROPERTIES LABELS "cpu;unit" TIMEOUT 30)
 
   ament_add_gtest(test_mppi_application_status
     test/test_mppi_application_status.cpp
@@ -90,23 +84,7 @@ else()
   set(CUDA_AVAIL OFF)
 endif()
 
-# Find TensorRT libraries
-option(TRT_AVAIL "TensorRT available" OFF)
-find_library(NVINFER nvinfer)
-find_library(NVONNXPARSER nvonnxparser)
-if(NVINFER AND NVONNXPARSER)
-  if(CUDA_VERBOSE)
-    message(STATUS "TensorRT is available!")
-    message(STATUS "NVINFER: ${NVINFER}")
-    message(STATUS "NVONNXPARSER: ${NVONNXPARSER}")
-  endif()
-  set(TRT_AVAIL ON)
-else()
-  message(WARNING "TensorRT is NOT Available")
-  set(TRT_AVAIL OFF)
-endif()
-
-if(CUDA_AVAIL AND TRT_AVAIL)
+if(CUDA_AVAIL)
   set(MPPI_CUDA_ARCH_LIST "Auto" CACHE STRING "CUDA architectures (Auto or e.g. 8.9 for headless Ada builds)")
   find_package(MPPI-Generic REQUIRED)
   find_package(ament_index_cpp REQUIRED)
@@ -271,19 +249,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     src/first_order_dubins/input_collision_gate.cu
   )
   find_package(autoware_trajectory_modifier REQUIRED)
-  ament_auto_add_library(mppi_temporal_mpt_nominal SHARED
-    src/first_order_dubins/temporal_mpt_nominal.cpp
-  )
-  target_link_libraries(mppi_temporal_mpt_nominal
-    mppi_trajectory_utils
-    ${autoware_trajectory_modifier_LIBRARIES}
-    rclcpp::rclcpp
-    tf2::tf2
-    tf2_geometry_msgs::tf2_geometry_msgs
-    autoware_planning_msgs::autoware_planning_msgs__rosidl_generator_cpp
-  )
-  # Entry point for acados here: ${autoware_trajectory_modifier_LIBRARIES} above.
-  mppi_link_acados_runtime(mppi_temporal_mpt_nominal)
   target_include_directories(first_order_dubins_mppi PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
@@ -291,7 +256,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(first_order_dubins_mppi
     mppi_trajectory_utils
-    mppi_temporal_mpt_nominal
     mppi_extensions
     rclcpp::rclcpp
     tf2_geometry_msgs::tf2_geometry_msgs
@@ -324,7 +288,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(autoware_mppi_trajectory_modifier_plugin
     first_order_dubins_mppi
-    mppi_curvature_adaptive_steering_filter
     trajectory_mppi_optimizer_parameters
     ${PROJECT_NAME}
   )
@@ -362,7 +325,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   target_link_libraries(mppi_open_loop_line_sim
     first_order_dubins_mppi
-    mppi_curvature_adaptive_steering_filter
     ${PROJECT_NAME}
     rclcpp::rclcpp
     ament_index_cpp::ament_index_cpp
@@ -381,6 +343,12 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   if(BUILD_TESTING)
     ament_find_gtest()
 
+    ament_add_gtest(test_trajectory_mppi_optimizer test/test_trajectory_mppi_optimizer.cpp)
+    target_link_libraries(test_trajectory_mppi_optimizer autoware_mppi_trajectory_modifier_plugin)
+    mppi_link_acados_runtime(test_trajectory_mppi_optimizer)
+    set_target_properties(test_trajectory_mppi_optimizer PROPERTIES CXX_STANDARD 17)
+    set_tests_properties(test_trajectory_mppi_optimizer PROPERTIES LABELS "cpu;unit" TIMEOUT 30)
+
     ament_add_gtest(test_input_collision_gate test/test_input_collision_gate.cpp)
     target_link_libraries(test_input_collision_gate first_order_dubins_mppi ${CUDA_LIBRARIES})
     mppi_link_acados_runtime(test_input_collision_gate)
@@ -389,11 +357,11 @@ if(CUDA_AVAIL AND TRT_AVAIL)
 
     ament_add_gtest(test_first_order_dubins_mppi_interface
       test/test_first_order_dubins_mppi_interface.cpp
+      ENV "GTEST_FILTER=FirstOrderDubinsMppiInterfaceGpuTest.*"
     )
     target_link_libraries(test_first_order_dubins_mppi_interface
       first_order_dubins_mppi
       mppi_trajectory_utils
-      mppi_curvature_adaptive_steering_filter
       ${CUDA_LIBRARIES}
     )
     mppi_link_acados_runtime(test_first_order_dubins_mppi_interface)
@@ -401,13 +369,25 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CXX_STANDARD 17
       CUDA_STANDARD 17
     )
-    target_compile_options(test_first_order_dubins_mppi_interface PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
-    )
     set_tests_properties(test_first_order_dubins_mppi_interface PROPERTIES
       LABELS "gpu"
       TIMEOUT 180
     )
+
+    # Host cases share the CUDA-linked executables but do not require a CUDA device.
+    function(mppi_add_host_cases target filter)
+      set(name "${target}_cpu")
+      set(result "${AMENT_TEST_RESULTS_DIR}/${PROJECT_NAME}/${name}.gtest.xml")
+      ament_add_test(${name}
+        COMMAND "$<TARGET_FILE:${target}>" "--gtest_filter=${filter}"
+          "--gtest_output=xml:${result}"
+        OUTPUT_FILE "${CMAKE_BINARY_DIR}/ament_cmake_gtest/${name}.txt"
+        RESULT_FILE "${result}"
+        TIMEOUT 120)
+      set_tests_properties(${name} PROPERTIES LABELS "cpu;unit;gtest")
+    endfunction()
+    mppi_add_host_cases(test_first_order_dubins_mppi_interface
+      "-FirstOrderDubinsMppiInterfaceGpuTest.*")
 
     find_package(rcutils REQUIRED)
     ament_add_gtest(test_performance_benchmarks
@@ -428,8 +408,12 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       RUN_SERIAL TRUE
     )
 
+    # FindCUDA uses custom NVCC commands: target_compile_options with a CUDA language
+    # expression never reaches them. Suppress GoogleTest's unused registration-member
+    # diagnostics only for these test translation units, leaving production warnings enabled.
     cuda_add_executable(test_mppi_trajectory_validator
       test/test_trajectory_validator.cu
+      OPTIONS --diag-suppress=177
     )
     target_link_libraries(test_mppi_trajectory_validator
       first_order_dubins_mppi
@@ -444,17 +428,18 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CXX_STANDARD 17
       CUDA_STANDARD 17
     )
-    target_compile_options(test_mppi_trajectory_validator PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
-    )
-    ament_add_gtest_test(test_mppi_trajectory_validator)
+    ament_add_gtest_test(test_mppi_trajectory_validator
+      ENV "GTEST_FILTER=TrajectoryValidatorTest.*")
     set_tests_properties(test_mppi_trajectory_validator PROPERTIES
       LABELS "gpu"
       TIMEOUT 60
     )
 
+    mppi_add_host_cases(test_mppi_trajectory_validator "-TrajectoryValidatorTest.*")
+
     cuda_add_executable(test_costs
       test/test_costs.cu
+      OPTIONS --diag-suppress=177
     )
     target_link_libraries(test_costs
       first_order_dubins_mppi
@@ -468,13 +453,10 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CXX_STANDARD 17
       CUDA_STANDARD 17
     )
-    target_compile_options(test_costs PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
-    )
     # Analytical checks remain runnable without a CUDA device; parity has its own GPU label.
     ament_add_gtest_test(test_costs ENV "GTEST_FILTER=-GpuCostEvaluation.*")
     set_tests_properties(test_costs PROPERTIES
-      LABELS "cost;gtest"
+      LABELS "cpu;cost;gtest"
       TIMEOUT 120
     )
     set(cost_gpu_result "${AMENT_TEST_RESULTS_DIR}/${PROJECT_NAME}/test_costs_gpu.gtest.xml")
@@ -487,6 +469,11 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     )
     set_tests_properties(test_costs_gpu PROPERTIES LABELS "cost;gpu;gtest")
 
+    add_test(NAME test_cost_report_round_trip
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/test_cost_report_round_trip.py"
+        "$<TARGET_FILE:test_costs>")
+    set_tests_properties(test_cost_report_round_trip PROPERTIES LABELS "cpu;cost;unit" TIMEOUT 120)
+
     # Keep the descriptive .cpp filename while compiling the texture-sampling test kernels with
     # NVCC. FindCUDA treats a non-.cu source as CUDA when this property is set.
     set_source_files_properties(test/test_distance_map.cpp PROPERTIES
@@ -494,6 +481,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
     )
     cuda_add_executable(test_distance_map
       test/test_distance_map.cpp
+      OPTIONS --diag-suppress=177
     )
     target_link_libraries(test_distance_map
       first_order_dubins_mppi
@@ -507,14 +495,13 @@ if(CUDA_AVAIL AND TRT_AVAIL)
       CXX_STANDARD 17
       CUDA_STANDARD 17
     )
-    target_compile_options(test_distance_map PRIVATE
-      $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcudafe;-diag_suppress=177>
-    )
-    ament_add_gtest_test(test_distance_map)
+    ament_add_gtest_test(test_distance_map
+      ENV "GTEST_FILTER=DistanceMapGpuTest.*:DistanceMapResourceTest.*")
     set_tests_properties(test_distance_map PROPERTIES
       LABELS "gpu"
       TIMEOUT 180
     )
+    mppi_add_host_cases(test_distance_map "-DistanceMapGpuTest.*:DistanceMapResourceTest.*")
   endif()
 
   install(TARGETS first_order_dubins_mppi mppi_offline_retune mppi_open_loop_line_sim
@@ -531,7 +518,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
 endif()
 
 ament_export_include_directories(include)
-if(CUDA_AVAIL AND TRT_AVAIL)
+if(CUDA_AVAIL)
   ament_export_libraries(first_order_dubins_mppi)
   ament_export_dependencies(MPPI-Generic OpenGL glfw3)
 endif()

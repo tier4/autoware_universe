@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     mppi_planner:
-      nominal_seed: reference # reference / temporal_mpt
+      nominal_seed: reference
       boundary_threshold_m: 5.0 # [m] lateral deviation from the reference_path at which MPPI rejects its output; the ego may start this far off the centerline (a shoulder)
       reference:
         lat_accel_mps2: 1.0 # [m/s^2] lateral acceleration the reference profile aims at in curves

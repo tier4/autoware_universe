@@ -711,11 +711,10 @@ safety_planner:
       default_value: reference
       read_only: true
       description: >
-        Where MPPI's nominal control sequence comes from. reference = the steer and the
-        acceleration read off the reference trajectory; temporal_mpt = the acados t-MPT solve
-        on the reference, which accounts for the input delay and the time constants
+        MPPI's nominal steering and acceleration come from the reference trajectory.
+        The temporal_mpt seed is no longer supported by the optimizer.
       validation:
-        one_of<>: [[reference, temporal_mpt]]
+        one_of<>: [[reference]]
     boundary_threshold_m:
       type: double
       default_value: 1.0
