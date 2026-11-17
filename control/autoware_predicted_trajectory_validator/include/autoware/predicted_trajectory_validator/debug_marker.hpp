@@ -54,9 +54,7 @@ public:
 
 private:
   rclcpp::Node * node_;
-  visualization_msgs::msg::MarkerArray marker_array_;
   visualization_msgs::msg::MarkerArray marker_array_virtual_wall_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr virtual_wall_pub_;
   std::map<std::string, int> marker_id_;
 };

@@ -25,16 +25,12 @@ PredictedTrajectoryValidatorDebugMarkerPublisher::PredictedTrajectoryValidatorDe
   rclcpp::Node * node)
 : node_(node)
 {
-  debug_viz_pub_ =
-    node_->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/marker", 1);
-
   virtual_wall_pub_ =
     node_->create_publisher<visualization_msgs::msg::MarkerArray>("~/virtual_wall", 1);
 }
 
 void PredictedTrajectoryValidatorDebugMarkerPublisher::clear_markers()
 {
-  marker_array_.markers.clear();
   marker_array_virtual_wall_.markers.clear();
 }
 
@@ -50,6 +46,5 @@ void PredictedTrajectoryValidatorDebugMarkerPublisher::push_virtual_wall(
 
 void PredictedTrajectoryValidatorDebugMarkerPublisher::publish()
 {
-  debug_viz_pub_->publish(marker_array_);
   virtual_wall_pub_->publish(marker_array_virtual_wall_);
 }

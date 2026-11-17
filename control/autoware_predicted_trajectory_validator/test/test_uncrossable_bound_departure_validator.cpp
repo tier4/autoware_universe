@@ -126,7 +126,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenMapIsUnavailable)
   validator.validate(
     res, trajectory, odometry, acceleration, nullptr, vehicle_info_, markers, hazard_sources);
 
-  EXPECT_FALSE(res.is_valid);
+  EXPECT_TRUE(res.is_valid);
 }
 
 TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryTooShort)
@@ -164,7 +164,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, ValidWhenTrajectoryParallelToBoun
     res, trajectory, make_odometry(trajectory, 10.0, 0.0), acceleration, map, vehicle_info_,
     markers, hazard_sources);
 
-  EXPECT_FALSE(res.is_valid);
+  EXPECT_TRUE(res.is_valid);
 }
 
 TEST_F(UncrossableBoundDepartureValidatorTest, InvalidWhenTrajectoryDepartsBoundary)
@@ -182,7 +182,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, InvalidWhenTrajectoryDepartsBound
   validator.validate(
     res, safe_trajectory, make_odometry(safe_trajectory, 10.0, 0.0), acceleration, map,
     vehicle_info_, markers, hazard_sources);
-  EXPECT_FALSE(res.is_valid);
+  EXPECT_TRUE(res.is_valid);
 
   const auto danger_trajectory = make_trajectory(0.0, -2.5, 10.0, 0.2);
   for (double time_s = 0.1; time_s <= 0.6; time_s += 0.1) {
@@ -191,7 +191,7 @@ TEST_F(UncrossableBoundDepartureValidatorTest, InvalidWhenTrajectoryDepartsBound
       vehicle_info_, markers, hazard_sources);
   }
 
-  EXPECT_TRUE(res.is_valid);
+  EXPECT_FALSE(res.is_valid);
   EXPECT_FALSE(markers.markers.empty());
 }
 
