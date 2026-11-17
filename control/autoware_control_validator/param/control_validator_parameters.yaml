@@ -87,9 +87,9 @@ control_validator:
         gt_eq<>: [0.0]
     departure_risk_level:
       type: int
-      description: Risk level (1 to 4) of a departure warning.
+      description: Risk level (1 to 3 = LOW to HIGH) of a departure warning.
       validation:
-        bounds<>: [1, 4]
+        bounds<>: [1, 3]
 
   hazard_warning:
     min_alert_duration:
@@ -105,7 +105,7 @@ control_validator:
     braking:
       reaction_times:
         type: double_array
-        description: Delays before braking for hazard levels 2 to 4, three values in descending order [s].
+        description: Delays before braking for risk levels LOW to HIGH, three values in descending order [s].
         validation:
           fixed_size<>: [3]
           lower_element_bounds<>: [0.0]

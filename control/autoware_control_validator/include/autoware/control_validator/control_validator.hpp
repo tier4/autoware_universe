@@ -27,13 +27,13 @@
 #include <autoware/signal_processing/lowpass_filter_1d.hpp>
 #include <autoware_control_validator/control_validator_parameters.hpp>
 #include <autoware_control_validator/msg/control_validator_status.hpp>
-#include <autoware_control_validator/msg/hazard_alert.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_control_msgs/msg/control.hpp>
+#include <autoware_internal_control_msgs/msg/hazard_alert.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -57,7 +57,8 @@ namespace boundary_departure_checker = autoware::boundary_departure_checker;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_control_msgs::msg::Control;
 using autoware_control_validator::msg::ControlValidatorStatus;
-using autoware_control_validator::msg::HazardAlert;
+using autoware_internal_control_msgs::msg::HazardAlert;
+using autoware_internal_control_msgs::msg::HazardSector;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
@@ -328,7 +329,7 @@ private:
   boundary_departure_checker::UncrossableBoundaryDepartureParam warning_params_;
   std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> warning_checker_;
   boundary_departure_checker::HysteresisState warning_hysteresis_state_;
-  uint8_t departure_risk_level_{0};
+  uint8_t departure_risk_level_{HazardSector::NONE};
 };
 
 /**

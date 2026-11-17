@@ -24,6 +24,7 @@
   <depend>autoware_adapi_specs</depend>
   <depend>autoware_boundary_departure_checker</depend>
   <depend>autoware_control_msgs</depend>
+  <depend>autoware_internal_control_msgs</depend>
   <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_lanelet2_utils</depend>
   <depend>autoware_map_msgs</depend>

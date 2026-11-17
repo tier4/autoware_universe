@@ -30,11 +30,13 @@ namespace autoware::control_validator
 {
 namespace
 {
-using autoware_control_validator::msg::HazardAlert;
+using autoware_internal_control_msgs::msg::HazardAlert;
+using autoware_internal_control_msgs::msg::HazardSector;
 using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
 using hazard_warning::HazardWarningParam;
 using hazard_warning::kNumSectors;
+using hazard_warning::SectorState;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
@@ -128,19 +130,21 @@ std_msgs::msg::ColorRGBA make_color(const float r, const float g, const float b,
   return color;
 }
 
-std_msgs::msg::ColorRGBA level_color(const uint8_t level)
+std_msgs::msg::ColorRGBA level_color(const uint8_t risk_level, const uint8_t sources)
 {
-  switch (level) {
-    case 0:
-      return make_color(0.3F, 0.8F, 0.3F, 0.8F);
-    case 1:
-      return make_color(0.0F, 0.8F, 1.0F, 0.9F);
-    case 2:
-      return make_color(1.0F, 1.0F, 0.0F, 0.9F);
-    case 3:
-      return make_color(1.0F, 0.5F, 0.0F, 0.9F);
+  switch (risk_level) {
+    case HazardSector::NONE:
+      if (sources & HazardSector::SOURCE_PROXIMITY) {
+        return make_color(0.0F, 0.8F, 1.0F, 0.9F);  // cyan
+      }
+      return make_color(0.3F, 0.8F, 0.3F, 0.8F);  // green
+    case HazardSector::LOW:
+      return make_color(1.0F, 1.0F, 0.0F, 0.9F);  // yellow
+    case HazardSector::MID:
+      return make_color(1.0F, 0.5F, 0.0F, 0.9F);  // orange
+    case HazardSector::HIGH:
     default:
-      return make_color(1.0F, 0.0F, 0.0F, 0.9F);
+      return make_color(1.0F, 0.0F, 0.0F, 0.9F);  // red
   }
 }
 
@@ -199,10 +203,11 @@ Marker make_risk_level_marker(
   marker.pose.position.z = 1.0;
   marker.pose.orientation.w = 1.0;
   marker.scale.z = 0.5;
-  marker.color = level_color(source.risk_level);
+  marker.color = level_color(source.risk_level, source.sources);
   marker.lifetime = rclcpp::Duration::from_seconds(0.5);
   marker.frame_locked = frame_locked;
-  marker.text = "risk_level:" + std::to_string(source.risk_level);
+  marker.text = "risk_level:" + std::to_string(source.risk_level) +
+                " sources:" + std::to_string(source.sources);
   return marker;
 }
 }  // namespace
@@ -252,10 +257,10 @@ void HazardWarning::build_wedges(const Point2d & apex)
 
 void HazardWarning::assign_sectors(
   const HazardWarningSources & hazard_sources, const Point2d & apex,
-  std::array<uint8_t, kNumSectors> & max_level,
+  std::array<SectorState, kNumSectors> & raw,
   std::array<HazardWarningSources, kNumSectors> & sector_sources) const
 {
-  max_level.fill(0);
+  raw.fill(SectorState{});
   const auto assign = [&](
                         const std::optional<std::vector<HazardSource>> & sources,
                         std::optional<std::vector<HazardSource>> HazardWarningSources::* member) {
@@ -269,7 +274,8 @@ void HazardWarning::assign_sectors(
       const auto arc = bearing_arc(source.shape, apex);
       for (size_t sector = 0; sector < kNumSectors; ++sector) {
         if (!arc || overlaps(*arc, sector_arc(sector))) {
-          max_level[sector] = std::max(max_level[sector], source.risk_level);
+          raw[sector].risk_level = std::max(raw[sector].risk_level, source.risk_level);
+          raw[sector].sources |= source.sources;  // union of the source bits
           auto & assigned = sector_sources[sector].*member;
           if (!assigned) {
             assigned.emplace();
@@ -298,20 +304,26 @@ std::optional<HazardAlert> HazardWarning::make_alert(
     build_wedges(apex);
   }
 
-  std::array<uint8_t, kNumSectors> max_level{};
+  std::array<SectorState, kNumSectors> raw{};
   std::array<HazardWarningSources, kNumSectors> sector_sources;
-  assign_sectors(hazard_sources, apex, max_level, sector_sources);
+  assign_sectors(hazard_sources, apex, raw, sector_sources);
 
   HazardAlert alert;
   alert.header.stamp = now;
   alert.header.frame_id = "base_link";
+  alert.origin.x = apex.x();
+  alert.origin.y = apex.y();
+  alert.sectors.resize(kNumSectors);
   for (size_t sector = 0; sector < kNumSectors; ++sector) {
-    const auto level =
-      sector_latches_[sector].update(max_level[sector], now, param_.min_alert_duration);
-    alert.sectors[sector].risk_level = level;
-    if (max_level[sector] >= 1) {
+    const auto state = sector_latches_[sector].update(raw[sector], now, param_.min_alert_duration);
+    auto & out = alert.sectors[sector];
+    out.start_angle = deg2rad(kSectorRanges[sector][0]);
+    out.end_angle = deg2rad(kSectorRanges[sector][1]);
+    out.risk_level = state.risk_level;
+    out.sources = state.sources;
+    if (raw[sector].is_on()) {
       last_on_sources_[sector] = std::move(sector_sources[sector]);
-    } else if (level == 0) {
+    } else if (!state.is_on()) {
       last_on_sources_[sector].collision.reset();
       last_on_sources_[sector].departure.reset();
     }
@@ -346,18 +358,20 @@ void HazardWarning::publish_debug(const HazardAlert & alert) const
           make_risk_level_marker(source, risk_level_ns, id, source.stamp, false));
       }
       markers.markers.push_back(make_polygon_marker(
-        source.shape, sources_ns, id++, level_color(source.risk_level), source.stamp, false));
+        source.shape, sources_ns, id++, level_color(source.risk_level, source.sources),
+        source.stamp, false));
     }
   };
   for (size_t sector = 0; sector < kNumSectors; ++sector) {
-    if (alert.sectors[sector].risk_level < 1) {
+    const auto & out = alert.sectors[sector];
+    if (!SectorState{out.risk_level, out.sources}.is_on()) {
       continue;
     }
     draw_sources(last_on_sources_[sector].collision, "collision_sources", "collision_risk_level");
     draw_sources(last_on_sources_[sector].departure, "departure_sources", "departure_risk_level");
     markers.markers.push_back(make_polygon_marker(
       wedges_[sector], "hazard_sectors", static_cast<int32_t>(sector),
-      level_color(alert.sectors[sector].risk_level), alert.header.stamp, true));
+      level_color(out.risk_level, out.sources), alert.header.stamp, true));
   }
   pub_markers_->publish(markers);
 }
