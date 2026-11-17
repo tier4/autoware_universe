@@ -400,12 +400,6 @@ minimum_rule_based_planner:
         type: double
         default_value: 0.3
         description: velocity threshold for target object to be considered as stopped [m/s]
-      max_lateral_velocity_th:
-        type: double
-        default_value: 1.0
-        description: maximum lateral velocity threshold for target object to be considered for obstacle stop [m/s]
-        validation:
-          bounds<>: [0.0, 10.0]
       safety_buffer:
         type: double
         default_value: 0.1
