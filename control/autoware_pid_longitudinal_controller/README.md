@@ -185,6 +185,23 @@ AutonomouStuff Lexus RX 450h for under 40 km/h driving.
 | max_pitch_rad                               | double | max value of estimated pitch [rad]                                                                                                                                                      | 0.1           |
 | min_pitch_rad                               | double | min value of estimated pitch [rad]                                                                                                                                                      | -0.1          |
 
+### Stopping-scene acceleration bias
+
+Optional correction for a vehicle that under-brakes while rolling into a planned stop. The bias is added to the acceleration command after the final diff limit. It resets to 0 on every scene entry. While the scene is active, `bias = sample_weight * clip(delayed_output_acc - localization_ax, bias_min, 0) + (1 - sample_weight) * bias`, and the published acceleration is the base command plus that bias. The delay buffer stores published acceleration.
+
+| Name                              | Type   | Description                                                                                          | Default |
+| :-------------------------------- | :----- | :--------------------------------------------------------------------------------------------------- | :------ |
+| enable_stopping_scene_accel_bias  | bool   | enable the bias. While false the command is unchanged.                                              | false   |
+| stopping_scene_velocity_min       | double | scene requires ego longitudinal speed above this value [m/s]                                        | 0.1     |
+| stopping_scene_velocity_max       | double | scene requires ego longitudinal speed below this value [m/s]                                        | 3.0     |
+| stopping_scene_end_velocity_max   | double | scene requires the trajectory endpoint speed below this value and below ego speed [m/s]             | 0.2     |
+| stopping_scene_bias_min           | double | most negative bias added to the command [m/s^2]                                                     | -0.5    |
+| stopping_scene_sample_weight      | double | weight of the new acceleration error in the bias filter [-]                                         | 0.1     |
+| stopping_scene_command_delay      | double | delay of the published-acceleration buffer used as the command reference [s]                        | 0.3     |
+| stopping_scene_nearest_dist       | double | maximum distance from ego to the current trajectory point [m]                                       | 10.0    |
+
+The current trajectory point acceleration must also be negative. Debug values `STOPPING_SCENE_ACTIVE`, `STOPPING_SCENE_ACCEL_BIAS`, and `STOPPING_SCENE_DELAYED_ACC` are appended to the longitudinal diagnostic array.
+
 ### State transition
 
 | Name                                | Type   | Description                                                                                                                                                          | Default value |

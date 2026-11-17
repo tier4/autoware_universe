@@ -22,6 +22,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -210,6 +211,23 @@ PidLongitudinalController::PidLongitudinalController(
   m_lpf_pitch = std::make_shared<LowpassFilter1d>(0.0, lpf_pitch_gain);
   m_max_pitch_rad = node.declare_parameter<double>("max_pitch_rad");  // [rad]
   m_min_pitch_rad = node.declare_parameter<double>("min_pitch_rad");  // [rad]
+
+  m_enable_stopping_scene_accel_bias =
+    node.declare_parameter<bool>("enable_stopping_scene_accel_bias", false);
+  m_stopping_scene_velocity_min =
+    node.declare_parameter<double>("stopping_scene_velocity_min", 0.1);  // [m/s]
+  m_stopping_scene_velocity_max =
+    node.declare_parameter<double>("stopping_scene_velocity_max", 3.0);  // [m/s]
+  m_stopping_scene_end_velocity_max =
+    node.declare_parameter<double>("stopping_scene_end_velocity_max", 0.2);  // [m/s]
+  m_stopping_scene_bias_min =
+    node.declare_parameter<double>("stopping_scene_bias_min", -0.5);  // [m/s^2]
+  m_stopping_scene_sample_weight =
+    node.declare_parameter<double>("stopping_scene_sample_weight", 0.1);  // [-]
+  m_stopping_scene_command_delay =
+    node.declare_parameter<double>("stopping_scene_command_delay", 0.3);  // [s]
+  m_stopping_scene_nearest_dist =
+    node.declare_parameter<double>("stopping_scene_nearest_dist", 10.0);  // [m]
 
   // check slope source is proper
   const std::string slope_source = node.declare_parameter<std::string>(
@@ -421,6 +439,29 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalController::paramCallbac
   update_param("max_pitch_rad", m_max_pitch_rad);
   update_param("min_pitch_rad", m_min_pitch_rad);
   update_param("adaptive_trajectory_velocity_th", m_adaptive_trajectory_velocity_th);
+
+  auto update_bool = [&](const std::string & name, bool & v) {
+    auto it = std::find_if(
+      parameters.cbegin(), parameters.cend(),
+      [&name](const rclcpp::Parameter & parameter) { return parameter.get_name() == name; });
+    if (it != parameters.cend()) {
+      v = it->as_bool();
+      return true;
+    }
+    return false;
+  };
+  if (
+    update_bool("enable_stopping_scene_accel_bias", m_enable_stopping_scene_accel_bias) &&
+    !m_enable_stopping_scene_accel_bias) {
+    resetStoppingSceneAccelBias();
+  }
+  update_param("stopping_scene_velocity_min", m_stopping_scene_velocity_min);
+  update_param("stopping_scene_velocity_max", m_stopping_scene_velocity_max);
+  update_param("stopping_scene_end_velocity_max", m_stopping_scene_end_velocity_max);
+  update_param("stopping_scene_bias_min", m_stopping_scene_bias_min);
+  update_param("stopping_scene_sample_weight", m_stopping_scene_sample_weight);
+  update_param("stopping_scene_command_delay", m_stopping_scene_command_delay);
+  update_param("stopping_scene_nearest_dist", m_stopping_scene_nearest_dist);
 
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
@@ -962,6 +1003,10 @@ PidLongitudinalController::Motion PidLongitudinalController::calcCtrlCmd(
   ctrl_cmd_as_pedal_pos.acc = longitudinal_utils::applyDiffLimitFilter(
     ctrl_cmd_as_pedal_pos.acc, m_prev_ctrl_cmd.acc, control_data.dt, m_max_acc_cmd_diff);
 
+  // Bias is applied to the command that would otherwise be published. The final
+  // diff limit above is the base; the bias is an additive plant correction.
+  ctrl_cmd_as_pedal_pos.acc = applyStoppingSceneAccelBias(ctrl_cmd_as_pedal_pos.acc, control_data);
+
   // update debug visualization
   updateDebugVelAcc(control_data);
 
@@ -970,6 +1015,111 @@ PidLongitudinalController::Motion PidLongitudinalController::calcCtrlCmd(
     control_data.current_motion.vel);
 
   return ctrl_cmd_as_pedal_pos;
+}
+
+bool PidLongitudinalController::isStoppingScene(const ControlData & control_data) const
+{
+  if (m_trajectory.points.empty() || control_data.interpolated_traj.points.empty()) {
+    return false;
+  }
+  const double ego_vx = control_data.current_motion.vel;
+  if (!(ego_vx > m_stopping_scene_velocity_min && ego_vx < m_stopping_scene_velocity_max)) {
+    return false;
+  }
+  const double end_vx = static_cast<double>(m_trajectory.points.back().longitudinal_velocity_mps);
+  if (!(end_vx < ego_vx && end_vx < m_stopping_scene_end_velocity_max)) {
+    return false;
+  }
+
+  const auto & nearest = control_data.interpolated_traj.points.at(control_data.nearest_idx);
+  const auto & ego = m_current_kinematic_state.pose.pose.position;
+  const double dx = static_cast<double>(nearest.pose.position.x) - ego.x;
+  const double dy = static_cast<double>(nearest.pose.position.y) - ego.y;
+  if (std::hypot(dx, dy) > m_stopping_scene_nearest_dist) {
+    return false;
+  }
+  return static_cast<double>(nearest.acceleration_mps2) < 0.0;
+}
+
+double PidLongitudinalController::lookupDelayedStoppingSceneAccel(const rclcpp::Time & now) const
+{
+  if (m_stopping_scene_command_delay <= 0.0 || m_stopping_scene_accel_history.empty()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const rclcpp::Time query_stamp =
+    now - rclcpp::Duration::from_seconds(m_stopping_scene_command_delay);
+  const auto found = std::find_if(
+    m_stopping_scene_accel_history.rbegin(), m_stopping_scene_accel_history.rend(),
+    [&](const StoppingSceneAccelSample & sample) { return sample.stamp <= query_stamp; });
+  if (found == m_stopping_scene_accel_history.rend()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  constexpr double max_extra_age_s = 0.3;
+  if ((now - found->stamp).seconds() > m_stopping_scene_command_delay + max_extra_age_s) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return found->accel;
+}
+
+void PidLongitudinalController::resetStoppingSceneAccelBias()
+{
+  m_stopping_scene_bias = 0.0;
+  m_stopping_scene_was_active = false;
+  m_stopping_scene_accel_history.clear();
+}
+
+double PidLongitudinalController::applyStoppingSceneAccelBias(
+  const double base_acc, const ControlData & control_data)
+{
+  if (!m_enable_stopping_scene_accel_bias) {
+    resetStoppingSceneAccelBias();
+    m_debug_values.setValues(DebugValues::TYPE::STOPPING_SCENE_ACTIVE, 0.0);
+    m_debug_values.setValues(DebugValues::TYPE::STOPPING_SCENE_ACCEL_BIAS, 0.0);
+    m_debug_values.setValues(DebugValues::TYPE::STOPPING_SCENE_DELAYED_ACC, base_acc);
+    return base_acc;
+  }
+
+  const bool scene = isStoppingScene(control_data);
+  double delayed_acc = std::numeric_limits<double>::quiet_NaN();
+  if (!scene) {
+    m_stopping_scene_bias = 0.0;
+    m_stopping_scene_was_active = false;
+  } else {
+    if (!m_stopping_scene_was_active) {
+      m_stopping_scene_bias = 0.0;
+    }
+    m_stopping_scene_was_active = true;
+
+    // delay == 0 compares this cycle's base command. A positive delay compares the
+    // acceleration that was actually published.
+    delayed_acc = m_stopping_scene_command_delay <= 0.0
+                    ? base_acc
+                    : lookupDelayedStoppingSceneAccel(clock_->now());
+    if (std::isfinite(delayed_acc)) {
+      const double raw = delayed_acc - control_data.current_motion.acc;
+      const double bias_min = std::min(m_stopping_scene_bias_min, 0.0);
+      const double sample = std::clamp(raw, bias_min, 0.0);
+      const double weight = std::clamp(m_stopping_scene_sample_weight, 0.0, 1.0);
+      m_stopping_scene_bias =
+        std::clamp(weight * sample + (1.0 - weight) * m_stopping_scene_bias, bias_min, 0.0);
+    }
+  }
+
+  const double output_acc = base_acc + (scene ? m_stopping_scene_bias : 0.0);
+  const rclcpp::Time now = clock_->now();
+  m_stopping_scene_accel_history.push_back(StoppingSceneAccelSample{now, output_acc});
+  const double keep_s = std::max(m_stopping_scene_command_delay, 0.0) + 1.0;
+  while (!m_stopping_scene_accel_history.empty() &&
+         (now - m_stopping_scene_accel_history.front().stamp).seconds() > keep_s) {
+    m_stopping_scene_accel_history.pop_front();
+  }
+
+  m_debug_values.setValues(DebugValues::TYPE::STOPPING_SCENE_ACTIVE, scene ? 1.0 : 0.0);
+  m_debug_values.setValues(DebugValues::TYPE::STOPPING_SCENE_ACCEL_BIAS, m_stopping_scene_bias);
+  m_debug_values.setValues(
+    DebugValues::TYPE::STOPPING_SCENE_DELAYED_ACC,
+    std::isfinite(delayed_acc) ? delayed_acc : base_acc);
+  return output_acc;
 }
 
 // Do not use nearest_idx here
