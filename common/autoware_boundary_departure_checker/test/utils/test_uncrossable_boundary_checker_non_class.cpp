@@ -25,6 +25,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -55,10 +56,12 @@ BoundarySegmentsBySide make_boundaries(
 {
   BoundarySegmentsBySide boundaries;
   for (const auto & seg : left_segments) {
-    boundaries.left.emplace_back(seg, IdxForRTreeSegment{1, 0, 1});
+    boundaries.left.emplace_back(
+      Segment3d{seg.first.to_3d(), seg.second.to_3d()}, IdxForRTreeSegment{1, 0, 1});
   }
   for (const auto & seg : right_segments) {
-    boundaries.right.emplace_back(seg, IdxForRTreeSegment{2, 0, 1});
+    boundaries.right.emplace_back(
+      Segment3d{seg.first.to_3d(), seg.second.to_3d()}, IdxForRTreeSegment{2, 0, 1});
   }
   return boundaries;
 }
@@ -426,5 +429,34 @@ TEST(UncrossableBoundaryUtilsTest, TestBuildUncrossableBoundariesRTree)
   std::vector<SegmentWithIdx> results = rtree.query(Point2d{0.5, 0.0}, 1);
   ASSERT_EQ(results.size(), 1);
   EXPECT_EQ(results.front().second.linestring_id, ls1.id());
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestFindClosestBoundarySegmentsKeepsSegmentZ)
+{
+  // Arrange: a road border 1.0 m to the left of the ego left side, at z = 7.5.
+  lanelet::LaneletMapPtr map = std::make_shared<lanelet::LaneletMap>();
+  lanelet::Point3d p1(lanelet::utils::getId(), -2.0, 2.0, 7.5);
+  lanelet::Point3d p2(lanelet::utils::getId(), 2.0, 2.0, 7.5);
+  lanelet::LineString3d ls(lanelet::utils::getId(), {p1, p2});
+  ls.attributes()[lanelet::AttributeName::Type] = "road_border";
+  map->add(ls);
+  const std::vector<std::string> types = {"road_border"};
+  const UncrossableBoundariesRTree rtree(map, types);
+
+  const Segment2d ego_left_side{{1.0, 1.0}, {-1.0, 1.0}};
+  const Segment2d ego_right_side{{1.0, -1.0}, {-1.0, -1.0}};
+  constexpr double ego_z = 7.0;
+  constexpr double ego_height = 2.5;
+  std::unordered_set<IdxForRTreeSegment, IdxForRTreeSegmentHash> unique_ids;
+
+  // Act:
+  const auto result = boundary_segment_finder::find_closest_boundary_segments(
+    rtree, map, UncrossableBoundaryDepartureParam{}, ego_left_side, ego_right_side, ego_z,
+    ego_height, unique_ids);
+
+  // Assert:
+  ASSERT_EQ(result.size(), 1U);
+  EXPECT_DOUBLE_EQ(result.front().first.first.z(), 7.5);
+  EXPECT_DOUBLE_EQ(result.front().first.second.z(), 7.5);
 }
 }  // namespace autoware::boundary_departure_checker
