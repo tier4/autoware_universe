@@ -113,6 +113,14 @@ bool is_segment_within_ego_height(
   return height_diff < ego_height;
 }
 
+double calc_boundary_height(
+  const autoware_utils_geometry::Segment3d & boundary_segment, const Point & ego_position)
+{
+  (void)boundary_segment;
+  (void)ego_position;
+  return 0.0;
+}
+
 std::vector<Segment3dWithIdx> find_closest_boundary_segments(
   const UncrossableBoundariesRTree & rtree, const lanelet::LaneletMapPtr & lanelet_map_ptr,
   const UncrossableBoundaryDepartureParam & param, const Segment2d & ego_ref_segment,

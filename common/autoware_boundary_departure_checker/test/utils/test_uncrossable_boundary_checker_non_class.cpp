@@ -459,4 +459,69 @@ TEST(UncrossableBoundaryUtilsTest, TestFindClosestBoundarySegmentsKeepsSegmentZ)
   EXPECT_DOUBLE_EQ(result.front().first.first.z(), 7.5);
   EXPECT_DOUBLE_EQ(result.front().first.second.z(), 7.5);
 }
+
+TEST(UncrossableBoundaryUtilsTest, TestCalcBoundaryHeightFlatSegmentAbovePoint)
+{
+  // Arrange: a flat border at z = 7.5, ego at z = 7.0.
+  const Segment3d segment{{0.0, 1.0, 7.5}, {10.0, 1.0, 7.5}};
+  const auto ego_position = autoware_utils_geometry::create_point(5.0, 0.0, 7.0);
+
+  // Act:
+  const auto height = boundary_segment_finder::calc_boundary_height(segment, ego_position);
+
+  // Assert:
+  EXPECT_DOUBLE_EQ(height, 0.5);
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestCalcBoundaryHeightInterpolatesSlopedSegment)
+{
+  // Arrange: the border rises 1.0 m over 8.0 m. The closest point is a quarter along it.
+  const Segment3d segment{{0.0, 1.0, 7.0}, {8.0, 1.0, 8.0}};
+  const auto ego_position = autoware_utils_geometry::create_point(2.0, 0.0, 7.0);
+
+  // Act:
+  const auto height = boundary_segment_finder::calc_boundary_height(segment, ego_position);
+
+  // Assert: z on the segment is 7.25, not the 8.0 of the higher end.
+  EXPECT_DOUBLE_EQ(height, 0.25);
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestCalcBoundaryHeightClampsToSegmentEnd)
+{
+  // Arrange: ego is beyond the end of the segment.
+  const Segment3d segment{{0.0, 1.0, 7.0}, {4.0, 1.0, 8.0}};
+  const auto ego_position = autoware_utils_geometry::create_point(6.0, 0.0, 7.5);
+
+  // Act:
+  const auto height = boundary_segment_finder::calc_boundary_height(segment, ego_position);
+
+  // Assert: the closest point is the end at z = 8.0.
+  EXPECT_DOUBLE_EQ(height, 0.5);
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestCalcBoundaryHeightSegmentBelowPointIsNegative)
+{
+  // Arrange: a border 0.125 m below ego.
+  const Segment3d segment{{0.0, 1.0, 6.875}, {4.0, 1.0, 6.875}};
+  const auto ego_position = autoware_utils_geometry::create_point(2.0, 0.0, 7.0);
+
+  // Act:
+  const auto height = boundary_segment_finder::calc_boundary_height(segment, ego_position);
+
+  // Assert:
+  EXPECT_DOUBLE_EQ(height, -0.125);
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestCalcBoundaryHeightZeroLengthSegmentUsesStartPoint)
+{
+  // Arrange: both segment ends are at the same x and y, for example a duplicate map point.
+  const Segment3d segment{{1.0, 1.0, 7.5}, {1.0, 1.0, 9.0}};
+  const auto ego_position = autoware_utils_geometry::create_point(0.0, 0.0, 7.0);
+
+  // Act:
+  const auto height = boundary_segment_finder::calc_boundary_height(segment, ego_position);
+
+  // Assert: no division by zero, the start point z is used.
+  EXPECT_DOUBLE_EQ(height, 0.5);
+}
 }  // namespace autoware::boundary_departure_checker

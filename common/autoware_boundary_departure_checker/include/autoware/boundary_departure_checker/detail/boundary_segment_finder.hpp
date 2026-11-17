@@ -62,6 +62,17 @@ bool is_segment_within_ego_height(
   const double ego_height);
 
 /**
+ * @brief Calculate the height of a boundary segment above a trajectory point.
+ * @details The segment z is taken at the segment point that is closest to the trajectory point in
+ * 2D, by a linear interpolation between the two segment ends.
+ * @param[in] boundary_segment 3D boundary segment
+ * @param[in] ego_position position of the trajectory point
+ * @return segment z minus the z of the trajectory point [m]
+ */
+[[nodiscard]] double calc_boundary_height(
+  const autoware_utils_geometry::Segment3d & boundary_segment, const Point & ego_position);
+
+/**
  * @brief Find closest boundary segments from R-tree.
  * @param[in] rtree R-tree of boundary segments
  * @param[in] lanelet_map_ptr pointer to lanelet map
