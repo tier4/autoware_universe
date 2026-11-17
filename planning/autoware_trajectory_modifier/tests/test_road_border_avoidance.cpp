@@ -14,15 +14,20 @@
 
 #include "autoware/trajectory_modifier/time_sequence_raw/road_border_avoidance.hpp"
 
+#include <Eigen/Geometry>
 #include <autoware_utils_geometry/geometry.hpp>
 
 #include <gtest/gtest.h>
+#include <lanelet2_core/primitives/LineString.h>
+#include <lanelet2_core/primitives/Point.h>
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace autoware::trajectory_modifier::test
 {
+using autoware::trajectory_modifier::time_sequence_raw::RoadBorder;
 using autoware::trajectory_modifier::time_sequence_raw::RoadBorderAvoidance;
 using autoware::trajectory_modifier::time_sequence_raw::RoadBorderAvoidanceParams;
 using autoware_planning_msgs::msg::Trajectory;
@@ -189,6 +194,254 @@ TEST_F(RoadBorderAvoidanceTest, IgnoresBordersOutsideSearchRadius)
   const auto result = avoidance.adjust(raw, ego_pose_);
   EXPECT_EQ(result.num_shifted_points, 0U);
   EXPECT_EQ(result.num_unresolved_points, 0U);
+}
+
+TEST_F(RoadBorderAvoidanceTest, IgnoresBordersOnAnotherLevel)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // Overpass borders crossing the path perpendicularly, 6 m above the ego road.
+  std::vector<RoadBorder> borders;
+  for (const double x : {9.0, 11.0}) {
+    RoadBorder border;
+    border.line.emplace_back(x, -20.0);
+    border.line.emplace_back(x, 20.0);
+    border.z = {6.0, 6.0};
+    borders.push_back(border);
+  }
+  avoidance.set_road_borders(borders);
+
+  const auto raw = make_straight_trajectory(0.0);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_EQ(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+}
+
+TEST_F(RoadBorderAvoidanceTest, FollowsBorderHeightOnSlope)
+{
+  params_.propagate_shift = false;  // every point must detect the border by itself
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // Ramp climbing 10 % while the trajectory keeps the ego height (as raw model output does).
+  // The left border at y = 1.0 rises 6 m over 60 m but is still on the ego road.
+  RoadBorder border;
+  border.line = make_parallel_border(1.0);
+  border.z = {-1.0, 5.0};
+  avoidance.set_road_borders(std::vector<RoadBorder>{border});
+
+  const auto raw = make_straight_trajectory(0.0, 40);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_LT(point.pose.position.y, 0.0);
+  }
+}
+
+TEST_F(RoadBorderAvoidanceTest, IgnoresOverpassChunkOfLongMixedLevelLinestring)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // Long linestring (> 47.5 m chunk limit) starting beside ego at z = 0, climbing onto a 6 m
+  // overpass far ahead, and crossing over x = 10 at z = 6 m. Ground chunks stay accepted while
+  // the overpass crossing chunk (whose vertices are all at z = 6 m) is rejected.
+  RoadBorder border;
+  border.line.emplace_back(-10.0, 1.5);
+  border.line.emplace_back(45.0, 1.5);
+  border.line.emplace_back(50.0, 1.5);
+  border.line.emplace_back(50.0, 20.0);
+  border.line.emplace_back(10.0, 20.0);
+  border.line.emplace_back(10.0, -20.0);
+  border.z = {0.0, 0.0, 6.0, 6.0, 6.0, 6.0};
+  avoidance.set_road_borders(std::vector<RoadBorder>{border});
+
+  const auto raw = make_straight_trajectory(0.0);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_EQ(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+}
+
+TEST_F(RoadBorderAvoidanceTest, KeepsShortMixedLevelLinestringChunkStartingAtEgoLevel)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // Short mixed-level linestring (<= 47.5 m, one 20-point chunk): its ego-closest vertex is on the
+  // ego level at z = 0, so #3659's chunk-level classification retains the entire chunk.
+  RoadBorder border;
+  border.line.emplace_back(0.0, 1.5);
+  border.line.emplace_back(5.0, 1.5);
+  border.line.emplace_back(10.0, 1.5);
+  border.line.emplace_back(10.0, -20.0);
+  border.z = {0.0, 0.0, 6.0, 6.0};
+  avoidance.set_road_borders(std::vector<RoadBorder>{border});
+
+  const auto raw = make_straight_trajectory(0.0);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_TRUE(result.modified());
+}
+
+TEST_F(RoadBorderAvoidanceTest, RespectsThreeMeterBoundaryNearEgo)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // #3659 keeps elements within 4.0 + 0.05 * distance in the ego frame, so a crossing border 3 m
+  // above ego is still treated as same-level (whereas 6 m in IgnoresBordersOnAnotherLevel is not).
+  RoadBorder border;
+  border.line.emplace_back(10.0, -20.0);
+  border.line.emplace_back(10.0, 20.0);
+  border.z = {3.0, 3.0};
+  avoidance.set_road_borders(std::vector<RoadBorder>{border});
+
+  const auto raw = make_straight_trajectory(0.0);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_TRUE(result.modified());
+}
+
+TEST_F(RoadBorderAvoidanceTest, TransformsChunkIntoPitchedEgoFrame)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  // Uphill border starting 30 m ahead at 20 % grade (tan(0.20) ~ 0.2027 -> z ~ 6.08 m at x = 30).
+  // Flat-ego check at (0,0,0) rejects it (6.08 > 4.0 + 0.05 * 30 = 5.50), while a nose-up pitched
+  // ego (pitch = -0.20 rad about +Y) puts the border at z_ego ~ 0 and shifts away from it.
+  constexpr double pitch_rad = -0.20;
+  const double slope = std::tan(-pitch_rad);
+  RoadBorder border;
+  border.line.emplace_back(30.0, 1.0);
+  border.line.emplace_back(45.0, 1.0);
+  border.z = {30.0 * slope, 45.0 * slope};
+  avoidance.set_road_borders(std::vector<RoadBorder>{border});
+
+  const auto raw = make_straight_trajectory(0.0, 45);
+  const auto flat_result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_EQ(flat_result.num_shifted_points, 0U);
+  EXPECT_EQ(flat_result.num_unresolved_points, 0U);
+
+  geometry_msgs::msg::Pose pitched_ego = ego_pose_;
+  const Eigen::Quaterniond q_pitch(Eigen::AngleAxisd(pitch_rad, Eigen::Vector3d::UnitY()));
+  pitched_ego.orientation.w = q_pitch.w();
+  pitched_ego.orientation.x = q_pitch.x();
+  pitched_ego.orientation.y = q_pitch.y();
+  pitched_ego.orientation.z = q_pitch.z();
+
+  const auto pitched_result = avoidance.adjust(raw, pitched_ego);
+  EXPECT_GT(pitched_result.num_shifted_points, 0U);
+  EXPECT_EQ(pitched_result.num_unresolved_points, 0U);
+  for (size_t i = 30; i < pitched_result.trajectory.points.size(); ++i) {
+    EXPECT_LT(pitched_result.trajectory.points[i].pose.position.y, 0.0);
+  }
+}
+
+TEST_F(RoadBorderAvoidanceTest, FilteringIsInvariantToTrajectoryResampling)
+{
+  params_.propagate_shift = false;
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  RoadBorder crossing_ground;
+  crossing_ground.line.emplace_back(12.0, -20.0);
+  crossing_ground.line.emplace_back(12.0, 20.0);
+  crossing_ground.z = {0.0, 0.0};
+
+  RoadBorder parallel_high;
+  parallel_high.line.emplace_back(4.0, 1.0);
+  parallel_high.line.emplace_back(36.0, 1.0);
+  parallel_high.z = {6.0, 6.0};
+  avoidance.set_road_borders(std::vector<RoadBorder>{crossing_ground, parallel_high});
+
+  const auto make_traj_with_step = [](const double step_m) {
+    Trajectory traj;
+    traj.header.frame_id = "map";
+    for (double x = 0.0; x <= 40.0 + 1e-6; x += step_m) {
+      TrajectoryPoint point;
+      point.pose.position.x = x;
+      point.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(0.0);
+      traj.points.push_back(point);
+    }
+    return traj;
+  };
+
+  const auto sparse_result = avoidance.adjust(make_traj_with_step(4.0), ego_pose_);
+  const auto dense_result = avoidance.adjust(make_traj_with_step(0.5), ego_pose_);
+  // At x = 24, only the 6 m parallel border is near the trajectory; neither sampling avoids it.
+  EXPECT_DOUBLE_EQ(sparse_result.trajectory.points.at(6).pose.position.y, 0.0);
+  EXPECT_DOUBLE_EQ(dense_result.trajectory.points.at(48).pose.position.y, 0.0);
+  // Both see the ground crossing border identically.
+  EXPECT_GT(sparse_result.num_unresolved_points, 0U);
+  EXPECT_GT(dense_result.num_unresolved_points, 0U);
+}
+
+TEST_F(RoadBorderAvoidanceTest, FilteringIsInvariantToMapVertexSubdivision)
+{
+  params_.propagate_shift = false;
+  RoadBorderAvoidance coarse_avoidance(params_, vehicle_info_);
+  RoadBorderAvoidance dense_avoidance(params_, vehicle_info_);
+
+  RoadBorder coarse;
+  coarse.line.emplace_back(0.0, 1.0);
+  coarse.line.emplace_back(40.0, 1.0);
+  coarse.z = {0.0, 6.0};
+  coarse_avoidance.set_road_borders(std::vector<RoadBorder>{coarse});
+
+  RoadBorder dense;
+  for (int i = 0; i <= 40; ++i) {
+    dense.line.emplace_back(static_cast<double>(i), 1.0);
+    dense.z.push_back(6.0 * static_cast<double>(i) / 40.0);
+  }
+  dense_avoidance.set_road_borders(std::vector<RoadBorder>{dense});
+
+  const auto raw = make_straight_trajectory(0.0, 40);
+  const auto coarse_result = coarse_avoidance.adjust(raw, ego_pose_);
+  const auto dense_result = dense_avoidance.adjust(raw, ego_pose_);
+  ASSERT_EQ(coarse_result.trajectory.points.size(), dense_result.trajectory.points.size());
+  EXPECT_EQ(coarse_result.num_shifted_points, dense_result.num_shifted_points);
+  for (size_t i = 0; i < raw.points.size(); ++i) {
+    EXPECT_NEAR(
+      coarse_result.trajectory.points[i].pose.position.y,
+      dense_result.trajectory.points[i].pose.position.y, 1e-6);
+  }
+}
+
+TEST_F(RoadBorderAvoidanceTest, RejectsNonFiniteBorderElevations)
+{
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  const double nan_z = std::numeric_limits<double>::quiet_NaN();
+
+  // Closest vertex at (0, 1) has NaN elevation while far endpoints sit at 0 m -> must still reject.
+  RoadBorder mixed_nan;
+  mixed_nan.line.emplace_back(-20.0, 1.0);
+  mixed_nan.line.emplace_back(0.0, 1.0);
+  mixed_nan.line.emplace_back(20.0, 1.0);
+  mixed_nan.z = {0.0, nan_z, 0.0};
+
+  RoadBorder all_nan;
+  all_nan.line = make_parallel_border(1.0);
+  all_nan.z = {nan_z, nan_z};
+
+  avoidance.set_road_borders(std::vector<RoadBorder>{mixed_nan, all_nan});
+
+  const auto raw = make_straight_trajectory(0.0);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_EQ(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+}
+
+TEST_F(RoadBorderAvoidanceTest, SetMapPreservesHeightsAndIgnoresOverpass)
+{
+  lanelet::LaneletMap lanelet_map;
+  lanelet::LineString3d overpass_border(
+    lanelet::utils::getId(), {lanelet::Point3d(lanelet::utils::getId(), 10.0, -20.0, 6.0),
+                              lanelet::Point3d(lanelet::utils::getId(), 10.0, 20.0, 6.0)});
+  overpass_border.setAttribute("type", "road_border");
+  lanelet_map.add(overpass_border);
+
+  lanelet::LineString3d ground_border(
+    lanelet::utils::getId(), {lanelet::Point3d(lanelet::utils::getId(), -10.0, 1.0, 0.0),
+                              lanelet::Point3d(lanelet::utils::getId(), 50.0, 1.0, 0.0)});
+  ground_border.setAttribute("type", "road_border");
+  lanelet_map.add(ground_border);
+
+  RoadBorderAvoidance avoidance(params_, vehicle_info_);
+  avoidance.set_map(lanelet_map);
+
+  const auto raw = make_straight_trajectory(0.0);
+  const auto result = avoidance.adjust(raw, ego_pose_);
+  EXPECT_GT(result.num_shifted_points, 0U);
+  EXPECT_EQ(result.num_unresolved_points, 0U);
+  for (const auto & point : result.trajectory.points) {
+    EXPECT_LT(point.pose.position.y, 0.0);
+  }
 }
 
 }  // namespace autoware::trajectory_modifier::test

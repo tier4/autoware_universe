@@ -15,7 +15,6 @@
           bbox: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard", "unknown"]
           polygon: ["car", "truck", "bus", "trailer", "pedestrian", "hazard", "unknown"]
         stopped_velocity_th: 0.3 # [m/s]
-        max_lateral_velocity_th: 1.0 # [m/s]
         safety_buffer: 0.1 # [m]
         lateral_margin:
           car: 0.2
