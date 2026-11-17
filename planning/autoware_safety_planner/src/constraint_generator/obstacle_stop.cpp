@@ -207,8 +207,7 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
       target_objects.emplace_back(object);
     }
     object_filter.filter_by_target_area(
-      target_objects, traj_points, vehicle_info, trajectory_shape, lateral_margin_map,
-      object_decel_map);
+      target_objects, vehicle_info, trajectory_shape, lateral_margin_map, object_decel_map);
 
     collision_point = get_nearest_object_collision(
       target_objects, traj_points, p.rss_params.ego_decel, p.delay_response_time, p.stop_margin,

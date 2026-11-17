@@ -169,22 +169,24 @@ TrajectoryShape build_trajectory_footprint_index(
   const auto detection_length = get_detection_length(
     forward_traj_length, ego_vel, ego_accel, decel, jerk, stop_margin, time_delay);
 
-  const auto detection_traj = std::invoke([&]() -> TrajectoryPoints {
+  shape.detection_traj = std::invoke([&]() -> TrajectoryPoints {
     if (detection_length < forward_traj_length) {
-      return motion_utils::cropForwardPoints(
+      auto cropped = motion_utils::cropForwardPoints(
         trajectory_points, ego_pose.position, start_idx, detection_length);
+      if (cropped.size() < 2) return trajectory_points;
+      return cropped;
     }
     return extend_trajectory(trajectory_points, stop_margin);
   });
 
-  if (detection_traj.empty()) return shape;
+  if (shape.detection_traj.empty()) return shape;
 
   constexpr double min_ds = 0.1;
   constexpr double max_ds = 1.0;
 
   auto add_sample =
     [&](const geometry_msgs::msg::Pose & pose, const size_t traj_index, const double arc_length) {
-      const auto lon_vel = detection_traj[traj_index].longitudinal_velocity_mps;
+      const auto lon_vel = shape.detection_traj[traj_index].longitudinal_velocity_mps;
       shape.footprints.push_back(EgoFootprint{pose, traj_index, arc_length, lon_vel});
     };
 
@@ -192,15 +194,15 @@ TrajectoryShape build_trajectory_footprint_index(
     return std::min(detection_idx, trajectory_points.size() - 1);
   };
 
-  auto prev_pose = detection_traj.front().pose;
+  auto prev_pose = shape.detection_traj.front().pose;
   double prev_s = 0.0;
   size_t prev_idx = 0;
   add_sample(prev_pose, prev_idx, prev_s);
 
-  for (size_t i = 1; i < detection_traj.size(); ++i) {
-    const auto & curr_pose = detection_traj[i].pose;
+  for (size_t i = 1; i < shape.detection_traj.size(); ++i) {
+    const auto & curr_pose = shape.detection_traj[i].pose;
     const auto dist = autoware_utils::calc_distance2d(prev_pose, curr_pose);
-    const bool is_last = (i + 1 == detection_traj.size());
+    const bool is_last = (i + 1 == shape.detection_traj.size());
     if (!is_last && dist < min_ds) continue;
 
     const auto traj_index = to_original_index(i);
@@ -442,18 +444,19 @@ double get_object_stopping_distance(
 }
 
 ObjectRssState evaluate_object_state(
-  const TargetObject & target_object, const TrajectoryPoints & trajectory_points,
-  const TrajectoryShape & trajectory_shape, const ObjectDecelMap & object_decel_map,
-  const double stopped_vel_th)
+  const TargetObject & target_object, const TrajectoryShape & trajectory_shape,
+  const ObjectDecelMap & object_decel_map, const double stopped_vel_th)
 {
   const auto & obj_pose = target_object.object.kinematics.initial_pose_with_covariance.pose;
   const auto & obj_vel = target_object.object.kinematics.initial_twist_with_covariance.twist.linear;
+
+  const auto & detection_traj = trajectory_shape.detection_traj;
 
   auto min_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_intersection_point;
   for (const auto & p : target_object.intersection_polygon.outer()) {
     const geometry_msgs::msg::Point p_msg = geometry_msgs::msg::Point().set__x(p.x()).set__y(p.y());
-    const auto l = motion_utils::calcSignedArcLength(trajectory_points, 0, p_msg);
+    const auto l = motion_utils::calcSignedArcLength(detection_traj, 0, p_msg);
     if (l < min_arc_length) {
       min_arc_length = l;
       nearest_intersection_point = p_msg;
@@ -461,9 +464,9 @@ ObjectRssState evaluate_object_state(
   }
 
   const auto nearest_seg =
-    motion_utils::findNearestSegmentIndex(trajectory_points, nearest_intersection_point);
-  const auto p1 = trajectory_points.at(nearest_seg).pose.position;
-  const auto p2 = trajectory_points.at(nearest_seg + 1).pose.position;
+    motion_utils::findNearestSegmentIndex(detection_traj, nearest_intersection_point);
+  const auto p1 = detection_traj.at(nearest_seg).pose.position;
+  const auto p2 = detection_traj.at(nearest_seg + 1).pose.position;
   auto lon_vel = [&]() {
     const auto traj_dir = Eigen::Vector2d(p2.x - p1.x, p2.y - p1.y).normalized();
     const Eigen::Rotation2Dd obj_rot(tf2::getYaw(obj_pose.orientation));
@@ -620,7 +623,8 @@ void PointCloudFilter::filter_pointcloud(
     pointcloud->end());
 }
 
-namespace {
+namespace
+{
 Polygon2d get_object_polygon(const PredictedObject & object, const double margin)
 {
   const auto & shape = object.shape;
@@ -666,8 +670,7 @@ void PointCloudFilter::filter_pointcloud_by_object(
 }
 
 void ObjectFilter::filter_by_target_area(
-  TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+  TargetObjects & target_objects, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
   const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map,
   const ObjectDecelMap & object_decel_map)
 {
@@ -675,15 +678,17 @@ void ObjectFilter::filter_by_target_area(
   constexpr double kinematic_horizon = 10.0;
   constexpr double kinematic_time_step = 0.5;
 
+  const auto & detection_traj = trajectory_shape.detection_traj;
+
   std::map<double, trajectory_time_overlap::TrajectoryCornerFootprint> ego_footprints;
   auto ego_footprint_for =
     [&](const double lateral_margin) -> const trajectory_time_overlap::TrajectoryCornerFootprint * {
-    if (trajectory_points.size() < 2) return nullptr;
+    if (detection_traj.size() < 2) return nullptr;
     const auto it = ego_footprints.find(lateral_margin);
     if (it != ego_footprints.end()) return &it->second;
     const auto inserted = ego_footprints.emplace(
       lateral_margin, trajectory_time_overlap::calculate_trajectory_corner_footprint(
-                        trajectory_points, vehicle_info, lateral_margin, 0.0));
+                        detection_traj, vehicle_info, lateral_margin, 0.0));
     return &inserted.first->second;
   };
 
@@ -772,8 +777,8 @@ void ObjectFilter::filter_by_target_area(
         obj.polygon = object_polygon;
         obj.ego_footprint = result->ego_footprint;
         obj.intersection_polygon = result->intersection_polygon;
-        obj.rss_state = evaluate_object_state(
-          obj, trajectory_points, trajectory_shape, object_decel_map, stopped_velocity_th_);
+        obj.rss_state =
+          evaluate_object_state(obj, trajectory_shape, object_decel_map, stopped_velocity_th_);
         return false;
       }),
     target_objects.end());

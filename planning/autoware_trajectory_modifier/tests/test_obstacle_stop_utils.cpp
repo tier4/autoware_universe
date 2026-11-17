@@ -60,9 +60,11 @@ TrajectoryPoints create_straight_trajectory(const double length, const double ve
   return trajectory;
 }
 
-TrajectoryShape create_shape(const double trajectory_length, const double ego_arc_length)
+TrajectoryShape create_shape(
+  const TrajectoryPoints & trajectory, const double trajectory_length, const double ego_arc_length)
 {
   TrajectoryShape shape;
+  shape.detection_traj = trajectory;
   shape.trajectory_length = trajectory_length;
   shape.forward_traj_length = trajectory_length - ego_arc_length;
   shape.ego_front_offset = ego_front_offset;
@@ -92,9 +94,7 @@ PredictedObject create_car(const double x, const double velocity, const bool onc
 const ObjectDecelMap decel_map{{ObjectType::CAR, car_decel}};
 
 // The stored overlap is the whole box: a fully overlapping car contacts at its rear face.
-ObjectRssState evaluate(
-  const PredictedObject & object, const TrajectoryPoints & trajectory,
-  const TrajectoryShape & shape)
+ObjectRssState evaluate(const PredictedObject & object, const TrajectoryShape & shape)
 {
   TargetObject target(object);
   const auto x = object.kinematics.initial_pose_with_covariance.pose.position.x;
@@ -104,7 +104,7 @@ ObjectRssState evaluate(
   ring.emplace_back(x + 2.0, 1.0);
   ring.emplace_back(x - 2.0, 1.0);
   ring.emplace_back(x - 2.0, -1.0);
-  return evaluate_object_state(target, trajectory, shape, decel_map, stopped_vel_th);
+  return evaluate_object_state(target, shape, decel_map, stopped_vel_th);
 }
 }  // namespace
 
@@ -132,9 +132,9 @@ TEST(GetObjectStoppingDistance, ZeroWhenTypeHasNoDeceleration)
 TEST(EvaluateObjectState, MovingCarAhead)
 {
   const auto trajectory = create_straight_trajectory(50.0, 10.0);
-  const auto shape = create_shape(50.0, 0.0);
+  const auto shape = create_shape(trajectory, 50.0, 0.0);
 
-  const auto s = evaluate(create_car(20.0, 5.0), trajectory, shape);
+  const auto s = evaluate(create_car(20.0, 5.0), shape);
 
   EXPECT_EQ(s.type, ObjectType::CAR);
   EXPECT_NEAR(s.arc_length, 18.0, tolerance);
@@ -147,9 +147,9 @@ TEST(EvaluateObjectState, MovingCarAhead)
 TEST(EvaluateObjectState, StoppedCarIsStatic)
 {
   const auto trajectory = create_straight_trajectory(50.0, 10.0);
-  const auto shape = create_shape(50.0, 0.0);
+  const auto shape = create_shape(trajectory, 50.0, 0.0);
 
-  const auto s = evaluate(create_car(20.0, 0.0), trajectory, shape);
+  const auto s = evaluate(create_car(20.0, 0.0), shape);
 
   EXPECT_NEAR(s.lon_vel, 0.0, tolerance);
   EXPECT_DOUBLE_EQ(s.stopping_distance, 0.0);
@@ -159,9 +159,9 @@ TEST(EvaluateObjectState, StoppedCarIsStatic)
 TEST(EvaluateObjectState, OncomingCarHasNegativeVelocity)
 {
   const auto trajectory = create_straight_trajectory(50.0, 10.0);
-  const auto shape = create_shape(50.0, 0.0);
+  const auto shape = create_shape(trajectory, 50.0, 0.0);
 
-  const auto s = evaluate(create_car(20.0, 5.0, true), trajectory, shape);
+  const auto s = evaluate(create_car(20.0, 5.0, true), shape);
 
   EXPECT_NEAR(s.lon_vel, -5.0, tolerance);
   EXPECT_DOUBLE_EQ(s.stopping_distance, 0.0);
@@ -171,10 +171,10 @@ TEST(EvaluateObjectState, OncomingCarHasNegativeVelocity)
 TEST(EvaluateObjectState, GapIsMeasuredFromEgoFront)
 {
   const auto trajectory = create_straight_trajectory(50.0, 10.0);
-  const auto shape = create_shape(50.0, 10.0);
+  const auto shape = create_shape(trajectory, 50.0, 10.0);
 
-  const auto ahead = evaluate(create_car(20.0, 5.0), trajectory, shape);
-  const auto beside_ego = evaluate(create_car(14.0, 5.0), trajectory, shape);
+  const auto ahead = evaluate(create_car(20.0, 5.0), shape);
+  const auto beside_ego = evaluate(create_car(14.0, 5.0), shape);
 
   EXPECT_NEAR(ahead.gap, 18.0 - (10.0 + ego_front_offset), tolerance);
   EXPECT_NEAR(beside_ego.arc_length, 12.0, tolerance);

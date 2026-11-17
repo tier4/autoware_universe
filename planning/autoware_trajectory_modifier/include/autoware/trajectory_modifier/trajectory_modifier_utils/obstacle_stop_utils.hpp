@@ -229,6 +229,7 @@ struct TrajectoryShape
   autoware_utils_geometry::Box2d bounding_box;
   double trajectory_length{0.0};
   double forward_traj_length{0.0};
+  TrajectoryPoints detection_traj;
   std::vector<EgoFootprint> footprints;
   FootprintRtree rtree;
   double ego_half_width{0.0};
@@ -365,16 +366,15 @@ double get_object_stopping_distance(
  * calculates its arc length, gap from ego front, and longitudinal velocity of the object along the
  * trajectory at the intersection point.
  * @param target_object Target object to evaluate.
- * @param trajectory_points Reference path used to find the nearest intersection point.
- * @param trajectory_shape For ego footprint used to calculate the ego front arc length.
+ * @param trajectory_shape For detection trajectory and ego footprint used to calculate arcs and
+ * lon_vel.
  * @param object_decel_map Braking magnitude [m/s^2] per object type.
  * @param stopped_vel_th Objects with |lon_vel| below this [m/s] are considered static.
  * @return Object RSS state with the calculated arc length, gap, and longitudinal velocity.
  */
 ObjectRssState evaluate_object_state(
-  const TargetObject & target_object, const TrajectoryPoints & trajectory_points,
-  const TrajectoryShape & trajectory_shape, const ObjectDecelMap & object_decel_map,
-  const double stopped_vel_th);
+  const TargetObject & target_object, const TrajectoryShape & trajectory_shape,
+  const ObjectDecelMap & object_decel_map, const double stopped_vel_th);
 
 /**
  * @brief RSS longitudinal safe distance between the ego and an object ahead.
@@ -490,15 +490,13 @@ struct ObjectFilter
    * object is also removed when its highest-confidence predicted path leaves through a side of the
    * ego corridor before ego's time_from_start reaches that overlap. A path that leaves through the
    * front or rear of the corridor is kept.
-   * @param[in,out] objects Predicted objects to filter in place.
-   * @param trajectory_points Reference path for time and geometry queries.
+   * @param[in,out] target_objects Target objects to filter in place.
+   * @param vehicle_info Vehicle information used to calculate the ego footprint.
    * @param trajectory_shape Ego footprint index used for overlap queries.
    * @param lateral_margin_map Per-class lateral expansion of the ego footprint [m].
-   * @param[out] target_polygons Footprints of objects that remain after filtering.
    */
   void filter_by_target_area(
-    TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
-    const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+    TargetObjects & target_objects, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
     const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map,
     const ObjectDecelMap & object_decel_map);
 

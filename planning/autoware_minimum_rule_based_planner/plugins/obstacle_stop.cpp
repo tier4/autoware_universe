@@ -199,7 +199,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   }
 
   object_filter_->filter_by_target_area(
-    debug_data_.target_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
+    debug_data_.target_objects, context_->vehicle_info, debug_data_.trajectory_shape,
     lateral_margin_map_, object_decel_map_);
 
   auto collision_point = get_nearest_object_collision(

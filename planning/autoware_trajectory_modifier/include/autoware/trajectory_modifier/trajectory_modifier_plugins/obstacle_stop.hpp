@@ -115,7 +115,7 @@ private:
   void reset_cycle();
   void build_trajectory_shape(
     const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
-  void detect_objects(const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
+  void detect_objects(const TrajectoryModifierData & input);
   std::optional<CollisionPoint> evaluate_object_collision(const TrajectoryPoints & traj_points);
   std::optional<CollisionPoint> check_pointcloud(
     const TrajectoryPoints & traj_points, const TrajectoryModifierData & input);

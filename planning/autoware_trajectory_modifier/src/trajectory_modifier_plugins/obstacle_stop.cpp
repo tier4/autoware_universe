@@ -258,7 +258,7 @@ ProcessingResult ObstacleStop::process(
   if (trajectory.size() < 2) return ProcessingResult::Unchanged;
 
   build_trajectory_shape(trajectory, input);
-  detect_objects(trajectory, input);
+  detect_objects(input);
 
   const bool cruise_modified = apply_cruise(trajectory, input);
 
@@ -490,8 +490,7 @@ void ObstacleStop::check_obstacles(
   });
 }
 
-void ObstacleStop::detect_objects(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+void ObstacleStop::detect_objects(const TrajectoryModifierData & input)
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::detect_objects", *get_time_keeper());
   if (!params_.use_objects || !input.predicted_objects) return;
@@ -504,7 +503,7 @@ void ObstacleStop::detect_objects(
     debug_data_.filtered_objects, debug_data_.target_objects, get_clock()->now());
 
   object_filter_->filter_by_target_area(
-    debug_data_.target_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
+    debug_data_.target_objects, context_->vehicle_info, debug_data_.trajectory_shape,
     lateral_margin_map_, object_decel_map_);
 }
 
