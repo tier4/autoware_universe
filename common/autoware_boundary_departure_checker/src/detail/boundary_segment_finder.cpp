@@ -116,9 +116,20 @@ bool is_segment_within_ego_height(
 double calc_boundary_height(
   const autoware_utils_geometry::Segment3d & boundary_segment, const Point & ego_position)
 {
-  (void)boundary_segment;
-  (void)ego_position;
-  return 0.0;
+  const auto & start = boundary_segment.first;
+  const auto & end = boundary_segment.second;
+
+  const Point2d direction{end.x() - start.x(), end.y() - start.y()};
+  const Point2d start_to_ego{ego_position.x - start.x(), ego_position.y - start.y()};
+
+  // A zero-length segment has no direction, so its start point is used.
+  const double ego_dot_direction = boost::geometry::dot_product(start_to_ego, direction);
+  const double squared_length = boost::geometry::dot_product(direction, direction);
+  const double ratio =
+    squared_length > 0.0 ? std::clamp(ego_dot_direction / squared_length, 0.0, 1.0) : 0.0;
+
+  const double boundary_z = start.z() + ratio * (end.z() - start.z());
+  return boundary_z - ego_position.z;
 }
 
 std::vector<Segment3dWithIdx> find_closest_boundary_segments(
