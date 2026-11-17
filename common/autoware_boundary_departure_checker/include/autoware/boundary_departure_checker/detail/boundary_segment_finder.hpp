@@ -73,7 +73,7 @@ bool is_segment_within_ego_height(
  * @param[in] unique_id set of already processed segment IDs
  * @return list of closest boundary segments
  */
-std::vector<SegmentWithIdx> find_closest_boundary_segments(
+std::vector<Segment3dWithIdx> find_closest_boundary_segments(
   const UncrossableBoundariesRTree & rtree, const lanelet::LaneletMapPtr & lanelet_map_ptr,
   const UncrossableBoundaryDepartureParam & param, const Segment2d & ego_ref_segment,
   const Segment2d & ego_opposite_ref_segment, const double ego_z_position,

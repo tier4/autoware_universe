@@ -113,7 +113,7 @@ bool is_segment_within_ego_height(
   return height_diff < ego_height;
 }
 
-std::vector<SegmentWithIdx> find_closest_boundary_segments(
+std::vector<Segment3dWithIdx> find_closest_boundary_segments(
   const UncrossableBoundariesRTree & rtree, const lanelet::LaneletMapPtr & lanelet_map_ptr,
   const UncrossableBoundaryDepartureParam & param, const Segment2d & ego_ref_segment,
   const Segment2d & ego_opposite_ref_segment, const double ego_z_position,
@@ -127,7 +127,7 @@ std::vector<SegmentWithIdx> find_closest_boundary_segments(
   std::vector<SegmentWithIdx> nearest_raw = rtree.query(
     Point2d{ego_ref_segment.first.x(), ego_ref_segment.first.y()}, param.max_lateral_rtree_queries);
 
-  std::vector<SegmentWithIdx> new_segments;
+  std::vector<Segment3dWithIdx> new_segments;
   for (const auto & nearest : nearest_raw) {
     const auto & id = nearest.second;
     if (unique_id.find(id) != unique_id.end()) {
@@ -144,7 +144,7 @@ std::vector<SegmentWithIdx> find_closest_boundary_segments(
 
     if (is_closest_to_boundary_segment(
           boundary_segment, ego_ref_segment, ego_opposite_ref_segment)) {
-      new_segments.emplace_back(boundary_segment, id);
+      new_segments.emplace_back(boundary_segment_3d, id);
     }
   }
   return new_segments;
