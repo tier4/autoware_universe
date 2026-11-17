@@ -18,6 +18,8 @@
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 
+#include <autoware_internal_control_msgs/msg/hazard_sector.hpp>
+
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -27,7 +29,8 @@ namespace autoware::control_validator
 struct HazardSource
 {
   autoware_utils_geometry::Polygon2d shape;  // base_link of the current ego; a point has 1 vertex
-  uint8_t risk_level{0};
+  uint8_t risk_level{autoware_internal_control_msgs::msg::HazardSector::NONE};
+  uint8_t sources{0};
   builtin_interfaces::msg::Time stamp{};  // odometry stamp used to express the shape in base_link
 };
 
@@ -35,6 +38,11 @@ struct HazardWarningSources
 {
   std::optional<std::vector<HazardSource>> collision;  // nullopt when not evaluated this cycle
   std::optional<std::vector<HazardSource>> departure;
+
+  static HazardWarningSources empty()
+  {
+    return {std::vector<HazardSource>{}, std::vector<HazardSource>{}};
+  }
 };
 }  // namespace autoware::control_validator
 
