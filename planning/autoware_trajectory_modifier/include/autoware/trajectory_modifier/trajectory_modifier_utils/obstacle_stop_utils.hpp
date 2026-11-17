@@ -161,6 +161,8 @@ inline LateralMargin get_lateral_margin(const LateralMarginMap & map, const Obje
 
 struct CollisionPoint
 {
+  size_t target_source_index;  // index into target_objects for object collisions, or into the
+                               // pointcloud for pcd collisions
   geometry_msgs::msg::Point point;
   double arc_length;
   double obstacle_lon_vel;
@@ -176,9 +178,13 @@ struct CollisionPoint
    * @param is_dynamic Whether this collision is dynamic.
    */
   CollisionPoint(
-    const geometry_msgs::msg::Point & point, const double arc_length, const double obstacle_lon_vel,
-    const bool is_dynamic = false)
-  : point(point), arc_length(arc_length), obstacle_lon_vel(obstacle_lon_vel), is_dynamic(is_dynamic)
+    const size_t target_source_index, const geometry_msgs::msg::Point & point,
+    const double arc_length, const double obstacle_lon_vel, const bool is_dynamic = false)
+  : target_source_index(target_source_index),
+    point(point),
+    arc_length(arc_length),
+    obstacle_lon_vel(obstacle_lon_vel),
+    is_dynamic(is_dynamic)
   {
   }
 
@@ -192,7 +198,8 @@ struct CollisionPoint
   CollisionPoint(
     const CollisionPoint & collision_point, const rclcpp::Time & first_seen,
     const rclcpp::Time & last_seen, const bool active)
-  : point(collision_point.point),
+  : target_source_index(collision_point.target_source_index),
+    point(collision_point.point),
     arc_length(collision_point.arc_length),
     obstacle_lon_vel(collision_point.obstacle_lon_vel),
     is_active(active),
@@ -201,13 +208,6 @@ struct CollisionPoint
     last_seen(last_seen)
   {
   }
-};
-
-struct ObjectState
-{
-  double arc_length;
-  double lon_vel;
-  geometry_msgs::msg::Point nearest_point;
 };
 
 /// Ego vehicle footprint sampled along the detection trajectory.
@@ -229,6 +229,7 @@ struct TrajectoryShape
   autoware_utils_geometry::Box2d bounding_box;
   double trajectory_length{0.0};
   double forward_traj_length{0.0};
+  TrajectoryPoints detection_traj;
   std::vector<EgoFootprint> footprints;
   FootprintRtree rtree;
   double ego_half_width{0.0};
@@ -238,24 +239,9 @@ struct TrajectoryShape
   [[nodiscard]] double ego_arc_length() const { return trajectory_length - forward_traj_length; }
 };
 
-struct TargetObject
-{
-  PredictedObject object;
-  Polygon2d polygon;
-  Polygon2d ego_footprint;
-  std::vector<geometry_msgs::msg::Pose> predicted_path;
-  bool is_safe{false};
-  double distance_from_ego{0.0};
-  double safe_distance{0.0};
-
-  explicit TargetObject(const PredictedObject & object) : object(object) {}
-};
-using TargetObjects = std::vector<TargetObject>;
-
-/// Current (t = 0) longitudinal state of a target object relative to the ego path.
+/// Longitudinal state of a target object relative to the ego path.
 struct ObjectRssState
 {
-  size_t index{0};  ///< index into the evaluated TargetObjects
   ObjectType type{ObjectType::UNKNOWN};
   geometry_msgs::msg::Point nearest_point;  ///< object polygon vertex nearest along the path
   double arc_length{0.0};         ///< arc length from trajectory start to nearest_point [m]
@@ -263,6 +249,29 @@ struct ObjectRssState
   double lon_vel{0.0};            ///< object velocity projected on the path direction [m/s]
   double stopping_distance{0.0};  ///< object braking distance, 0 if not moving forward [m]
   bool is_dynamic{false};         ///< |lon_vel| > stopped velocity threshold
+};
+
+struct TargetObject
+{
+  PredictedObject object;
+  Polygon2d polygon;
+  Polygon2d intersection_polygon;
+  Polygon2d ego_footprint;
+  std::vector<geometry_msgs::msg::Pose> predicted_path;
+  bool is_safe{false};
+  double distance_from_ego{0.0};
+  double safe_distance{0.0};
+  ObjectRssState rss_state;
+
+  explicit TargetObject(const PredictedObject & object) : object(object) {}
+};
+using TargetObjects = std::vector<TargetObject>;
+
+struct QueryResult
+{
+  size_t index;
+  Polygon2d ego_footprint;
+  Polygon2d intersection_polygon;
 };
 
 struct DebugData
@@ -297,8 +306,6 @@ TrajectoryShape build_trajectory_footprint_index(
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double ego_vel,
   const double ego_accel, const double decel, const double jerk, const double stop_margin,
   const double time_delay = 0.0);
-
-using QueryResult = std::pair<size_t, Polygon2d>;
 
 /**
  * @brief Find the nearest ego footprint whose expanded OBB contains the given point.
@@ -341,20 +348,6 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
   std::vector<geometry_msgs::msg::Point> & target_pcd_points);
 
 /**
- * @brief Predict the object state at time `t` relative to the trajectory.
- * @details The object pose is taken from its most confident predicted path (falling back to
- * constant-acceleration extrapolation), and its velocity is projected on the direction of the
- * nearest trajectory segment.
- * @param trajectory_points Reference path, at least 2 points.
- * @param object Predicted object.
- * @param t Time from now [s].
- * @return Arc length (clamped to >= 0) and position of the object vertex nearest along the path,
- * and the object longitudinal velocity along the path.
- */
-ObjectState get_object_state_at_time(
-  const TrajectoryPoints & trajectory_points, const PredictedObject & object, const double t);
-
-/**
  * @brief Braking distance of an object moving along the ego path.
  * @param type Object type used to look up the braking deceleration.
  * @param lon_vel Object longitudinal velocity along the ego path [m/s].
@@ -368,20 +361,20 @@ double get_object_stopping_distance(
   const double stopped_vel_th);
 
 /**
- * @brief Evaluate the current (t = 0) longitudinal state of each target object.
- * @details The gap is measured from the ego front, located with the ego arc length and front
- * offset of `trajectory_shape`, to the object vertex nearest along `trajectory_points`.
- * @param target_objects Predicted objects to evaluate (already filtered).
- * @param trajectory_points Reference path used to build `trajectory_shape`.
- * @param trajectory_shape Ego footprint index from build_trajectory_footprint_index().
+ * @brief Evaluate the longitudinal state of the input target object.
+ * @details Finds the nearest intersection point of the target object with the trajectory and
+ * calculates its arc length, gap from ego front, and longitudinal velocity of the object along the
+ * trajectory at the intersection point.
+ * @param target_object Target object to evaluate.
+ * @param trajectory_shape For detection trajectory and ego footprint used to calculate arcs and
+ * lon_vel.
  * @param object_decel_map Braking magnitude [m/s^2] per object type.
- * @param stopped_vel_th Objects with |lon. velocity| below this [m/s] are considered static.
- * @return One state per target object, in the same order; empty if inputs are invalid.
+ * @param stopped_vel_th Objects with |lon_vel| below this [m/s] are considered static.
+ * @return Object RSS state with the calculated arc length, gap, and longitudinal velocity.
  */
-std::vector<ObjectRssState> evaluate_object_states(
-  const TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
-  const TrajectoryShape & trajectory_shape, const ObjectDecelMap & object_decel_map,
-  const double stopped_vel_th);
+ObjectRssState evaluate_object_state(
+  const TargetObject & target_object, const TrajectoryShape & trajectory_shape,
+  const ObjectDecelMap & object_decel_map, const double stopped_vel_th);
 
 /**
  * @brief RSS longitudinal safe distance between the ego and an object ahead.
@@ -414,43 +407,30 @@ double compute_cruise_velocity(
 
 /**
  * @brief Select the object to follow: the nearest along the path that moves forward.
- * @param object_states States from evaluate_object_states().
- * @return State of the nearest object with `is_dynamic` and positive `lon_vel`, or nullopt.
+ * @param target_objects Target objects.
+ * @return The nearest target object with `is_dynamic` and positive `lon_vel`, or nullopt.
  */
-std::optional<ObjectRssState> select_cruise_target(
-  const std::vector<ObjectRssState> & object_states);
+std::optional<TargetObject> select_cruise_target(const TargetObjects & target_objects);
 
 /**
- * @brief Find the nearest predicted object that is not longitudinally safe relative to the ego
- * path within a time horizon.
- * @details For each trajectory point up to `lookahead_horizon`, an RSS check is applied to the
- * ego's and the object's predicted states to determine if the object is longitudinally safe
- * relative to the ego path. If the object is not longitudinally safe, the object is considered to
- * be a collision candidate. If the object's lon. velocity along ego path is below `stopped_vel_th`,
- * the object is considered to be a collision candidate. The object with the smallest arc length
- * along `trajectory_points` is returned as the collision point.
- * @param trajectory_points Reference path; arc lengths and ego motion are read from these points.
- * @param vehicle_info Used for the ego front longitudinal offset when comparing gap to safe
- * distance.
- * @param target_objects Predicted objects to evaluate (already filtered).
- * @param object_decel_map Braking magnitude [m/s^2] per object type for the object stopping term in
- * the safe-distance model.
+ * @brief Find the nearest predicted object that is not longitudinally safe at the current state.
+ * @details Each object is evaluated once from its stored `rss_state`, against the ego speed at the
+ * start of `trajectory_points`. An object whose braking distance is zero, or whose gap is inside
+ * the RSS safe distance, is a collision candidate. The candidate with the smallest collision arc
+ * length is returned. When `use_rss_check` is false, every object is a candidate at its contact
+ * arc length.
+ * @param trajectory_points Reference path; the initial ego speed is read from the first point.
+ * @param target_objects Predicted objects to evaluate. Each `rss_state` is already filled.
  * @param ego_decel Magnitude of ego deceleration [m/s^2] for the ego stopping term.
  * @param reaction_time system reaction time [s] to respond to detected collision.
  * @param min_safe_distance Lower limit on the required gap while the object is moving [m].
  * @param rss_safety_buffer Buffer added inside the RSS safe-distance formula [m].
- * @param stopped_vel_th Objects with longitudinal speed along the path below this [m/s] are
- * considered static.
- * @param lookahead_horizon Maximum `time_from_start` along the trajectory [s] to propagate objects
- * and ego states.
  * @return Collision geometry and arc length, or nullopt if inputs are invalid or objects are safe
  */
 std::optional<CollisionPoint> get_nearest_object_collision(
   TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
-  const double min_safe_distance, const double rss_safety_buffer, const double stopped_vel_th,
-  const double lookahead_horizon, const bool use_rss_check = true);
+  const double ego_decel, const double reaction_time, const double min_safe_distance,
+  const double rss_safety_buffer, const bool use_rss_check = true);
 
 /// Filters predicted objects by semantic type, speed, and spatial relationship to the trajectory.
 struct ObjectFilter
@@ -510,16 +490,15 @@ struct ObjectFilter
    * object is also removed when its highest-confidence predicted path leaves through a side of the
    * ego corridor before ego's time_from_start reaches that overlap. A path that leaves through the
    * front or rear of the corridor is kept.
-   * @param[in,out] objects Predicted objects to filter in place.
-   * @param trajectory_points Reference path for time and geometry queries.
+   * @param[in,out] target_objects Target objects to filter in place.
+   * @param vehicle_info Vehicle information used to calculate the ego footprint.
    * @param trajectory_shape Ego footprint index used for overlap queries.
    * @param lateral_margin_map Per-class lateral expansion of the ego footprint [m].
-   * @param[out] target_polygons Footprints of objects that remain after filtering.
    */
   void filter_by_target_area(
-    TargetObjects & target_objects, const TrajectoryPoints & trajectory_points,
-    const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-    const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map);
+    TargetObjects & target_objects, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+    const TrajectoryShape & trajectory_shape, const LateralMarginMap & lateral_margin_map,
+    const ObjectDecelMap & object_decel_map);
 
   /**
    * @brief Update allow-listed types and velocity thresholds without reconstructing the filter.

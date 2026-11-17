@@ -749,12 +749,6 @@
                   "description": "Safety margin used in RSS calculation [m]",
                   "default": 1.5,
                   "minimum": 0.0
-                },
-                "lookahead_horizon": {
-                  "type": "number",
-                  "description": "Lookahead horizon used in RSS calculation [s]",
-                  "default": 1.5,
-                  "minimum": 0.0
                 }
               },
               "required": [],

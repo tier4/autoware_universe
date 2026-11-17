@@ -436,11 +436,6 @@ safety_planner:
         default_value: 1.5
         read_only: true
         description: "[m]"
-      lookahead_horizon:
-        type: double
-        default_value: 1.5
-        read_only: true
-        description: "[s]"
 
   obstacle_slow_down:
     obstacle_filtering:

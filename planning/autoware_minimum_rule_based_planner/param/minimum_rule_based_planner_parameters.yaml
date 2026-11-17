@@ -506,12 +506,6 @@ minimum_rule_based_planner:
         description: safety margin used in RSS calculation [m]
         validation:
           bounds<>: [0.0, 10.0]
-      lookahead_horizon:
-        type: double
-        default_value: 1.5
-        description: lookahead horizon used in RSS calculation [s]
-        validation:
-          bounds<>: [0.0, 10.0]
 
   surround_obstacle_stop:
     enable:
