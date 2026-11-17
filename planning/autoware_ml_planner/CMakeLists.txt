@@ -148,7 +148,6 @@ if(BUILD_TESTING)
     test/road_border_avoidance_test.cpp
     test/road_border_split_test.cpp
     test/route_segment_selection_test.cpp
-    test/route_waypoints_test.cpp
     test/turn_indicator_hold_test.cpp
     test/utils_test.cpp
   )

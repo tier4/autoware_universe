@@ -258,7 +258,7 @@ public:
    * @brief Count valid elements in input data for diagnostics.
    *
    * @param input_data_map Input data map
-   * @param data_key Key to count (e.g., "lanes", "route_waypoints", "intersection_area")
+   * @param data_key Key to count (e.g., "lanes", "route_lanes", "intersection_area")
    * @return Count of valid elements
    */
   int64_t count_valid_elements(
