@@ -29,7 +29,6 @@
 
 #include <cmath>
 #include <limits>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -233,13 +232,6 @@ void extendTrajectoryInYawDirection(
  * @return clipped trajectory
  */
 MPCTrajectory clipTrajectoryByLength(const MPCTrajectory & trajectory, const double length);
-
-/**
- * @brief Estimate whether the reference trajectory is driven forward or backward.
- * @param [in] reference trajectory
- * @return driving direction, otherwise std::nullopt
- */
-std::optional<bool> infer_forward_driving(const MPCTrajectory & trajectory);
 
 /**
  * @brief Updates the value of a parameter with the given name.
