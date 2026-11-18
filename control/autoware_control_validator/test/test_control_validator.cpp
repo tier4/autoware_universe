@@ -431,6 +431,8 @@ TEST_F(UncrossableBoundDepartureValidatorTest, WarningDeparturePositionsAreHande
   for (const auto & source : *sources.departure) {
     EXPECT_EQ(
       source.risk_level, params_.uncrossable_bound_departure_validator.departure_risk_level);
+    EXPECT_EQ(
+      source.sources, autoware_internal_control_msgs::msg::HazardSector::SOURCE_BOUNDARY_DEPARTURE);
     ASSERT_EQ(source.shape.outer().size(), 1U);
     const auto & p = source.shape.outer().front();
     EXPECT_NEAR(ego.y + std::sin(yaw) * p.x() + std::cos(yaw) * p.y(), 2.0, 1e-6);

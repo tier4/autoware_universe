@@ -39,7 +39,6 @@ namespace autoware::trajectory_modifier::plugin
 {
 using utils::obstacle_stop::build_trajectory_footprint_index;
 using utils::obstacle_stop::compute_cruise_velocity;
-using utils::obstacle_stop::evaluate_object_states;
 using utils::obstacle_stop::get_nearest_object_collision;
 using utils::obstacle_stop::get_nearest_pcd_collision;
 using utils::obstacle_stop::PointCloud;
@@ -74,8 +73,8 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   {
     const auto & p = params_.objects;
     object_filter_ = std::make_unique<utils::obstacle_stop::ObjectFilter>(
-      p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
-      p.max_lateral_velocity_th, p.safety_buffer, p.low_velocity_th);
+      p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th, p.safety_buffer,
+      p.low_velocity_th);
     pointcloud_filter_ =
       std::make_unique<utils::obstacle_stop::PointCloudFilter>(p.target_objects.pointcloud);
 
@@ -139,8 +138,8 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
   {
     const auto & p = params_.objects;
     object_filter_->set_params(
-      p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th,
-      p.max_lateral_velocity_th, p.safety_buffer, p.low_velocity_th);
+      p.target_objects.bbox, p.target_objects.polygon, p.stopped_velocity_th, p.safety_buffer,
+      p.low_velocity_th);
     pointcloud_filter_->set_params(p.target_objects.pointcloud);
 
     lateral_margin_map_ = {
@@ -230,7 +229,6 @@ void ObstacleStop::reset_cycle()
   safety_factors_ = SafetyFactorArray{};
   cruise_report_.reset();
   nearest_collision_point_ = std::nullopt;
-  object_rss_states_.clear();
 }
 
 void ObstacleStop::build_trajectory_shape(
@@ -246,33 +244,12 @@ void ObstacleStop::build_trajectory_shape(
     stopping_params_.delay_response_time);
 }
 
-bool ObstacleStop::is_trajectory_modification_required(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
-{
-  reset_cycle();
-
-  if (traj_points.empty()) {
-    return false;
-  }
-
-  build_trajectory_shape(traj_points, input);
-  detect_objects(traj_points, input);
-  object_rss_states_ = evaluate_object_states(
-    debug_data_.target_objects, traj_points, debug_data_.trajectory_shape, object_decel_map_,
-    params_.objects.stopped_velocity_th);
-  const auto collision_point_pcd = check_pointcloud(traj_points, input);
-  const auto collision_point_objects = evaluate_object_collision(traj_points);
-  check_obstacles(collision_point_objects, collision_point_pcd);
-
-  debug_data_.ego_z = input.current_odometry->pose.pose.position.z;
-  publish_debug_string(nearest_collision_point_ == std::nullopt);
-  return nearest_collision_point_ != std::nullopt;
-}
-
 ProcessingResult ObstacleStop::process(
   TrajectoryPoints & traj_points, TrajectoryModifierData & input)
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::process", *get_time_keeper());
+
+  reset_cycle();
 
   if (!enabled_ || traj_points.size() < 2) return ProcessingResult::Unchanged;
 
@@ -280,12 +257,8 @@ ProcessingResult ObstacleStop::process(
   utils::obstacle_stop::trim_trajectory_and_remove_duplicates(trajectory);
   if (trajectory.size() < 2) return ProcessingResult::Unchanged;
 
-  reset_cycle();
   build_trajectory_shape(trajectory, input);
-  detect_objects(trajectory, input);
-  object_rss_states_ = evaluate_object_states(
-    debug_data_.target_objects, trajectory, debug_data_.trajectory_shape, object_decel_map_,
-    params_.objects.stopped_velocity_th);
+  detect_objects(input);
 
   const bool cruise_modified = apply_cruise(trajectory, input);
 
@@ -303,7 +276,12 @@ ProcessingResult ObstacleStop::process(
   }
 
   if (!stop_modified && cruise_report_) {
-    add_cruise_planning_factor(cruise_report_.value(), input.current_odometry->pose.pose);
+    const auto & report = cruise_report_.value();
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000,
+      "[TM ObstacleStop] Slowing down to cruise velocity  %f m/s for gap %f m",
+      report.cruise_velocity, report.gap());
+    add_cruise_planning_factor(report, input.current_odometry->pose.pose);
   }
 
   traj_points = std::move(trajectory);
@@ -320,16 +298,19 @@ bool ObstacleStop::apply_cruise(
     return false;
   }
 
-  const auto target = select_cruise_target(object_rss_states_);
+  const auto target = select_cruise_target(debug_data_.target_objects);
   if (!target) {
     cruise_fixed_profile_.store(input, TrajectoryPoints{}, {});
     return false;
   }
 
+  const auto & state = target->rss_state;
+  const auto traj_vel = std::max(0.0f, traj_points.front().longitudinal_velocity_mps);
+
   const auto & cruise = params_.cruise;
-  const auto margin = std::max(cruise.min_distance, cruise.time_headway * target->lon_vel);
+  const auto margin = std::max(cruise.min_distance, cruise.time_headway * traj_vel);
   const auto v_cruise = compute_cruise_velocity(
-    target->gap, cruise.ego_decel, target->stopping_distance, stopping_params_.delay_response_time,
+    state.gap, cruise.ego_decel, state.stopping_distance, stopping_params_.delay_response_time,
     margin);
 
   if (v_cruise <= 0) {
@@ -355,8 +336,16 @@ bool ObstacleStop::apply_cruise(
     cruise_profile_reset_pub_->publish(reset);
   }
 
+  // Cap the max_acceleration to the ego's current acceleration (or the parameterized limit). If
+  // acceleration is unavailable, keep the parameterized limit. If ego is braking/coasting this
+  // becomes 0
+  const double max_acceleration =
+    input.current_acceleration
+      ? std::max(
+          0.0, std::min(cruise.max_acceleration, input.current_acceleration->accel.accel.linear.x))
+      : cruise.max_acceleration;
   const detail::VelocityLimitConstraints constraints{
-    cruise.max_acceleration, cruise.max_deceleration, cruise.max_jerk};
+    max_acceleration, cruise.max_deceleration, cruise.max_jerk};
   const auto result = detail::apply_velocity_limits(
     traj_points, constraints,
     [v_cruise](const geometry_msgs::msg::Point &) { return std::optional<double>{v_cruise}; },
@@ -379,10 +368,7 @@ bool ObstacleStop::apply_cruise(
 void ObstacleStop::add_cruise_planning_factor(
   const CruiseReport & report, const geometry_msgs::msg::Pose & ego_pose)
 {
-  if (report.target.index >= debug_data_.target_objects.size()) {
-    return;
-  }
-  const auto & object = debug_data_.target_objects[report.target.index].object;
+  const auto & object = report.target.object;
   const auto & pose = object.kinematics.initial_pose_with_covariance.pose;
 
   SafetyFactor safety_factor;
@@ -504,8 +490,7 @@ void ObstacleStop::check_obstacles(
   });
 }
 
-void ObstacleStop::detect_objects(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+void ObstacleStop::detect_objects(const TrajectoryModifierData & input)
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::detect_objects", *get_time_keeper());
   if (!params_.use_objects || !input.predicted_objects) return;
@@ -518,8 +503,8 @@ void ObstacleStop::detect_objects(
     debug_data_.filtered_objects, debug_data_.target_objects, get_clock()->now());
 
   object_filter_->filter_by_target_area(
-    debug_data_.target_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
-    lateral_margin_map_);
+    debug_data_.target_objects, context_->vehicle_info, debug_data_.trajectory_shape,
+    lateral_margin_map_, object_decel_map_);
 }
 
 std::optional<CollisionPoint> ObstacleStop::evaluate_object_collision(
@@ -530,18 +515,13 @@ std::optional<CollisionPoint> ObstacleStop::evaluate_object_collision(
   if (debug_data_.target_objects.empty()) return std::nullopt;
 
   auto collision_point = get_nearest_object_collision(
-    debug_data_.target_objects, traj_points, context_->vehicle_info, object_decel_map_,
-    params_.rss_params.ego_decel, stopping_params_.delay_response_time, params_.stop_margin,
-    params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
-    params_.rss_params.lookahead_horizon, params_.rss_params.enable);
+    debug_data_.target_objects, traj_points, params_.rss_params.ego_decel,
+    stopping_params_.delay_response_time, params_.stop_margin, params_.rss_params.safety_margin,
+    params_.rss_params.enable);
 
   if (collision_point) {
-    auto it = std::find_if(
-      debug_data_.target_objects.begin(), debug_data_.target_objects.end(),
-      [&](const TargetObject & object) { return !object.is_safe; });
-    if (it != debug_data_.target_objects.end()) {
-      debug_data_.colliding_object = it->object;
-    }
+    debug_data_.colliding_object =
+      debug_data_.target_objects[collision_point->target_source_index].object;
   }
 
   return collision_point;
@@ -667,6 +647,7 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
   const auto white = autoware_utils::create_marker_color(1.0, 1.0, 1.0, 1.0);
   const auto yellow = autoware_utils::create_marker_color(1.0, 1.0, 0.0, 1.0);
   const auto magenta = autoware_utils::create_marker_color(1.0, 0.0, 1.0, 1.0);
+  const auto cyan = autoware_utils::create_marker_color(0.0, 1.0, 1.0, 0.9);
 
   auto add_line_list_marker = [&](
                                 const std::vector<geometry_msgs::msg::Point> & segments,
@@ -754,6 +735,7 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
 
   for (const auto & obj : debug_data_.target_objects) {
     add_polygon_marker(obj.polygon, ns + "/target_objects", id, magenta);
+    add_polygon_marker(obj.intersection_polygon, ns + "/target_intersection_polygon", id, cyan);
     std::stringstream ss;
     ss << std::fixed << std::setprecision(2);
     ss << "safe: " << (obj.is_safe ? "true" : "false") << "\n";
@@ -764,6 +746,18 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
       ns + "/target_objects_text", id, white);
     if (!obj.is_safe)
       add_polygon_marker(obj.ego_footprint, ns + "/overlapping_ego_footprint", id, magenta);
+    if (obj.predicted_path.size() >= 2) {
+      Marker path_marker = autoware_utils::create_default_marker(
+        "map", get_clock()->now(), ns + "/predicted_path", id, Marker::LINE_STRIP,
+        autoware_utils::create_marker_scale(0.08, 0.08, 0.08), cyan);
+      path_marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+      path_marker.points.reserve(obj.predicted_path.size());
+      for (const auto & pose : obj.predicted_path) {
+        path_marker.points.push_back(
+          autoware_utils_geometry::create_point(pose.position.x, pose.position.y, ego_z));
+      }
+      marker_array.markers.push_back(path_marker);
+    }
     id++;
   }
 

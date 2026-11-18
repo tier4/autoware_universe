@@ -32,7 +32,11 @@ Only candidate index zero is processed; secondary candidates return before param
 
 The plugin requires odometry, tracked objects, route, and raw lanelet map data from the modifier. Acceleration, steering, and supplied predicted objects are used when available. Disabled, shadow-mode, conditional-gate skip, and error cycles preserve the upstream candidate. A rejected result preserves input geometry and may apply its deterministic velocity-limit fallback. A reference-length skip can still apply the existing short-reference steering hold.
 
+Road borders are filtered by elevation before they enter MPPI or its input collision trigger. For each border segment, the closest trajectory point in XY supplies a local height reference; a border whose interpolated height differs by more than `road_border_max_height_difference_m` is excluded. The parameter defaults to 2.5 m and can be changed at runtime. This keeps bridge and underpass borders from acting as obstacles on another level.
+
 Plugin parameters are below `mppi_optimizer`. The `enabled` and `shadow_mode` parameters control result application. Debug topics are below `~/debug/mppi` in the trajectory modifier node. The transient-local `enabled` debug topic is true only for a cycle where an optimized MPPI trajectory replaced the primary candidate; it is false when MPPI is disabled, skipped, rejected, or running in shadow mode.
+
+`limit_velocity_from_external` defaults to `false`. Set it to `true` to apply the latest subscribed `~/input/external_velocity_limit_mps` to MPPI. `limit_velocity_from_map` remains independent; map limits can still apply when external limits are disabled. Changes to either parameter take effect on the next primary-candidate processing cycle.
 
 `output_acceleration_state` and `output_steering_state` independently select the predicted physical actuator states for optimized trajectory points. Each defaults to `false`, which keeps the existing acceleration and steering command output. MPPI has no velocity command: optimized points use predicted velocity, except where the existing engage adjustment applies. The engage adjustment applies in both acceleration output modes: it can overwrite early published velocity and acceleration with fixed 0.25 values, subject to the first point's effective velocity limit. It runs after model-state validation; consistency with every point's limit and the validated state remains an unresolved design decision. Selecting the steering state keeps the predicted tire angle during a short-reference steering command hold.
 
@@ -41,6 +45,10 @@ The selections apply to the optimized prefix only, up to 80 points. Remaining po
 ### Conditional optimization
 
 Set `optimize_only_on_input_collision: true` to run MPPI only when an enabled input collision condition is met. `trigger_on_road_border_collision` and `trigger_on_static_object_collision` are independent; either match starts optimization. Both triggers default to true, while conditional mode defaults to false to retain the existing behavior. When neither enabled condition matches, the plugin leaves all input points unchanged, including their velocity and steering fields, and publishes a skip diagnostic. With both triggers disabled, every cycle passes through unchanged.
+
+When the conditional gate changes from inactive to active, the plugin logs an `RCLCPP_WARN` naming each detected cause: road border, stationary avoidance target, or vegetation. A matching warning reports when it deactivates and why, such as a cleared collision and expired hold, an ineligible reference, or an unavailable input. Each transition is logged once; an activation hold does not repeat the activation warning after the collision clears.
+
+When MPPI is enabled and the required odometry, objects, route, and map are available, the plugin initializes the GPU optimizer on the first primary-candidate cycle before checking the collision conditions. A parameter, route, or map change resets the optimizer, which is initialized again on the next ready cycle. A skipped collision check does not defer GPU setup to the first matching trajectory.
 
 By default, activation uses `obstacle_collision_margin` and `road_border_collision_margin`. Set `use_soft_margins_for_input_collision: true` to also use the soft-cost zones: the object trigger uses `obstacle_collision_margin + obstacle_safe_margin`, and the road-border trigger uses `road_border_collision_margin + road_border_safe_margin`. This changes when MPPI starts; it does not change the MPPI costs or output collision validation.
 

@@ -1864,8 +1864,13 @@ struct FirstOrderDubinsMppiInterface::Impl
     const int count =
       std::min(kMppiHorizon, static_cast<int>(active_velocity_limit_profile.controls.size()));
     for (int timestep = 0; timestep < count; ++timestep) {
-      u_nom(accel_idx, timestep) =
+      const float candidate =
         active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
+      // Keep a nominal command that is already braking harder than the cap profile.
+      if (!(candidate < u_nom(accel_idx, timestep))) {
+        continue;
+      }
+      u_nom(accel_idx, timestep) = candidate;
     }
   }
 
@@ -2436,12 +2441,19 @@ struct FirstOrderDubinsMppiInterface::Impl
       const int count = std::min(
         static_cast<int>(u_opt_traj.cols()),
         static_cast<int>(active_velocity_limit_profile.controls.size()));
+      bool profile_lowered_acceleration = false;
       for (int timestep = 0; timestep < count; ++timestep) {
-        u_opt_traj(accel_idx, timestep) =
+        const float candidate =
           active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
+        // The cap can demand a harder brake. It must not release one the optimizer already chose.
+        if (!(candidate < u_opt_traj(accel_idx, timestep))) {
+          continue;
+        }
+        u_opt_traj(accel_idx, timestep) = candidate;
+        profile_lowered_acceleration = true;
       }
-      // Publication reads the controller's state sequence, so replay profile overrides too.
-      control_sequence_modified = control_sequence_modified || count > 0;
+      // Publication reads the controller's state sequence, so replay a lowered command.
+      control_sequence_modified = control_sequence_modified || profile_lowered_acceleration;
     }
     control_sequence_modified =
       projectControlSequenceToDynamics(u_opt_traj, x) || control_sequence_modified;
@@ -3215,21 +3227,9 @@ try {
 
   Trajectory output = detail::buildOptimizedTrajectory(
     input, optimized_states, optimized_controls, output_options, impl_->frame);
-  if (impl_->active_velocity_limit_profile.active) {
-    // buildOptimizedTrajectory intentionally preserves the suffix outside the MPPI horizon.
-    // An active velocity profile must not allow that suffix to jump back to its input speed.
-    const auto & profile = impl_->active_velocity_limit_profile;
-    for (std::size_t index = num_points; index < output.points.size(); ++index) {
-      auto & point = output.points[index];
-      if (index < profile.velocities.size()) {
-        point.longitudinal_velocity_mps = profile.velocities[index];
-        point.acceleration_mps2 = profile.accelerations[index];
-      } else {
-        point.longitudinal_velocity_mps = profile.target_velocity;
-        point.acceleration_mps2 = 0.0F;
-      }
-    }
-  }
+  // buildOptimizedTrajectory preserves the suffix outside the MPPI horizon. Cap that suffix with
+  // the active profile, without raising a point that is already slower than the profile.
+  detail::applyActiveVelocityLimitProfile(output, impl_->active_velocity_limit_profile, num_points);
 
   // Validate every published optimized state, including reconstructed x[H]. Obstacle slot i
   // represents the same post-step time (i + 1) * dt as optimized_states[i].

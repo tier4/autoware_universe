@@ -435,12 +435,6 @@
                   "default": 0.25,
                   "minimum": 0
                 },
-                "max_lateral_velocity_th": {
-                  "type": "number",
-                  "description": "Maximum lateral velocity threshold for target object to be considered for obstacle stop [m/s]",
-                  "default": 1,
-                  "minimum": 0
-                },
                 "safety_buffer": {
                   "type": "number",
                   "description": "Safety buffer to expand object shape [m]",
@@ -689,12 +683,6 @@
                 "safety_margin": {
                   "type": "number",
                   "description": "Safety margin to consider for RSS calculation [m]",
-                  "default": 1.5,
-                  "minimum": 0
-                },
-                "lookahead_horizon": {
-                  "type": "number",
-                  "description": "Lookahead horizon for RSS calculation [s]",
                   "default": 1.5,
                   "minimum": 0
                 }

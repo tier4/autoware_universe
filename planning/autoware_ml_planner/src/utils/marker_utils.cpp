@@ -65,12 +65,13 @@ LanePointData extract_lane_point(
   const xt::xarray<float> & lane_vector, int64_t l, int64_t p, int64_t P, int64_t D)
 {
   LanePointData data;
-  data.x = lane_vector[P * D * l + p * D + X];
-  data.y = lane_vector[P * D * l + p * D + Y];
-  data.lb_x = lane_vector[P * D * l + p * D + LB_X] + data.x;
-  data.lb_y = lane_vector[P * D * l + p * D + LB_Y] + data.y;
-  data.rb_x = lane_vector[P * D * l + p * D + RB_X] + data.x;
-  data.rb_y = lane_vector[P * D * l + p * D + RB_Y] + data.y;
+  data.lb_x = lane_vector[P * D * l + p * D + LB_X];
+  data.lb_y = lane_vector[P * D * l + p * D + LB_Y];
+  data.rb_x = lane_vector[P * D * l + p * D + RB_X];
+  data.rb_y = lane_vector[P * D * l + p * D + RB_Y];
+  // The lane points have no centerline: the midpoint of the boundaries stands in for it
+  data.x = 0.5 * (data.lb_x + data.rb_x);
+  data.y = 0.5 * (data.lb_y + data.rb_y);
   data.norm = std::sqrt(data.x * data.x + data.y * data.y);
   return data;
 }

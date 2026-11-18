@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_MODIFIER__TIME_SEQUENCE_RAW__STAMPED_EGO_BUFFER_HPP_
 #define AUTOWARE__TRAJECTORY_MODIFIER__TIME_SEQUENCE_RAW__STAMPED_EGO_BUFFER_HPP_
 
+#include <Eigen/Geometry>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/time.hpp>
 
@@ -234,10 +235,25 @@ private:
       a->pose.pose.position.y + alpha * (b->pose.pose.position.y - a->pose.pose.position.y);
     out.pose.pose.position.z =
       a->pose.pose.position.z + alpha * (b->pose.pose.position.z - a->pose.pose.position.z);
-    const double yaw_a = tf2::getYaw(a->pose.pose.orientation);
-    const double yaw_b = tf2::getYaw(b->pose.pose.orientation);
-    const double yaw = yaw_a + alpha * normalize_angle(yaw_b - yaw_a);
-    out.pose.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
+    const Eigen::Quaterniond q_a(
+      a->pose.pose.orientation.w, a->pose.pose.orientation.x, a->pose.pose.orientation.y,
+      a->pose.pose.orientation.z);
+    const Eigen::Quaterniond q_b(
+      b->pose.pose.orientation.w, b->pose.pose.orientation.x, b->pose.pose.orientation.y,
+      b->pose.pose.orientation.z);
+    if (q_a.squaredNorm() > 1e-12 && q_b.squaredNorm() > 1e-12) {
+      // Preserve roll and pitch for 3D ego-frame transforms (e.g. slope/ramp Z filtering).
+      const Eigen::Quaterniond q = q_a.normalized().slerp(alpha, q_b.normalized());
+      out.pose.pose.orientation.w = q.w();
+      out.pose.pose.orientation.x = q.x();
+      out.pose.pose.orientation.y = q.y();
+      out.pose.pose.orientation.z = q.z();
+    } else {
+      const double yaw_a = tf2::getYaw(a->pose.pose.orientation);
+      const double yaw_b = tf2::getYaw(b->pose.pose.orientation);
+      const double yaw = yaw_a + alpha * normalize_angle(yaw_b - yaw_a);
+      out.pose.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
+    }
     out.twist.twist.linear.x =
       a->twist.twist.linear.x + alpha * (b->twist.twist.linear.x - a->twist.twist.linear.x);
     out.twist.twist.linear.y =

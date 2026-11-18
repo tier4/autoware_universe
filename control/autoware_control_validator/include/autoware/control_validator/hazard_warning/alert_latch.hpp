@@ -17,42 +17,55 @@
 
 #include <rclcpp/time.hpp>
 
+#include <autoware_internal_control_msgs/msg/hazard_sector.hpp>
+
 #include <cstdint>
 #include <optional>
 
 namespace autoware::control_validator::hazard_warning
 {
+struct SectorState
+{
+  uint8_t risk_level{autoware_internal_control_msgs::msg::HazardSector::NONE};
+  uint8_t sources{0};
+
+  bool is_on() const
+  {
+    return risk_level > autoware_internal_control_msgs::msg::HazardSector::NONE || sources != 0;
+  }
+};
+
 /**
  * @brief Rising-edge immediate, falling-edge delayed latch.
  *
- * The output is the input `level` while it is 1 or more, and the last such level until `t_min`
- * has elapsed since then (0 afterwards). A clock going backwards resets the latch.
+ * The output is the input `raw` while it is on, and the last such state until `t_min` has elapsed
+ * since then (off afterwards). A clock going backwards resets the latch.
  */
 class AlertLatch
 {
 public:
-  uint8_t update(const uint8_t level, const rclcpp::Time & now, const double t_min)
+  SectorState update(const SectorState & raw, const rclcpp::Time & now, const double t_min)
   {
-    if (level >= 1) {
+    if (raw.is_on()) {
       last_on_time_ = now;
-      last_level_ = level;
-      return level;
+      last_state_ = raw;
+      return raw;
     }
     if (last_on_time_.has_value()) {
       const double elapsed =
         static_cast<double>(now.nanoseconds() - last_on_time_->nanoseconds()) * 1e-9;
       if (elapsed >= 0.0 && elapsed <= t_min) {
-        return last_level_;
+        return last_state_;
       }
     }
     last_on_time_.reset();
-    last_level_ = 0;
-    return 0;
+    last_state_ = SectorState{};
+    return SectorState{};
   }
 
 private:
   std::optional<rclcpp::Time> last_on_time_;
-  uint8_t last_level_{0};
+  SectorState last_state_;
 };
 }  // namespace autoware::control_validator::hazard_warning
 

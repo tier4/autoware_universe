@@ -173,7 +173,6 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
   params_.noise_scale_list = this->declare_parameter<std::vector<double>>("noise_scale", {1.0});
-  params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 5.0);
 
   // trajectory optimization params
   auto & opt = params_.trajectory_optimization;
@@ -188,7 +187,8 @@ void MLPlanner::set_up_params()
   opt.weight_steering_angle =
     this->declare_parameter<double>("trajectory_optimization.weight_steering_angle", 1.0);
   opt.weight_acceleration =
-    this->declare_parameter<double>("trajectory_optimization.weight_acceleration", 0.1);
+    this->declare_parameter<double>("trajectory_optimization.weight_acceleration", 0.0);
+  opt.weight_jerk = this->declare_parameter<double>("trajectory_optimization.weight_jerk", 0.1);
   opt.weight_steering_rate =
     this->declare_parameter<double>("trajectory_optimization.weight_steering_rate", 10.0);
   opt.terminal_weight_scale =
@@ -215,6 +215,9 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.min_acceleration_mps2", -4.0);
   opt.max_acceleration_mps2 =
     this->declare_parameter<double>("trajectory_optimization.max_acceleration_mps2", 3.0);
+  opt.min_jerk_mps3 =
+    this->declare_parameter<double>("trajectory_optimization.min_jerk_mps3", -5.0);
+  opt.max_jerk_mps3 = this->declare_parameter<double>("trajectory_optimization.max_jerk_mps3", 5.0);
   opt.max_steering_rate_rps =
     this->declare_parameter<double>("trajectory_optimization.max_steering_rate_rps", 1.0);
   opt.max_lateral_acceleration_mps2 =
@@ -269,6 +272,9 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("stop_point_fixing.velocity_threshold_mps", 0.3);
   stop_fixing.min_deceleration_duration_sec =
     this->declare_parameter<double>("stop_point_fixing.min_deceleration_duration_sec", 1.0);
+
+  params_.turn_indicator_hold_duration_sec =
+    this->declare_parameter<double>("turn_indicator_hold_duration_sec", 0.0);
 
   // planning factor params
   planning_factor_params_.enable_stop =
@@ -345,7 +351,6 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     new_params.traffic_light_group_msg_timeout_seconds);
   update_param<int>(parameters, "batch_size", new_params.batch_size);
   update_param<std::vector<double>>(parameters, "noise_scale", new_params.noise_scale_list);
-  update_param<double>(parameters, "line_string_max_step_m", new_params.line_string_max_step_m);
 
   auto & opt = new_params.trajectory_optimization;
   update_param<bool>(parameters, "trajectory_optimization.enable", opt.enable);
@@ -358,6 +363,7 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "trajectory_optimization.weight_steering_angle", opt.weight_steering_angle);
   update_param<double>(
     parameters, "trajectory_optimization.weight_acceleration", opt.weight_acceleration);
+  update_param<double>(parameters, "trajectory_optimization.weight_jerk", opt.weight_jerk);
   update_param<double>(
     parameters, "trajectory_optimization.weight_steering_rate", opt.weight_steering_rate);
   update_param<double>(
@@ -384,6 +390,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     parameters, "trajectory_optimization.min_acceleration_mps2", opt.min_acceleration_mps2);
   update_param<double>(
     parameters, "trajectory_optimization.max_acceleration_mps2", opt.max_acceleration_mps2);
+  update_param<double>(parameters, "trajectory_optimization.min_jerk_mps3", opt.min_jerk_mps3);
+  update_param<double>(parameters, "trajectory_optimization.max_jerk_mps3", opt.max_jerk_mps3);
   update_param<double>(
     parameters, "trajectory_optimization.max_steering_rate_rps", opt.max_steering_rate_rps);
   update_param<double>(
@@ -432,6 +440,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "stop_point_fixing.min_deceleration_duration_sec",
     stop_fixing.min_deceleration_duration_sec);
+
+  update_param<double>(
+    parameters, "turn_indicator_hold_duration_sec", new_params.turn_indicator_hold_duration_sec);
 
   update_param<bool>(
     parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);
@@ -495,19 +506,25 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   if (new_params.traffic_light_group_msg_timeout_seconds < 0.0) {
     return failure("traffic_light_group_msg_timeout_seconds must be non-negative");
   }
-  if (new_params.line_string_max_step_m <= 0.0) {
-    return failure("line_string_max_step_m must be greater than zero");
-  }
 #ifndef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (opt.enable) {
     return failure("trajectory optimization is not available in this build");
   }
 #endif
-  const std::array<double, 12> weights{
-    opt.weight_longitudinal,  opt.weight_lateral,        opt.weight_yaw,
-    opt.weight_velocity,      opt.weight_steering_angle, opt.weight_acceleration,
-    opt.weight_steering_rate, opt.terminal_weight_scale, opt.goal.weight_longitudinal,
-    opt.goal.weight_lateral,  opt.goal.weight_yaw,       opt.goal.weight_velocity};
+  const std::array<double, 13> weights{
+    opt.weight_longitudinal,
+    opt.weight_lateral,
+    opt.weight_yaw,
+    opt.weight_velocity,
+    opt.weight_steering_angle,
+    opt.weight_acceleration,
+    opt.weight_jerk,
+    opt.weight_steering_rate,
+    opt.terminal_weight_scale,
+    opt.goal.weight_longitudinal,
+    opt.goal.weight_lateral,
+    opt.goal.weight_yaw,
+    opt.goal.weight_velocity};
   if (std::any_of(weights.begin(), weights.end(), [](const double value) { return value < 0.0; })) {
     return failure("trajectory optimization weights must be non-negative");
   }
@@ -523,6 +540,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   if (opt.min_acceleration_mps2 > opt.max_acceleration_mps2) {
     return failure(
       "trajectory_optimization.min_acceleration_mps2 must not exceed max_acceleration_mps2");
+  }
+  if (opt.min_jerk_mps3 > opt.max_jerk_mps3) {
+    return failure("trajectory_optimization.min_jerk_mps3 must not exceed max_jerk_mps3");
   }
   if (
     opt.max_steering_rate_rps < 0.0 || opt.max_lateral_acceleration_mps2 < 0.0 ||
@@ -550,6 +570,9 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   if (stop_fixing.velocity_threshold_mps < 0.0 || stop_fixing.min_deceleration_duration_sec < 0.0) {
     return failure("stop point fixing thresholds must be non-negative");
   }
+  if (new_params.turn_indicator_hold_duration_sec < 0.0) {
+    return failure("turn_indicator_hold_duration_sec must be non-negative");
+  }
 
   const bool reload_model = new_params.base_model_directory != params_.base_model_directory ||
                             new_params.onnx_model_filename != params_.onnx_model_filename ||
@@ -559,7 +582,6 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
                             new_params.trt_precision != params_.trt_precision ||
                             new_params.use_cuda_graph != params_.use_cuda_graph;
   const bool recreate_timer = new_params.planning_frequency_hz != params_.planning_frequency_hz;
-  const bool rebuild_map = new_params.line_string_max_step_m != params_.line_string_max_step_m;
   const MLPlannerParams old_params = params_;
   const MLPlannerPlanningFactorParams old_planning_factor_params = planning_factor_params_;
   const MLPlannerDebugParams old_debug_params = debug_params_;
@@ -573,9 +595,6 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     remap_unsupported_objects_to_pedestrian_ = new_remap_unsupported_objects_to_pedestrian;
     if (reload_model) {
       load_model();
-    }
-    if (rebuild_map && lanelet_map_ptr_) {
-      core_->set_map(lanelet_map_ptr_);
     }
     if (recreate_timer) {
       timer_ = rclcpp::create_timer(
@@ -592,9 +611,6 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
       remap_unsupported_objects_to_pedestrian_ = old_remap_unsupported_objects_to_pedestrian;
       if (reload_model) {
         load_model();
-      }
-      if (rebuild_map && lanelet_map_ptr_) {
-        core_->set_map(lanelet_map_ptr_);
       }
     } catch (const std::exception & rollback_error) {
       RCLCPP_ERROR_STREAM(
@@ -622,10 +638,11 @@ void MLPlanner::publish_debug_markers(
 {
   if (debug_params_.publish_debug_route) {
     auto lifetime = rclcpp::Duration::from_seconds(0.2);
-    auto route_markers = utils::create_lane_marker(
-      ego_to_map_transform, input_data_map.at("route_lanes"),
-      std::vector<int64_t>(ROUTE_LANES_SHAPE.begin(), ROUTE_LANES_SHAPE.end()), timestamp, lifetime,
-      {0.8, 0.8, 0.8, 0.8}, "map");
+    // All waypoints of one batch entry as one polyline
+    auto route_markers = utils::create_map_polyline_marker(
+      ego_to_map_transform, input_data_map.at("route_waypoints"),
+      {1, 1, NUM_ROUTE_WAYPOINTS, ROUTE_WAYPOINTS_SHAPE[2]}, timestamp, lifetime,
+      {0.8f, 0.8f, 0.8f, 0.8f}, "route_waypoints", "map");
     pub_route_marker_->publish(route_markers);
   }
 
@@ -695,6 +712,7 @@ void MLPlanner::on_timer()
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
   auto steering_reports = sub_steering_.take_data();
+  auto acceleration_ptr = sub_acceleration_.take_data();
 
   if (traffic_signals.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -759,7 +777,7 @@ void MLPlanner::on_timer()
   diagnostics_inference_->add_key_value(
     "valid_lane_count", core_->count_valid_elements(input_data_map, "lanes"));
   diagnostics_inference_->add_key_value(
-    "valid_route_count", core_->count_valid_elements(input_data_map, "route_lanes"));
+    "valid_route_count", core_->count_valid_elements(input_data_map, "route_waypoints"));
   diagnostics_inference_->add_key_value(
     "valid_intersection_area_count",
     core_->count_valid_elements(input_data_map, "intersection_area"));
@@ -800,11 +818,14 @@ void MLPlanner::on_timer()
   pub_inference_time_->publish(inference_time_msg);
 
   const double current_steering_angle_rad = core_->current_steering_angle();
+  const double current_acceleration_mps2 =
+    acceleration_ptr ? acceleration_ptr->accel.accel.linear.x : 0.0;
 
   PlannerOutput planner_output;
   try {
     planner_output = core_->create_planner_output(
-      *inference_result, frame_time, generator_uuid_, current_steering_angle_rad);
+      *inference_result, frame_time, generator_uuid_, current_steering_angle_rad,
+      current_acceleration_mps2);
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "Postprocessing failed: " << e.what());
     diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, e.what());

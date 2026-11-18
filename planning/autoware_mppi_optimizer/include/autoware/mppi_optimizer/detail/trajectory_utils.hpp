@@ -156,10 +156,15 @@ void setInitialEngageVelocity(
   const std::vector<float> & acceleration_delay_buffer = {}, float dt = kMppiDt,
   bool keep_active = false, const std::vector<float> & reference_velocities = {});
 
-/** Apply an active profile to trajectory velocity/acceleration fields; inactive is an exact no-op.
+/**
+ * Lower trajectory velocity and acceleration to an active profile.
+ * A candidate is written only when it is below the value already on the point, so a profile that
+ * holds current speed cannot raise a slower input. Indices before begin_index are left unchanged.
+ * An inactive profile is an exact no-op.
  */
 void applyActiveVelocityLimitProfile(
-  Trajectory & trajectory, const ActiveVelocityLimitProfile & profile);
+  Trajectory & trajectory, const ActiveVelocityLimitProfile & profile,
+  std::size_t begin_index = 0);
 
 /**
  * Build a cold nominal from a spatially smoothed curvature fit. Horizon samples advance by the

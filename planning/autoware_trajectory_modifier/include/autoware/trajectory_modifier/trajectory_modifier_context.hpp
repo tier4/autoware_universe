@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_CONTEXT_HPP_
 #define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_CONTEXT_HPP_
 
+#include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -125,6 +126,9 @@ struct TrajectoryModifierContext
     scenario_max_velocity_sub{node, "~/input/scenario_max_velocity_mps", rclcpp::QoS{1}}
   {
   }
+
+  /// Shared map and route preparation for the map-limit plugin and MPPI.
+  autoware::avoidance_target_detector::ExtendedRouteCache extended_route_cache;
 
   void refresh_external_velocity_limit()
   {

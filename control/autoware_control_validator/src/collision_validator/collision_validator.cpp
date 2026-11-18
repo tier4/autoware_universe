@@ -19,6 +19,7 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 
+#include <autoware_internal_control_msgs/msg/hazard_sector.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 
 #include <algorithm>
@@ -35,6 +36,7 @@ namespace autoware::control_validator
 {
 namespace
 {
+using autoware_internal_control_msgs::msg::HazardSector;
 using collision_validator::CollisionCandidate;
 using collision_validator::CollisionEvaluatorParam;
 using collision_validator::PointCloudClusters;
@@ -98,12 +100,16 @@ CollisionEvaluatorParam to_collision_evaluator_param(
   return out;
 }
 
-uint8_t risk_level_of(const CollisionCandidate & candidate)
+uint8_t sources_of(const CollisionCandidate & candidate)
 {
-  const uint8_t near_level = candidate.near ? 1 : 0;
-  const uint8_t collision_level =
-    candidate.brake_level >= 1 ? static_cast<uint8_t>(candidate.brake_level + 1) : 0;
-  return std::max(near_level, collision_level);
+  uint8_t sources = 0;
+  if (candidate.near) {
+    sources |= HazardSector::SOURCE_PROXIMITY;
+  }
+  if (candidate.brake_level >= 1) {
+    sources |= HazardSector::SOURCE_COLLISION;
+  }
+  return sources;
 }
 }  // namespace
 
@@ -159,7 +165,8 @@ std::vector<HazardSource> CollisionValidator::to_hazard_sources(
   for (const auto & candidate : candidates) {
     HazardSource source;
     source.shape = transform_polygon_to_base_link(candidate.polygon_now, odom.pose.pose);
-    source.risk_level = risk_level_of(candidate);
+    source.risk_level = candidate.brake_level;
+    source.sources = sources_of(candidate);
     source.stamp = odom.header.stamp;
     sources.push_back(std::move(source));
   }
