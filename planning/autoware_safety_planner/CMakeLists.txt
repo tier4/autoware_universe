@@ -28,6 +28,7 @@ ament_auto_add_library(${PROJECT_NAME}_constraint_plugins SHARED
   src/constraint_generator/external_velocity_limit.cpp
   src/constraint_generator/lane_following_drivable_area.cpp
   src/constraint_generator/lanelet_speed_limit.cpp
+  src/constraint_generator/map_based_stop.cpp
   src/constraint_generator/obstacle_slow_down.cpp
   src/constraint_generator/obstacle_slow_down_utils.cpp
   src/constraint_generator/obstacle_stop.cpp
@@ -102,6 +103,7 @@ if(BUILD_TESTING)
     target_link_libraries(test_${PROJECT_NAME}
       ${PROJECT_NAME}_lib
       ${PROJECT_NAME}_common
+      ${PROJECT_NAME}_constraint_plugins
       ${PROJECT_NAME}_trajectory_planner_plugins
       safety_planner_parameters
     )
