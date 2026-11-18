@@ -102,6 +102,7 @@ if(BUILD_TESTING)
     target_link_libraries(test_${PROJECT_NAME}
       ${PROJECT_NAME}_lib
       ${PROJECT_NAME}_common
+      ${PROJECT_NAME}_constraint_plugins
       ${PROJECT_NAME}_trajectory_planner_plugins
       safety_planner_parameters
     )
