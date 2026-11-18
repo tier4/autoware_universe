@@ -253,6 +253,26 @@ private:
   Motion m_prev_raw_ctrl_cmd{};  // without slope compensation
   std::vector<std::pair<rclcpp::Time, double>> m_vel_hist;
 
+  // Stopping-scene acceleration bias. Off unless enable_stopping_scene_accel_bias is true.
+  // The history stores published acceleration so a delayed sample is the command the
+  // vehicle was asked to follow.
+  struct StoppingSceneAccelSample
+  {
+    rclcpp::Time stamp;
+    double accel{0.0};
+  };
+  bool m_enable_stopping_scene_accel_bias{false};
+  double m_stopping_scene_velocity_min{0.1};
+  double m_stopping_scene_velocity_max{3.0};
+  double m_stopping_scene_end_velocity_max{0.2};
+  double m_stopping_scene_bias_min{-0.5};
+  double m_stopping_scene_sample_weight{0.1};
+  double m_stopping_scene_command_delay{0.3};
+  double m_stopping_scene_nearest_dist{10.0};
+  double m_stopping_scene_bias{0.0};
+  bool m_stopping_scene_was_active{false};
+  std::deque<StoppingSceneAccelSample> m_stopping_scene_accel_history;
+
   // debug values
   DebugValues m_debug_values;
 
@@ -334,6 +354,30 @@ private:
    * @param [in] control_data control data
    */
   Motion calcCtrlCmd(const ControlData & control_data);
+
+  /**
+   * @brief True when ego is rolling into a planned stop.
+   *
+   * Requires  velocity_min < ego vx < velocity_max, a trajectory endpoint slower than
+   * ego and below end_velocity_max, and a negative acceleration on the current
+   * (nearest) trajectory point within nearest_dist.
+   */
+  bool isStoppingScene(const ControlData & control_data) const;
+
+  /// Latest published acceleration at or before now - command_delay. NaN if none is old enough.
+  double lookupDelayedStoppingSceneAccel(const rclcpp::Time & now) const;
+
+  void resetStoppingSceneAccelBias();
+
+  /**
+   * @brief Add the stopping-scene acceleration bias to the command that would be published.
+   *
+   * On each scene entry the bias resets to 0. While the scene is active,
+   * raw = delayed_output_acc - localization_ax, and
+   * bias = sample_weight * clip(raw, bias_min, 0) + (1 - sample_weight) * bias.
+   * The returned command is base_acc + bias. Outside the scene the bias is 0.
+   */
+  double applyStoppingSceneAccelBias(const double base_acc, const ControlData & control_data);
 
   /**
    * @brief publish control command
