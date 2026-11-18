@@ -31,6 +31,7 @@ ament_auto_add_library(${PROJECT_NAME}_constraint_plugins SHARED
   src/constraint_generator/obstacle_slow_down.cpp
   src/constraint_generator/obstacle_slow_down_utils.cpp
   src/constraint_generator/obstacle_stop.cpp
+  src/constraint_generator/surround_obstacle_stop.cpp
   src/constraint_generator/vehicle_kinematics.cpp
 )
 target_link_libraries(${PROJECT_NAME}_constraint_plugins

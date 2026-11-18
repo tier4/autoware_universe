@@ -30,6 +30,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <tl/expected.hpp>
 
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
 #include <map>
 #include <memory>
 #include <optional>
@@ -138,6 +141,9 @@ private:
   autoware_utils::InterProcessPollingSubscriber<VelocityLimit> external_velocity_limit_subscriber_{
     this, "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local()};
   VelocityLimit::ConstSharedPtr external_velocity_limit_ptr_;
+
+  tf2_ros::Buffer tf_buffer_;
+  tf2_ros::TransformListener tf_listener_;
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
