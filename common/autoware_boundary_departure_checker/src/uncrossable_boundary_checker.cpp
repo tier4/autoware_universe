@@ -21,20 +21,39 @@
 #include <autoware_utils_system/stop_watch.hpp>
 
 #include <memory>
+#include <stdexcept>
 
 namespace autoware::boundary_departure_checker
 {
+namespace
+{
+/**
+ * @brief Give the parameters back if they are valid.
+ * @throws std::invalid_argument if low_boundary.footprint_offset removes the footprint
+ */
+UncrossableBoundaryDepartureParam validate_param(
+  const UncrossableBoundaryDepartureParam & param, const VehicleInfo & vehicle_info)
+{
+  if (!footprints::is_valid_offset(vehicle_info, param.low_boundary.footprint_offset)) {
+    throw std::invalid_argument(
+      "UncrossableBoundaryChecker: low_boundary.footprint_offset makes the footprint length or "
+      "width zero or negative.");
+  }
+  return param;
+}
+}  // namespace
+
 UncrossableBoundaryChecker::UncrossableBoundaryChecker(
   const lanelet::LaneletMapPtr & map, const UncrossableBoundaryDepartureParam & param,
   const VehicleInfo & vehicle_info)
-: param_(param), vehicle_info_(vehicle_info)
+: param_(validate_param(param, vehicle_info)), vehicle_info_(vehicle_info)
 {
   evaluator_ptr_ = std::make_unique<BoundaryDepartureEvaluator>(map, param, vehicle_info);
 }
 
 void UncrossableBoundaryChecker::update_parameters(const UncrossableBoundaryDepartureParam & param)
 {
-  param_ = param;
+  param_ = validate_param(param, vehicle_info_);
   evaluator_ptr_->update_parameters(param);
 }
 

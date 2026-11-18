@@ -23,6 +23,25 @@ namespace autoware::boundary_departure_checker::footprints
 using autoware_utils_geometry::pose2transform;
 using autoware_utils_geometry::transform_vector;
 
+namespace
+{
+/**
+ * @brief Give a copy of the vehicle information with each overhang moved by the footprint offset.
+ * @details VehicleInfo::createFootprint builds each edge of the footprint from one overhang, so
+ * this moves each edge by its own offset. Only the overhangs of the copy change.
+ */
+vehicle_info_utils::VehicleInfo apply_offset_to_overhangs(
+  const vehicle_info_utils::VehicleInfo & vehicle_info, const FootprintOffset & offset)
+{
+  auto offset_info = vehicle_info;
+  offset_info.front_overhang_m += offset.front_m;
+  offset_info.rear_overhang_m += offset.rear_m;
+  offset_info.left_overhang_m += offset.left_m;
+  offset_info.right_overhang_m += offset.right_m;
+  return offset_info;
+}
+}  // namespace
+
 FootprintMargin calc_margin_from_covariance(
   const geometry_msgs::msg::PoseWithCovariance & covariance, const double scale)
 {
@@ -125,6 +144,17 @@ Footprints generate(
     footprints.push_back(transform_vector(local_vehicle_footprint, pose2transform(pt.pose)));
   }
   return footprints;
+}
+
+bool is_valid_offset(
+  const vehicle_info_utils::VehicleInfo & vehicle_info, const FootprintOffset & offset)
+{
+  const auto offset_info = apply_offset_to_overhangs(vehicle_info, offset);
+  const auto length =
+    offset_info.front_overhang_m + offset_info.wheel_base_m + offset_info.rear_overhang_m;
+  const auto width =
+    offset_info.wheel_tread_m + offset_info.left_overhang_m + offset_info.right_overhang_m;
+  return length > 0.0 && width > 0.0;
 }
 
 // clang-format off

@@ -21,6 +21,30 @@
 namespace autoware::boundary_departure_checker
 {
 /**
+ * @brief Offset of each side of the ego footprint.
+ * @details A positive value expands that side, and a negative value shrinks that side. The sign
+ * follows the margin of VehicleInfo::createFootprint.
+ */
+struct FootprintOffset
+{
+  double front_m{0.0};  ///< offset of the front edge [m]
+  double rear_m{0.0};   ///< offset of the rear edge [m]
+  double left_m{0.0};   ///< offset of the left edge [m]
+  double right_m{0.0};  ///< offset of the right edge [m]
+};
+
+/**
+ * @brief Parameters for boundaries that are lower than a height threshold, such as curbs.
+ * @details The boundary height is the boundary z at the point closest to the trajectory point,
+ * minus the z of the trajectory point.
+ */
+struct LowBoundaryParam
+{
+  double height_threshold_m{0.0};    ///< a boundary lower than this height is a low boundary [m]
+  FootprintOffset footprint_offset;  ///< footprint offset to use for low boundaries
+};
+
+/**
  * @brief Parameters for checking uncrossable boundary departure.
  */
 struct UncrossableBoundaryDepartureParam
@@ -39,6 +63,7 @@ struct UncrossableBoundaryDepartureParam
   bool enable_align_to_ego_pose{true};  ///< align trajectory poses to match the measured ego pose
   bool enable_developer_marker{true};   ///< flag marker only for developer
   std::vector<std::string> boundary_types_to_detect{"road_border"};  ///< boundary types to detect
+  LowBoundaryParam low_boundary;  ///< footprint selection for boundaries lower than a threshold
 };
 }  // namespace autoware::boundary_departure_checker
 

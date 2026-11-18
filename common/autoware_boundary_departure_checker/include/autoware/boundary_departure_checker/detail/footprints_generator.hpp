@@ -16,6 +16,7 @@
 #define AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__DETAIL__FOOTPRINTS_GENERATOR_HPP_
 
 #include <autoware/boundary_departure_checker/detail/side_struct.hpp>
+#include <autoware/boundary_departure_checker/parameters.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
@@ -79,6 +80,15 @@ Footprints generate(
   const std::vector<TrajectoryPoint> & trajectory_points,
   const vehicle_info_utils::VehicleInfo & vehicle_info,
   const geometry_msgs::msg::PoseWithCovariance & covariance);
+
+/**
+ * @brief Check that a footprint offset keeps a valid footprint polygon.
+ * @param[in] vehicle_info information about the vehicle
+ * @param[in] offset offset of each side of the footprint
+ * @return true if the footprint length and width stay more than zero
+ */
+[[nodiscard]] bool is_valid_offset(
+  const vehicle_info_utils::VehicleInfo & vehicle_info, const FootprintOffset & offset);
 
 /**
  * @brief Extract left and right side segments from footprints.
