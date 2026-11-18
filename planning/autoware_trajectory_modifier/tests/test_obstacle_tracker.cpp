@@ -38,15 +38,14 @@ rclcpp::Time time_ms(const int64_t milliseconds)
   return rclcpp::Time(milliseconds * 1000000, RCL_ROS_TIME);
 }
 
-// The tracker currently accepts one clock. `stamp` is recorded so later steps can pass it through
-// without rewriting the scenarios. Until then it is ignored and `now` is the tracker clock.
+// `now` is the module clock (arrival, activation, erase). `stamp` is the perception time used
+// only to extrapolate a stored measurement during association.
 void update(
   ObstacleTracker & tracker, const PredictedObjects & objects, TargetObjects & output,
   const rclcpp::Time & stamp, const rclcpp::Time & now)
 {
-  (void)stamp;
   output.clear();
-  tracker.update_objects(objects, output, now);
+  tracker.update_objects(objects, output, stamp, now);
 }
 
 PredictedObject make_car(const double x, const double velocity)

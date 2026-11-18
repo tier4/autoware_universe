@@ -622,21 +622,26 @@ struct ObstacleTracker
    * based on the on_time_buffer and off_time_buffer.
    * @param objects Input predicted objects after filtering
    * @param persistent_objects Output persistent objects
-   * @param now Current stamp used for track aging and activation timing
+   * @param stamp Perception stamp of this message. Association extrapolates by stamp - last_stamp.
+   * @param now Module time of this call. Activation and erasing use this clock.
    */
   void update_objects(
-    const PredictedObjects & objects, TargetObjects & persistent_objects, const rclcpp::Time & now);
+    const PredictedObjects & objects, TargetObjects & persistent_objects,
+    const rclcpp::Time & stamp, const rclcpp::Time & now);
 
   /**
    * @brief Update tracked points
    * @details Use input pointcloud to update the tracked points history and remove obsolete points,
-   * based on the on_time_buffer and off_time_buffer.
+   * based on the on_time_buffer and off_time_buffer. Point tracks stay on the module clock, so
+   * stamp is accepted and ignored.
    * @param points Input pointcloud
    * @param persistent_points Output persistent points
-   * @param now Current stamp used for track aging and activation timing
+   * @param stamp Unused until point tracks follow the cloud stamp.
+   * @param now Module time of this call. Activation and erasing use this clock.
    */
   void update_points(
-    const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points, const rclcpp::Time & now);
+    const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points,
+    const rclcpp::Time & stamp, const rclcpp::Time & now);
 
 private:
   double on_time_buffer_;
@@ -648,12 +653,16 @@ private:
 
   struct PersistentObstacle
   {
-    rclcpp::Time first_seen_time;
-    rclcpp::Time last_seen_time;
+    // Module time when this track was created. Activation uses now - first_arrival.
+    rclcpp::Time first_arrival;
+    // Module time when this track was last accepted. Erasing uses now - last_arrival.
+    rclcpp::Time last_arrival;
+    // Perception stamp of the stored measurement. Association uses stamp - last_stamp.
+    rclcpp::Time last_stamp;
     bool is_active{false};
 
-    explicit PersistentObstacle(const rclcpp::Time & now)
-    : first_seen_time(now), last_seen_time(now)
+    PersistentObstacle(const rclcpp::Time & now, const rclcpp::Time & stamp)
+    : first_arrival(now), last_arrival(now), last_stamp(stamp)
     {
     }
   };
@@ -662,8 +671,9 @@ private:
   {
     PredictedObject object;
 
-    explicit PersistentObject(const PredictedObject & object, const rclcpp::Time & now)
-    : PersistentObstacle(now), object(object)
+    PersistentObject(
+      const PredictedObject & object, const rclcpp::Time & now, const rclcpp::Time & stamp)
+    : PersistentObstacle(now, stamp), object(object)
     {
     }
   };
@@ -674,7 +684,7 @@ private:
   {
     PointXYZCPE point;
     explicit PersistentPoint(const PointXYZCPE & point, const rclcpp::Time & now)
-    : PersistentObstacle(now), point(point)
+    : PersistentObstacle(now, now), point(point)
     {
     }
   };
