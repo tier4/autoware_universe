@@ -788,16 +788,6 @@ void ObstacleTracker::update_objects(
   const PredictedObjects & objects, TargetObjects & persistent_objects, const rclcpp::Time & stamp,
   const rclcpp::Time & now)
 {
-  for (auto it = persistent_objects_map_.begin(); it != persistent_objects_map_.end();) {
-    const auto idle_time = (now - it->second.last_arrival).seconds();
-    const bool is_erase =
-      !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
-    if (is_erase)
-      it = persistent_objects_map_.erase(it);
-    else
-      it++;
-  }
-
   auto estimate_pose = [&](const PersistentObject & object) -> geometry_msgs::msg::Pose {
     const auto & pose = object.object.kinematics.initial_pose_with_covariance.pose;
     const auto & twist = object.object.kinematics.initial_twist_with_covariance.twist.linear;
@@ -856,6 +846,17 @@ void ObstacleTracker::update_objects(
     closest_object.is_active = duration >= on_time_buffer_;
   }
 
+  // A returning detection refreshes last_arrival before this check, so the track survives.
+  for (auto it = persistent_objects_map_.begin(); it != persistent_objects_map_.end();) {
+    const auto idle_time = (now - it->second.last_arrival).seconds();
+    const bool is_erase =
+      !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
+    if (is_erase)
+      it = persistent_objects_map_.erase(it);
+    else
+      it++;
+  }
+
   for (const auto & [uuid, entry] : persistent_objects_map_) {
     if (entry.is_active) {
       persistent_objects.emplace_back(entry.object);
@@ -867,16 +868,6 @@ void ObstacleTracker::update_points(
   const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points,
   const rclcpp::Time & /* stamp */, const rclcpp::Time & now)
 {
-  for (auto it = persistent_point_map_.begin(); it != persistent_point_map_.end();) {
-    const auto idle_time = (now - it->second.last_arrival).seconds();
-    const bool is_erase =
-      !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
-    if (is_erase)
-      it = persistent_point_map_.erase(it);
-    else
-      it++;
-  }
-
   auto get_closest_point_uuid =
     [&](const PointXYZCPE & point) -> std::optional<boost::uuids::uuid> {
     std::optional<boost::uuids::uuid> closest_uuid = std::nullopt;
@@ -903,6 +894,17 @@ void ObstacleTracker::update_points(
     closest_point.point = point;
     const auto duration = (now - closest_point.first_arrival).seconds();
     closest_point.is_active = duration >= on_time_buffer_;
+  }
+
+  // A returning point refreshes last_arrival before this check, so the track survives.
+  for (auto it = persistent_point_map_.begin(); it != persistent_point_map_.end();) {
+    const auto idle_time = (now - it->second.last_arrival).seconds();
+    const bool is_erase =
+      !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
+    if (is_erase)
+      it = persistent_point_map_.erase(it);
+    else
+      it++;
   }
 
   for (const auto & [uuid, entry] : persistent_point_map_) {
