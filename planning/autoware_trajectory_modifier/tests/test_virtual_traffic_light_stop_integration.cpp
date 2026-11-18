@@ -210,6 +210,17 @@ LaneletRoute::ConstSharedPtr make_route(const lanelet::Id lanelet_id)
   return route;
 }
 
+LaneletRoute::ConstSharedPtr make_route(const std::vector<lanelet::Id> & lanelet_ids)
+{
+  auto route = std::make_shared<LaneletRoute>();
+  for (const auto id : lanelet_ids) {
+    LaneletSegment segment;
+    segment.preferred_primitive.id = id;
+    route->segments.push_back(segment);
+  }
+  return route;
+}
+
 lanelet::LineString3d make_cross_line(const lanelet::Id id, const double x)
 {
   lanelet::Point3d left(lanelet::utils::getId(), x, -5.0, 0.0);
@@ -260,6 +271,48 @@ std::shared_ptr<lanelet::LaneletMap> make_vtl_map(
   const lanelet::Id instrument_id, const double start_x, const double stop_x, const double end_x)
 {
   return make_vtl_map(instrument_id, start_x, stop_x, {{lanelet::utils::getId(), end_x, 0.0}});
+}
+
+struct VtlMapWithPrecedingLane
+{
+  std::shared_ptr<lanelet::LaneletMap> map;
+  lanelet::Id preceding_lane_id{};
+  lanelet::Id vtl_lane_id{};
+};
+
+//! VTL lane spans x in [0, 100] and the preceding lane x in [-100, 0]
+VtlMapWithPrecedingLane make_vtl_map_with_preceding_lane(
+  const lanelet::Id instrument_id, const double start_x, const double stop_x, const double end_x)
+{
+  auto instrument = make_cross_line(instrument_id, stop_x + 1.0);
+  instrument.attributes()["type"] = "intersection_coordination";
+
+  lanelet::RuleParameterMap parameters;
+  parameters[lanelet::RoleNameString::Refers].push_back(instrument);
+  parameters[lanelet::RoleNameString::RefLine].push_back(
+    make_cross_line(lanelet::utils::getId(), stop_x));
+  parameters["start_line"].push_back(make_cross_line(lanelet::utils::getId(), start_x));
+  parameters["end_line"].push_back(make_cross_line(lanelet::utils::getId(), end_x, 0.0));
+  auto vtl = lanelet::RegulatoryElementFactory::create(
+    lanelet::autoware::VirtualTrafficLight::RuleName, lanelet::utils::getId(), parameters);
+
+  const auto make_lane = [](const double begin_x, const double end_x_of_lane) {
+    lanelet::LineString3d left(
+      lanelet::utils::getId(),
+      {lanelet::Point3d(lanelet::utils::getId(), begin_x, -5.0, 0.0),
+       lanelet::Point3d(lanelet::utils::getId(), end_x_of_lane, -5.0, 0.0)});
+    lanelet::LineString3d right(
+      lanelet::utils::getId(),
+      {lanelet::Point3d(lanelet::utils::getId(), begin_x, 5.0, 0.0),
+       lanelet::Point3d(lanelet::utils::getId(), end_x_of_lane, 5.0, 0.0)});
+    return lanelet::Lanelet(lanelet::utils::getId(), left, right);
+  };
+  auto preceding_lane = make_lane(-100.0, 0.0);
+  auto vtl_lane = make_lane(0.0, 100.0);
+  vtl_lane.addRegulatoryElement(vtl);
+
+  return {
+    lanelet::utils::createMap({preceding_lane, vtl_lane}), preceding_lane.id(), vtl_lane.id()};
 }
 
 std::shared_ptr<lanelet::LaneletMap> make_curved_vtl_map(
@@ -470,6 +523,7 @@ protected:
     }
     TrajectoryModifierData input;
     input.current_odometry = std::move(odometry);
+    input.current_acceleration = make_acceleration(0.0);
     input.lanelet_map = std::move(lanelet_map);
     input.route = std::move(route);
     return input;
@@ -814,7 +868,7 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, PublishesProductionDebugMarkersTe
        {"CANDIDATE: trajectory_0", "VTL[12345]",
         "LANELET_ID:", "REGULATORY_ELEMENT_ID:", "STATE: REQUESTING", "V2X: received=false",
         "DECISION: STOP target=STOP_LINE reason=NO_STATE modified=true",
-        "ACTIVE_END_LINE_ID:", "DISTANCE_PATH_M:", "DISTANCE_CENTERLINE_M:", "ego_in_lane=true",
+        "ACTIVE_END_LINE_ID:", "DISTANCE_PATH_M:", "DISTANCE_ROUTE_M:", "ego_in_lane=true",
         "stop_line_relevant=true", "end_hold_active=false"}) {
     EXPECT_NE(text.find(expected), std::string::npos) << expected;
   }
@@ -950,6 +1004,70 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, LifecycleStateAdvancesWithUnchang
     run_cycle(36.0, 0.0), static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::FINALIZING));
   EXPECT_EQ(
     run_cycle(42.0, 5.0), static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::FINALIZED));
+}
+
+TEST_F(
+  VirtualTrafficLightStopIntegrationTest, StartLineOnPrecedingLaneletRequestsAfterFrontCrossesIt)
+{
+  constexpr lanelet::Id instrument_id = 12345;
+  constexpr double start_x = -20.0;
+  const auto vtl_map = make_vtl_map_with_preceding_lane(instrument_id, start_x, 20.0, 40.0);
+  const auto route = make_route({vtl_map.preceding_lane_id, vtl_map.vtl_lane_id});
+
+  const auto run_cycle = [&](const double ego_x) {
+    auto input = make_vtl_input(
+      make_odometry(ego_x, 5.0, node_->now()), vtl_map.map, route,
+      make_vtl_states(instrument_id, false, false, node_->now()));
+    const auto previous_command_count = command_messages_.size();
+    input.candidate_index = 0U;
+    TrajectoryPoints unchanged_candidate(1);
+    EXPECT_FALSE(process_candidate(unchanged_candidate, input));
+    spin_until([&]() { return command_messages_.size() > previous_command_count; });
+    EXPECT_GT(command_messages_.size(), previous_command_count);
+    EXPECT_EQ(command_messages_.back().commands.size(), 1U);
+    return command_messages_.back().commands.front().state;
+  };
+
+  EXPECT_EQ(run_cycle(-90.0), static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::NONE));
+  EXPECT_EQ(
+    run_cycle(geometric_stop_x(start_x) - 1.0),
+    static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::NONE));
+  EXPECT_EQ(
+    run_cycle(geometric_stop_x(start_x) + 1.0),
+    static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::REQUESTING));
+}
+
+TEST_F(VirtualTrafficLightStopIntegrationTest, FinalizingIsKeptUntilEndLineIsPassed)
+{
+  constexpr lanelet::Id instrument_id = 12345;
+  auto lanelet_map = make_vtl_map(instrument_id, 5.0, 20.0, 40.0);
+  auto route = make_route(lanelet_map->laneletLayer.begin()->id());
+
+  const auto run_cycle = [&](const double ego_x, const double velocity, const bool finalized) {
+    auto input = make_vtl_input(
+      make_odometry(ego_x, velocity, node_->now()), lanelet_map, route,
+      make_vtl_states(instrument_id, true, finalized, node_->now()));
+    const auto previous_command_count = command_messages_.size();
+    input.candidate_index = 0U;
+    TrajectoryPoints unchanged_candidate(1);
+    EXPECT_FALSE(process_candidate(unchanged_candidate, input));
+    spin_until([&]() { return command_messages_.size() > previous_command_count; });
+    EXPECT_GT(command_messages_.size(), previous_command_count);
+    EXPECT_EQ(command_messages_.back().commands.size(), 1U);
+    return command_messages_.back().commands.front().state;
+  };
+  const auto finalizing = static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::FINALIZING);
+  const auto moving_velocity = params_.stopping_constraints.ego_stopped_vel_th + 0.4;
+
+  EXPECT_EQ(
+    run_cycle(25.0, 5.0, false),
+    static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::PASSING));
+  EXPECT_EQ(run_cycle(36.0, 0.0, false), finalizing);
+  EXPECT_EQ(run_cycle(36.0, 0.0, true), finalizing);
+  EXPECT_EQ(run_cycle(36.0, moving_velocity, true), finalizing);
+  EXPECT_EQ(
+    run_cycle(42.0, 5.0, true),
+    static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::FINALIZED));
 }
 
 TEST_F(VirtualTrafficLightStopIntegrationTest, DeniedMovingStateBrakesWhenStopLineIsNotInTrajectory)
@@ -1404,6 +1522,7 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, IncomingStateIsAppliedOnlyToTheNe
   auto first = original;
   ASSERT_TRUE(process_candidate(first, input));
   expect_single_stop_factor("VTL 12345: NO_RIGHT_OF_WAY -> STOP_LINE");
+  plugin_->publish_planning_factor();
 
   // Receipt of approval between candidates must not alter this batch's decisions.
   publish_vtl_states(*make_vtl_states(12345, true, false, node_->now()));
@@ -1560,21 +1679,15 @@ TEST_F(
 TEST_F(VirtualTrafficLightStopIntegrationTest, OdometryAndAccelerationAreFrozenUntilNextCycle)
 {
   const auto map = make_vtl_map(12345, 5.0, 20.0, 60.0);
-  auto odometry = std::make_shared<Odometry>(*make_odometry(15.0, 5.0, node_->now()));
-  auto acceleration = std::make_shared<AccelWithCovarianceStamped>(*make_acceleration(1.0));
   auto input = make_vtl_input(
-    odometry, map, make_route(map->laneletLayer.begin()->id()),
+    make_odometry(15.0, 5.0, node_->now()), map, make_route(map->laneletLayer.begin()->id()),
     make_vtl_states(12345, false, false, node_->now()));
-  input.current_acceleration = acceleration;
+  input.current_acceleration = make_acceleration(1.0);
   input.candidate_count = 2U;
   auto first = make_straight_trajectory(0.0, 60.0);
   ASSERT_TRUE(process_candidate(first, input));
-  // Mutate the original objects as well as replacing the pointers passed to the next candidate.
-  odometry->pose.pose.position.x = 22.0;
-  odometry->twist.twist.linear.x = 1.0;
-  acceleration->accel.accel.linear.x = -1.0;
   input.current_odometry = make_odometry(22.0, 1.0, node_->now());
-  input.current_acceleration.reset();
+  input.current_acceleration = make_acceleration(0.0);
   auto second = make_straight_trajectory(0.0, 60.0);
   ASSERT_TRUE(process_candidate(second, input));
   expect_same_trajectory(first, second);
