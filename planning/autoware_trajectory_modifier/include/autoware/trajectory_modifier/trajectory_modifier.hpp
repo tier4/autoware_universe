@@ -20,6 +20,7 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
 
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
+#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
@@ -43,6 +44,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -66,6 +68,7 @@ private:
   using SteeringReport = autoware_vehicle_msgs::msg::SteeringReport;
   using PointCloud2 = sensor_msgs::msg::PointCloud2;
   using Plugin = plugin::TrajectoryModifierPluginBase;
+  using DiagnosticsInterface = autoware_utils_diagnostics::DiagnosticsInterface;
 
   /// @brief Process every candidate through the configured plugin sequence.
   void on_trajectories(const CandidateTrajectories::ConstSharedPtr msg);
@@ -81,6 +84,10 @@ private:
   void update_params();
   /// @brief Publish the total callback processing duration.
   void publish_processing_time(double processing_time_ms);
+  /// @brief Heartbeat for missing ~/input/trajectories when the planner is silent.
+  void on_input_trajectories_watchdog();
+  /// @brief Publish input_trajectories diagnostics from the latest receive time.
+  void publish_input_trajectories_diagnostic();
 
   std::unique_ptr<trajectory_modifier_params::ParamListener> param_listener_;
   TrajectoryModifierParams params_;
@@ -120,6 +127,13 @@ private:
 
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr lanelet_map_bin_ptr_;
+
+  std::unique_ptr<DiagnosticsInterface> diagnostics_input_trajectories_;
+  rclcpp::TimerBase::SharedPtr input_trajectories_watchdog_timer_;
+  rclcpp::Time watchdog_origin_time_{0, 0, RCL_ROS_TIME};
+  std::optional<rclcpp::Time> last_input_time_;
+  std::size_t last_candidate_count_{0};
+  bool ever_received_input_{false};
 };
 
 }  // namespace autoware::trajectory_modifier
