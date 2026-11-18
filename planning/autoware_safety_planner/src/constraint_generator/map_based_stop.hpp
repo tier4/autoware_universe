@@ -71,10 +71,6 @@ bool is_possibility_type(StopLineType type);
 class MapBasedStopConstraintGenerator : public ConstraintGeneratorInterface
 {
 public:
-  std::string get_name() const override { return "map_based_stop"; }
-  ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
-
-private:
   //! Intersection lanelet groups collected during stop-line collection, for debug visualization.
   struct IntersectionDebugLanelets
   {
@@ -93,8 +89,8 @@ private:
     StopLineType type;
   };
 
-  //! Re-collect the stop lines when the map or the lanelet sequence on the route has changed.
-  void update_stop_lines(const RouteManager & route_manager);
+  std::string get_name() const override { return "map_based_stop"; }
+  ConstraintGeneratorOutput generate_constraints(const PlannerContext & context) override;
 
   /**
    * @brief Collect stop targets along the given lanelet sequence, tagged by type. The
@@ -122,6 +118,10 @@ private:
     const lanelet::ConstLanelets & lanelets, const lanelet::LaneletMapConstPtr & lanelet_map,
     const lanelet::routing::RoutingGraphConstPtr & routing_graph,
     IntersectionDebugLanelets & debug_lanelets) const;
+
+  //! Keep only the stop lines that intersect the trajectory (in 2D).
+  std::vector<StopLine> filter_stop_lines_on_trajectory(
+    const std::vector<StopLine> & stop_lines, const TrajectoryPoints & traj_points) const;
 
   /**
    * @brief Select the nearest reachable stop point among the stop lines of the given certainty.
@@ -154,6 +154,10 @@ private:
   std::optional<double> select_road_shoulder_stop_arc_length(
     const TrajectoryPoints & traj_points, const geometry_msgs::msg::Pose & ego_pose,
     const VehicleInfo & vehicle_info, const lanelet::LaneletMapConstPtr & lanelet_map) const;
+
+private:
+  //! Re-collect the stop lines when the map or the lanelet sequence on the route has changed.
+  void update_stop_lines(const RouteManager & route_manager);
 
   //! Stop lines collected along the route, cached by update_stop_lines().
   std::vector<StopLine> stop_lines_;

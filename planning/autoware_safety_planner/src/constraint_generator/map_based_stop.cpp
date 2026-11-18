@@ -339,25 +339,6 @@ std::optional<lanelet::ConstLineString3d> road_marking_stop_line_for_crosswalk(
   return std::nullopt;
 }
 
-//! Keep only the stop lines that intersect the trajectory (in 2D).
-std::vector<StopLine> filter_stop_lines_on_trajectory(
-  const std::vector<StopLine> & stop_lines, const TrajectoryPoints & traj_points)
-{
-  if (stop_lines.empty() || traj_points.size() < 2) {
-    return {};
-  }
-
-  const auto trajectory_line = to_line_string_2d(traj_points);
-  std::vector<StopLine> intersecting;
-  for (const auto & stop_line : stop_lines) {
-    const auto stop_line_2d = lanelet::utils::to2D(stop_line.line).basicLineString();
-    if (boost::geometry::intersects(trajectory_line, stop_line_2d)) {
-      intersecting.push_back(stop_line);
-    }
-  }
-  return intersecting;
-}
-
 //! The reference_path from s_ego to its end, resampled; the arc length of a point is its distance
 //! from ego
 TrajectoryPoints make_trajectory_points(const PathPointTrajectory & path, const double s_ego)
@@ -569,31 +550,6 @@ ConstraintGeneratorOutput MapBasedStopConstraintGenerator::generate_constraints(
   }
 
   return output;
-}
-
-void MapBasedStopConstraintGenerator::update_stop_lines(const RouteManager & route_manager)
-{
-  const auto lanelets =
-    route_manager.get_lanelet_sequence_on_route(params_.reference_path.forward_length_m, 0.0)
-      .as_lanelets();
-
-  // The collection depends only on the map and the lanelets of the route ahead, so it is re-run
-  // only when either changes
-  std::vector<lanelet::Id> lanelet_ids;
-  lanelet_ids.reserve(lanelets.size());
-  for (const auto & lanelet : lanelets) {
-    lanelet_ids.push_back(lanelet.id());
-  }
-  const auto map_ptr = route_manager.lanelet_map_ptr();
-  if (map_ptr == stop_lines_map_ptr_ && lanelet_ids == stop_lines_lanelet_ids_) {
-    return;
-  }
-
-  intersection_debug_lanelets_ = {};
-  stop_lines_ = collect_stop_lines(
-    lanelets, map_ptr, route_manager.routing_graph_ptr(), intersection_debug_lanelets_);
-  stop_lines_map_ptr_ = map_ptr;
-  stop_lines_lanelet_ids_ = std::move(lanelet_ids);
 }
 
 std::vector<StopLine> MapBasedStopConstraintGenerator::collect_stop_lines(
@@ -869,6 +825,24 @@ std::vector<StopLine> MapBasedStopConstraintGenerator::collect_stop_lines(
   return stop_lines;
 }
 
+std::vector<StopLine> MapBasedStopConstraintGenerator::filter_stop_lines_on_trajectory(
+  const std::vector<StopLine> & stop_lines, const TrajectoryPoints & traj_points) const
+{
+  if (stop_lines.empty() || traj_points.size() < 2) {
+    return {};
+  }
+
+  const auto trajectory_line = to_line_string_2d(traj_points);
+  std::vector<StopLine> intersecting;
+  for (const auto & stop_line : stop_lines) {
+    const auto stop_line_2d = lanelet::utils::to2D(stop_line.line).basicLineString();
+    if (boost::geometry::intersects(trajectory_line, stop_line_2d)) {
+      intersecting.push_back(stop_line);
+    }
+  }
+  return intersecting;
+}
+
 std::optional<MapBasedStopConstraintGenerator::StopPoint>
 MapBasedStopConstraintGenerator::select_stop_point(
   const std::vector<StopLine> & stop_lines, const TrajectoryPoints & traj_points,
@@ -1020,6 +994,31 @@ std::optional<double> MapBasedStopConstraintGenerator::select_road_shoulder_stop
     }
   }
   return std::nullopt;
+}
+
+void MapBasedStopConstraintGenerator::update_stop_lines(const RouteManager & route_manager)
+{
+  const auto lanelets =
+    route_manager.get_lanelet_sequence_on_route(params_.reference_path.forward_length_m, 0.0)
+      .as_lanelets();
+
+  // The collection depends only on the map and the lanelets of the route ahead, so it is re-run
+  // only when either changes
+  std::vector<lanelet::Id> lanelet_ids;
+  lanelet_ids.reserve(lanelets.size());
+  for (const auto & lanelet : lanelets) {
+    lanelet_ids.push_back(lanelet.id());
+  }
+  const auto map_ptr = route_manager.lanelet_map_ptr();
+  if (map_ptr == stop_lines_map_ptr_ && lanelet_ids == stop_lines_lanelet_ids_) {
+    return;
+  }
+
+  intersection_debug_lanelets_ = {};
+  stop_lines_ = collect_stop_lines(
+    lanelets, map_ptr, route_manager.routing_graph_ptr(), intersection_debug_lanelets_);
+  stop_lines_map_ptr_ = map_ptr;
+  stop_lines_lanelet_ids_ = std::move(lanelet_ids);
 }
 
 }  // namespace autoware::safety_planner::experimental
