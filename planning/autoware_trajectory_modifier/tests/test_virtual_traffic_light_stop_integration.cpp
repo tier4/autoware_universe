@@ -1142,6 +1142,43 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, ApprovedShortTrajectoryIsLeftToUp
   expect_same_trajectory(trajectory, original);
 }
 
+TEST_F(VirtualTrafficLightStopIntegrationTest, EndLineHoldIsResetWhenTheSameRouteIsDrivenAgain)
+{
+  constexpr lanelet::Id instrument_id = 12345;
+  const auto vtl_map = make_vtl_map_with_preceding_lane(instrument_id, 5.0, 20.0, 40.0);
+  const auto route = make_route({vtl_map.preceding_lane_id, vtl_map.vtl_lane_id});
+
+  const auto run_cycle = [&](const double ego_x, const rclcpp::Time & state_stamp) {
+    auto input = make_vtl_input(
+      make_odometry(ego_x, 5.0, node_->now()), vtl_map.map, route,
+      make_vtl_states(instrument_id, true, false, state_stamp));
+    const auto previous_command_count = command_messages_.size();
+    input.candidate_index = 0U;
+    TrajectoryPoints unchanged_candidate(1);
+    EXPECT_FALSE(process_candidate(unchanged_candidate, input));
+    spin_until([&]() { return command_messages_.size() > previous_command_count; });
+    EXPECT_GT(command_messages_.size(), previous_command_count);
+    EXPECT_EQ(command_messages_.back().commands.size(), 1U);
+    return command_messages_.back().commands.front().state;
+  };
+
+  EXPECT_EQ(
+    run_cycle(42.0, node_->now()),
+    static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::FINALIZED));
+  EXPECT_EQ(
+    run_cycle(-90.0, node_->now()),
+    static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::NONE));
+
+  const auto stale_stamp = node_->now() - rclcpp::Duration::from_seconds(4.0);
+  auto input = make_vtl_input(
+    make_odometry(25.0, 5.0, node_->now()), vtl_map.map, route,
+    make_vtl_states(instrument_id, true, false, stale_stamp));
+  auto trajectory = make_straight_trajectory(10.0, 45.0);
+  input.candidate_index = 0U;
+  ASSERT_TRUE(process_candidate(trajectory, input));
+  expect_single_stop_factor("VTL 12345: STATE_TIMEOUT_AFTER_STOP_LINE -> STOP_LINE");
+}
+
 TEST_F(VirtualTrafficLightStopIntegrationTest, ApprovedStateFinalizesAfterPassingEndLine)
 {
   constexpr lanelet::Id instrument_id = 12345;
