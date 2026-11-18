@@ -206,28 +206,41 @@ TEST(ObstacleTracker, DISABLED_ReplayedMessageAgesOut)
 
 TEST(ObstacleTracker, AssociatesAcrossOneSecondStampGap)
 {
-  auto tracker = make_tracker();
+  // off_time_buffer_ is 1.5 s, so the 1 s perception gap still matches this active track.
+  // The message arrives 1.7 s after last_arrival, past that buffer, and the stored pose is
+  // extrapolated by the stamp gap.
+  auto tracker = make_tracker(0.5, 1.5);
   TargetObjects output;
   constexpr double velocity = 10.0;
 
-  update(tracker, make_objects(0.0, velocity), output, time_ms(0), time_ms(0));
-  update(tracker, make_objects(0.0, velocity), output, time_ms(0), time_ms(200));
-  update(tracker, make_objects(10.0, velocity), output, time_ms(1000), time_ms(1000));
-  EXPECT_EQ(output.size(), 1U);
+  for (int64_t ms = 0; ms <= 500; ms += 100) {
+    const double x = velocity * static_cast<double>(ms) / 1000.0;
+    update(tracker, make_objects(x, velocity), output, time_ms(ms), time_ms(ms));
+  }
+  ASSERT_EQ(output.size(), 1U);
+
+  update(tracker, make_objects(15.0, velocity), output, time_ms(1500), time_ms(2200));
+  ASSERT_EQ(output.size(), 1U);
+  EXPECT_NEAR(
+    output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 15.0, 1e-6);
 }
 
-TEST(ObstacleTracker, DISABLED_RejectsMatchWhenStampGapExceedsBuffer)
+TEST(ObstacleTracker, RejectsMatchWhenStampGapExceedsBuffer)
 {
   auto tracker = make_tracker();
   TargetObjects output;
   const auto car = make_objects(0.0, 0.0);
 
+  // 0.5 s is past grace_period_, so the unconfirmed track does not match or confirm.
   update(tracker, car, output, time_ms(0), time_ms(0));
   update(tracker, car, output, time_ms(500), time_ms(500));
   EXPECT_TRUE(output.empty());
 
-  confirm_stopped_car(tracker, output);
-  update(tracker, car, output, time_ms(1300), time_ms(1300));
+  // 0.8 s from the last confirmation is past off_time_buffer_.
+  auto confirmed = make_tracker();
+  confirm_stopped_car(confirmed, output);
+  ASSERT_EQ(output.size(), 1U);
+  update(confirmed, car, output, time_ms(1300), time_ms(1300));
   EXPECT_TRUE(output.empty());
 }
 
