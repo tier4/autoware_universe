@@ -101,18 +101,6 @@ std::optional<double> find_last_collision_before_line(
   return last;
 }
 
-std::optional<double> calc_arc_length_from_collision(
-  const Trajectory & path, const double end_line_s, const lanelet::ConstLineString3d & line,
-  const double ego_s, const double front_offset)
-{
-  const auto collision = find_last_collision_before_line(path, end_line_s, line, front_offset);
-  if (!collision) {
-    return std::nullopt;
-  }
-
-  return *collision - ego_s - front_offset;
-}
-
 std::optional<double> calc_arc_length_on_centerline(
   const lanelet::ConstLineString3d & centerline, const geometry_msgs::msg::Point & point)
 {
@@ -292,6 +280,12 @@ void VirtualTrafficLightStop::publish_debug_data(const std::string & ns) const
   if (!debug_marker_pub_ || !debug_text_pub_) {
     return;
   }
+  if (debug_text_pub_->get_subscription_count() > 0U) {
+    publish_debug_string(ns);
+  }
+  if (debug_marker_pub_->get_subscription_count() == 0U) {
+    return;
+  }
 
   const auto now = get_clock()->now();
   const auto lifetime = rclcpp::Duration::from_seconds(0.5);
@@ -372,7 +366,6 @@ void VirtualTrafficLightStop::publish_debug_data(const std::string & ns) const
   }
 
   debug_marker_pub_->publish(marker_array);
-  publish_debug_string(ns);
 }
 
 void VirtualTrafficLightStop::publish_debug_string(const std::string & ns) const
@@ -697,7 +690,6 @@ bool VirtualTrafficLightStop::process_module(
 {
   autoware_utils_debug::ScopedTimeTrack st(
     "VirtualTrafficLightStop::process_module", *get_time_keeper());
-  module.debug_data = DebugData{};
   module.debug_data.has_vtl_state = module.virtual_traffic_light_state.has_value();
   if (module.virtual_traffic_light_state) {
     module.debug_data.approval = module.virtual_traffic_light_state->approval;
@@ -708,6 +700,10 @@ bool VirtualTrafficLightStop::process_module(
   const auto front_offset = context_->vehicle_info.max_longitudinal_offset_m;
   const auto checking_length = path.length() + std::max(0.0, front_offset);
   const auto & reg_elem = *module.regulatory_element;
+  const auto calc_distance_from_front = [&](const std::optional<double> & collision_s) {
+    return collision_s ? std::optional<double>{*collision_s - ego_s - front_offset}
+                       : std::optional<double>{};
+  };
   const auto end_collision =
     module.active_end_line ? find_last_collision_before_line(
                                path, checking_length, module.active_end_line->line, front_offset)
@@ -715,21 +711,16 @@ bool VirtualTrafficLightStop::process_module(
   const auto collision_search_limit = end_collision.value_or(checking_length);
 
   const auto ego_pose = cycle_odometry_->pose.pose;
-  const auto start_arc = calc_arc_length_from_collision(
-    path, collision_search_limit, reg_elem.getStartLine(), ego_s, front_offset);
+  const auto start_arc = calc_distance_from_front(find_last_collision_before_line(
+    path, collision_search_limit, reg_elem.getStartLine(), front_offset));
   const auto start_route_arc = calc_distance_from_vehicle_front(module.start_line_route_arc_m);
   const auto stop_line = reg_elem.getStopLine();
-  const auto stop_arc = stop_line ? calc_arc_length_from_collision(
-                                      path, collision_search_limit, *stop_line, ego_s, front_offset)
-                                  : std::optional<double>{};
   const auto stop_collision = stop_line ? find_last_collision_before_line(
                                             path, collision_search_limit, *stop_line, front_offset)
                                         : std::optional<double>{};
+  const auto stop_arc = calc_distance_from_front(stop_collision);
   const auto stop_route_arc = calc_distance_from_vehicle_front(module.stop_line_route_arc_m);
-  const auto end_arc = module.active_end_line ? calc_arc_length_from_collision(
-                                                  path, checking_length,
-                                                  module.active_end_line->line, ego_s, front_offset)
-                                              : std::optional<double>{};
+  const auto end_arc = calc_distance_from_front(end_collision);
   const auto end_route_arc = calc_distance_from_vehicle_front(module.end_line_route_arc_m);
 
   auto & debug = module.debug_data;
