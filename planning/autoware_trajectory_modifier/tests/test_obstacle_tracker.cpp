@@ -131,8 +131,10 @@ TEST(ObstacleTracker, UnmatchedInactiveTrackDiesAfterGracePeriod)
   // Aging uses a strict `>` and runs after association. An unmatched idle of exactly
   // grace_period_ keeps the unconfirmed track, so sightings spaced by 200 ms still
   // share first_arrival and confirm once the span reaches on_time_buffer_.
+  // The empty cycles keep the previous perception stamp. They advance the module clock
+  // without becoming a new observation.
   update(tracker, car, output, time_ms(0), time_ms(0));
-  update(tracker, none, output, time_ms(200), time_ms(200));
+  update(tracker, none, output, time_ms(0), time_ms(200));
   update(tracker, car, output, time_ms(200), time_ms(200));
   update(tracker, car, output, time_ms(400), time_ms(400));
   EXPECT_TRUE(output.empty());
@@ -143,9 +145,9 @@ TEST(ObstacleTracker, UnmatchedInactiveTrackDiesAfterGracePeriod)
   // at 300 ms starts a new clock, and the unmatched 400 ms gap to 700 ms erases that one too.
   auto restarted = make_tracker();
   update(restarted, car, output, time_ms(0), time_ms(0));
-  update(restarted, none, output, time_ms(300), time_ms(300));
+  update(restarted, none, output, time_ms(0), time_ms(300));
   update(restarted, car, output, time_ms(300), time_ms(300));
-  update(restarted, none, output, time_ms(700), time_ms(700));
+  update(restarted, none, output, time_ms(300), time_ms(700));
   EXPECT_TRUE(output.empty());
 }
 
@@ -179,7 +181,7 @@ TEST(ObstacleTracker, MovingObjectKeepsItsIdentity)
     output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 5.0, 1e-6);
 }
 
-TEST(ObstacleTracker, DISABLED_ReplayedMessageDoesNotConfirm)
+TEST(ObstacleTracker, ReplayedMessageDoesNotConfirm)
 {
   auto tracker = make_tracker();
   TargetObjects output;
@@ -189,9 +191,16 @@ TEST(ObstacleTracker, DISABLED_ReplayedMessageDoesNotConfirm)
   update(tracker, car, output, stamp, time_ms(0));
   update(tracker, car, output, stamp, time_ms(600));
   EXPECT_TRUE(output.empty());
+
+  // An already active track is not refreshed by the same stamp, and it is still emitted.
+  auto confirmed = make_tracker();
+  confirm_stopped_car(confirmed, output);
+  ASSERT_EQ(output.size(), 1U);
+  update(confirmed, car, output, time_ms(500), time_ms(600));
+  EXPECT_EQ(output.size(), 1U);
 }
 
-TEST(ObstacleTracker, DISABLED_ReplayedMessageAgesOut)
+TEST(ObstacleTracker, ReplayedMessageAgesOut)
 {
   auto tracker = make_tracker();
   TargetObjects output;

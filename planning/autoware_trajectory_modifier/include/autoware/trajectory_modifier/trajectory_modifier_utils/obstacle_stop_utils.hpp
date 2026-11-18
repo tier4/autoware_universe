@@ -679,6 +679,8 @@ private:
   };
   std::unordered_map<boost::uuids::uuid, PersistentObject, boost::hash<boost::uuids::uuid>>
     persistent_objects_map_;
+  // Perception stamp of the last object message that was allowed to associate.
+  std::optional<rclcpp::Time> last_object_stamp_;
 
   struct PersistentPoint : public PersistentObstacle
   {
