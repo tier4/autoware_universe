@@ -551,4 +551,45 @@ TEST(UncrossableBoundaryUtilsTest, TestCalcBoundaryHeightZeroLengthSegmentUsesSt
   // Assert: no division by zero, the start point z is used.
   EXPECT_DOUBLE_EQ(height, 0.5);
 }
+
+TEST(UncrossableBoundaryUtilsTest, TestSeparateByHeightSplitsAtThreshold)
+{
+  // Arrange: ego at z = 0.0 and a threshold of 0.3 m. Each border is flat, so its height is its z.
+  const auto make_flat_segment = [](const lanelet::Id id, const double z) {
+    return Segment3dWithIdx{Segment3d{{0.0, 1.0, z}, {10.0, 1.0, z}}, IdxForRTreeSegment(id, 0, 1)};
+  };
+  const std::vector<Segment3dWithIdx> segments{
+    make_flat_segment(1, 0.1),    // curb: low
+    make_flat_segment(2, 1.0),    // wall: tall
+    make_flat_segment(3, 0.3),    // at the threshold: tall
+    make_flat_segment(4, -0.2)};  // below ego: low
+  const auto ego_position = autoware_utils_geometry::create_point(5.0, 0.0, 0.0);
+
+  // Act:
+  const auto result = boundary_segment_finder::separate_by_height(segments, ego_position, 0.3);
+
+  // Assert: each group keeps the input order.
+  ASSERT_EQ(result.low.size(), 2U);
+  EXPECT_EQ(result.low[0].second.linestring_id, 1);
+  EXPECT_EQ(result.low[1].second.linestring_id, 4);
+  ASSERT_EQ(result.tall.size(), 2U);
+  EXPECT_EQ(result.tall[0].second.linestring_id, 2);
+  EXPECT_EQ(result.tall[1].second.linestring_id, 3);
+}
+
+TEST(UncrossableBoundaryUtilsTest, TestSeparateByHeightZeroThresholdKeepsAllTall)
+{
+  // Arrange: a border 0.2 m below ego. With a threshold of 0.0, the low boundary check is off.
+  const std::vector<Segment3dWithIdx> segments{
+    {Segment3d{{0.0, 1.0, -0.2}, {10.0, 1.0, -0.2}}, IdxForRTreeSegment(1, 0, 1)}};
+  const auto ego_position = autoware_utils_geometry::create_point(5.0, 0.0, 0.0);
+
+  // Act:
+  const auto result = boundary_segment_finder::separate_by_height(segments, ego_position, 0.0);
+
+  // Assert:
+  EXPECT_TRUE(result.low.empty());
+  ASSERT_EQ(result.tall.size(), 1U);
+  EXPECT_EQ(result.tall[0].second.linestring_id, 1);
+}
 }  // namespace autoware::boundary_departure_checker
