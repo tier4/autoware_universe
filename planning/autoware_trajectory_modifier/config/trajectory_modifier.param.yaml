@@ -29,7 +29,7 @@
     use_stop_point_fixer: true
     use_obstacle_stop: true
     use_traffic_light_stop: true
-    use_virtual_traffic_light_stop: true
+    use_virtual_traffic_light_stop: false
     use_detection_area_stop: false
     use_velocity_modifier: true
     use_surround_obstacle_stop: true
