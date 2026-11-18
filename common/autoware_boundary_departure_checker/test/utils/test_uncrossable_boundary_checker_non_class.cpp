@@ -431,6 +431,33 @@ TEST(UncrossableBoundaryUtilsTest, TestBuildUncrossableBoundariesRTree)
   EXPECT_EQ(results.front().second.linestring_id, ls1.id());
 }
 
+TEST(UncrossableBoundaryUtilsTest, TestRTreeQueryReturnsTrulyNearestSegment)
+{
+  // Arrange: segment A goes down to the right, from (0, 4) to (4, 0). Segment B is horizontal,
+  // from (0, 4.5) to (2, 4.5). The query point (1.0, 3.5) is 0.35 m from A and 1.0 m from B.
+  lanelet::LaneletMapPtr map = std::make_shared<lanelet::LaneletMap>();
+  lanelet::Point3d a1(lanelet::utils::getId(), 0.0, 4.0, 0.0);
+  lanelet::Point3d a2(lanelet::utils::getId(), 4.0, 0.0, 0.0);
+  lanelet::LineString3d ls_a(lanelet::utils::getId(), {a1, a2});
+  ls_a.attributes()[lanelet::AttributeName::Type] = "road_border";
+  map->add(ls_a);
+  lanelet::Point3d b1(lanelet::utils::getId(), 0.0, 4.5, 0.0);
+  lanelet::Point3d b2(lanelet::utils::getId(), 2.0, 4.5, 0.0);
+  lanelet::LineString3d ls_b(lanelet::utils::getId(), {b1, b2});
+  ls_b.attributes()[lanelet::AttributeName::Type] = "road_border";
+  map->add(ls_b);
+  const std::vector<std::string> types = {"road_border"};
+  const UncrossableBoundariesRTree rtree(map, types);
+
+  // Act:
+  const auto results = rtree.query(Point2d{1.0, 3.5}, 1);
+
+  // Assert: the nearest segment is A.
+  ASSERT_EQ(results.size(), 1U);
+  EXPECT_EQ(results.front().second.linestring_id, ls_a.id())
+    << "A id: " << ls_a.id() << ", B id: " << ls_b.id();
+}
+
 TEST(UncrossableBoundaryUtilsTest, TestFindClosestBoundarySegmentsKeepsSegmentZ)
 {
   // Arrange: a road border 1.0 m to the left of the ego left side, at z = 7.5.
