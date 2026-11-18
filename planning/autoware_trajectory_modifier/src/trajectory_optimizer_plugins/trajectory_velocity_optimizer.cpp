@@ -30,8 +30,6 @@ namespace autoware::trajectory_modifier::plugin
 
 void TrajectoryVelocityOptimizer::on_initialize(const TrajectoryModifierParams & params)
 {
-  auto node_ptr = get_node_ptr();
-
   enabled_ = params.use_velocity_optimizer;
   velocity_params_.nearest_dist_threshold_m =
     params.trajectory_velocity_optimizer.nearest_dist_threshold_m;
@@ -44,13 +42,11 @@ void TrajectoryVelocityOptimizer::on_initialize(const TrajectoryModifierParams &
   velocity_params_.max_lateral_accel_mps2 =
     params.trajectory_velocity_optimizer.max_lateral_accel_mps2;
   velocity_params_.set_engage_speed = params.trajectory_velocity_optimizer.set_engage_speed;
-  velocity_params_.limit_speed = params.trajectory_velocity_optimizer.limit_speed;
   velocity_params_.limit_lateral_acceleration =
     params.trajectory_velocity_optimizer.limit_lateral_acceleration;
   velocity_params_.smooth_velocities = params.trajectory_velocity_optimizer.smooth_velocities;
   velocity_params_.min_limited_speed_mps =
     params.trajectory_velocity_optimizer.min_limited_speed_mps;
-  velocity_params_.default_max_velocity_mps = params.max_vel;
 
   auto & cjs = velocity_params_.continuous_jerk_smoother_params;
   cjs.jerk_weight = params.trajectory_velocity_optimizer.continuous_jerk_smoother.jerk_weight;
@@ -65,19 +61,6 @@ void TrajectoryVelocityOptimizer::on_initialize(const TrajectoryModifierParams &
   cjs.min_decel = params.limit.min_acc;
   cjs.max_jerk = params.limit.max_jerk;
   cjs.min_jerk = params.limit.min_jerk;
-
-  sub_planning_velocity_ =
-    std::make_shared<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>(
-      node_ptr, "~/input/external_velocity_limit_mps", rclcpp::QoS{1});
-
-  pub_velocity_limit_ = node_ptr->create_publisher<VelocityLimit>(
-    "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
-
-  // publish default max velocity
-  VelocityLimit max_vel_msg{};
-  max_vel_msg.stamp = node_ptr->now();
-  max_vel_msg.max_velocity = static_cast<float>(velocity_params_.default_max_velocity_mps);
-  pub_velocity_limit_->publish(max_vel_msg);
 }
 
 ProcessingResult TrajectoryVelocityOptimizer::process(
@@ -106,26 +89,6 @@ ProcessingResult TrajectoryVelocityOptimizer::process(
     trajectory_velocity_optimizer_utils::limit_lateral_acceleration(
       traj_points, max_velocity_per_point, velocity_params_.max_lateral_accel_mps2,
       velocity_params_.min_limited_speed_mps, current_odometry, max_speed_update_in_place);
-  }
-
-  // Apply global speed limit to trajectory and max velocity array
-  if (velocity_params_.limit_speed) {
-    const auto external_velocity_limit = sub_planning_velocity_->take_data();
-    const auto max_speed_mps = (external_velocity_limit)
-                                 ? static_cast<float>(external_velocity_limit->max_velocity)
-                                 : static_cast<float>(velocity_params_.default_max_velocity_mps);
-    if (max_speed_update_in_place) {
-      // Directly set max velocity on trajectory points
-      trajectory_velocity_optimizer_utils::set_max_velocity(traj_points, max_speed_mps);
-    } else {
-      // Update per-point max velocity constraints
-      for (auto & v : max_velocity_per_point) {
-        v = std::min(v, static_cast<double>(max_speed_mps));
-      }
-    }
-    if (external_velocity_limit) {
-      pub_velocity_limit_->publish(*external_velocity_limit);
-    }
   }
 
   if (velocity_params_.smooth_velocities) {
@@ -172,13 +135,11 @@ void TrajectoryVelocityOptimizer::update_params(const TrajectoryModifierParams &
   velocity_params_.max_lateral_accel_mps2 =
     params.trajectory_velocity_optimizer.max_lateral_accel_mps2;
   velocity_params_.set_engage_speed = params.trajectory_velocity_optimizer.set_engage_speed;
-  velocity_params_.limit_speed = params.trajectory_velocity_optimizer.limit_speed;
   velocity_params_.limit_lateral_acceleration =
     params.trajectory_velocity_optimizer.limit_lateral_acceleration;
   velocity_params_.smooth_velocities = params.trajectory_velocity_optimizer.smooth_velocities;
   velocity_params_.min_limited_speed_mps =
     params.trajectory_velocity_optimizer.min_limited_speed_mps;
-  velocity_params_.default_max_velocity_mps = params.max_vel;
 
   auto & cjs = velocity_params_.continuous_jerk_smoother_params;
   cjs.jerk_weight = params.trajectory_velocity_optimizer.continuous_jerk_smoother.jerk_weight;
