@@ -835,18 +835,23 @@ void ObstacleTracker::update_objects(
     return closest_uuid;
   };
 
-  for (const auto & object : objects.objects) {
-    const auto closest_uuid = get_closest_object_uuid(object);
-    if (!closest_uuid) {
-      persistent_objects_map_.emplace(id_generator_(), PersistentObject(object, now, stamp));
-      continue;
+  // A repeated or older stamp leaves arrival times and activation untouched.
+  const bool is_new_stamp = !last_object_stamp_ || stamp > *last_object_stamp_;
+  if (is_new_stamp) {
+    for (const auto & object : objects.objects) {
+      const auto closest_uuid = get_closest_object_uuid(object);
+      if (!closest_uuid) {
+        persistent_objects_map_.emplace(id_generator_(), PersistentObject(object, now, stamp));
+        continue;
+      }
+      auto & closest_object = persistent_objects_map_.at(closest_uuid.value());
+      closest_object.last_arrival = now;
+      closest_object.last_stamp = stamp;
+      closest_object.object = object;
+      const auto duration = (now - closest_object.first_arrival).seconds();
+      closest_object.is_active = duration >= on_time_buffer_;
     }
-    auto & closest_object = persistent_objects_map_.at(closest_uuid.value());
-    closest_object.last_arrival = now;
-    closest_object.last_stamp = stamp;
-    closest_object.object = object;
-    const auto duration = (now - closest_object.first_arrival).seconds();
-    closest_object.is_active = duration >= on_time_buffer_;
+    last_object_stamp_ = stamp;
   }
 
   // A returning detection refreshes last_arrival before this check, so the track survives.
