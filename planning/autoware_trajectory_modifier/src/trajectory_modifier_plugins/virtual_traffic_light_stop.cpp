@@ -620,6 +620,7 @@ void VirtualTrafficLightStop::update_module_lifecycle()
     const auto end_arc = calc_distance_from_vehicle_front(module.end_line_route_arc_m);
 
     if (start_arc && *start_arc > 0.0) {
+      module.end_hold_active = false;
       set_state(module, ModuleState::NONE);
       update_command(module);
       continue;
