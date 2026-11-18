@@ -785,10 +785,11 @@ void ObjectFilter::filter_by_target_area(
 }
 
 void ObstacleTracker::update_objects(
-  const PredictedObjects & objects, TargetObjects & persistent_objects, const rclcpp::Time & now)
+  const PredictedObjects & objects, TargetObjects & persistent_objects, const rclcpp::Time & stamp,
+  const rclcpp::Time & now)
 {
   for (auto it = persistent_objects_map_.begin(); it != persistent_objects_map_.end();) {
-    const auto idle_time = (now - it->second.last_seen_time).seconds();
+    const auto idle_time = (now - it->second.last_arrival).seconds();
     const bool is_erase =
       !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
     if (is_erase)
@@ -800,7 +801,7 @@ void ObstacleTracker::update_objects(
   auto estimate_pose = [&](const PersistentObject & object) -> geometry_msgs::msg::Pose {
     const auto & pose = object.object.kinematics.initial_pose_with_covariance.pose;
     const auto & twist = object.object.kinematics.initial_twist_with_covariance.twist.linear;
-    const auto dt = (now - object.last_seen_time).seconds();
+    const auto dt = (stamp - object.last_stamp).seconds();
     const auto dx = twist.x * dt;
     const auto dy = twist.y * dt;
     return autoware_utils::calc_offset_pose(pose, dx, dy, 0.0);
@@ -844,13 +845,14 @@ void ObstacleTracker::update_objects(
   for (const auto & object : objects.objects) {
     const auto closest_uuid = get_closest_object_uuid(object);
     if (!closest_uuid) {
-      persistent_objects_map_.emplace(id_generator_(), PersistentObject(object, now));
+      persistent_objects_map_.emplace(id_generator_(), PersistentObject(object, now, stamp));
       continue;
     }
     auto & closest_object = persistent_objects_map_.at(closest_uuid.value());
-    closest_object.last_seen_time = now;
+    closest_object.last_arrival = now;
+    closest_object.last_stamp = stamp;
     closest_object.object = object;
-    const auto duration = (now - closest_object.first_seen_time).seconds();
+    const auto duration = (now - closest_object.first_arrival).seconds();
     closest_object.is_active = duration >= on_time_buffer_;
   }
 
@@ -862,10 +864,11 @@ void ObstacleTracker::update_objects(
 }
 
 void ObstacleTracker::update_points(
-  const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points, const rclcpp::Time & now)
+  const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points,
+  const rclcpp::Time & /* stamp */, const rclcpp::Time & now)
 {
   for (auto it = persistent_point_map_.begin(); it != persistent_point_map_.end();) {
-    const auto idle_time = (now - it->second.last_seen_time).seconds();
+    const auto idle_time = (now - it->second.last_arrival).seconds();
     const bool is_erase =
       !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
     if (is_erase)
@@ -895,9 +898,10 @@ void ObstacleTracker::update_points(
       continue;
     }
     auto & closest_point = persistent_point_map_.at(closest_uuid.value());
-    closest_point.last_seen_time = now;
+    closest_point.last_arrival = now;
+    closest_point.last_stamp = now;
     closest_point.point = point;
-    const auto duration = (now - closest_point.first_seen_time).seconds();
+    const auto duration = (now - closest_point.first_arrival).seconds();
     closest_point.is_active = duration >= on_time_buffer_;
   }
 
