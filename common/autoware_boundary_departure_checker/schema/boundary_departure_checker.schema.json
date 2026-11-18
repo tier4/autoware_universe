@@ -81,10 +81,26 @@
               "type": "object",
               "description": "Offset of each side of the footprint for low boundaries. A positive value expands that side and a negative value shrinks it. The footprint length and width must stay more than zero.",
               "properties": {
-                "front_m": { "type": "number", "description": "Offset of the front edge [m].", "default": 0.0 },
-                "rear_m": { "type": "number", "description": "Offset of the rear edge [m].", "default": 0.0 },
-                "left_m": { "type": "number", "description": "Offset of the left edge [m].", "default": 0.0 },
-                "right_m": { "type": "number", "description": "Offset of the right edge [m].", "default": 0.0 }
+                "front_m": {
+                  "type": "number",
+                  "description": "Offset of the front edge [m].",
+                  "default": 0.0
+                },
+                "rear_m": {
+                  "type": "number",
+                  "description": "Offset of the rear edge [m].",
+                  "default": 0.0
+                },
+                "left_m": {
+                  "type": "number",
+                  "description": "Offset of the left edge [m].",
+                  "default": 0.0
+                },
+                "right_m": {
+                  "type": "number",
+                  "description": "Offset of the right edge [m].",
+                  "default": 0.0
+                }
               },
               "additionalProperties": false
             }
