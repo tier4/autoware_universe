@@ -588,16 +588,19 @@ struct ObstacleTracker
    * @param object_yaw_th Max yaw difference to match object detections [rad].
    * @param pcd_distance_th Max 2D distance to match a point to an existing point track.
    * @param grace_period Seconds to keep inactive tracks before deletion.
+   * @param stopped_vel_th Planar speed below which a track is not propagated [m/s].
    */
   ObstacleTracker(
     const double on_time_buffer, const double off_time_buffer, const double object_distance_th,
-    const double object_yaw_th, const double pcd_distance_th, const double grace_period)
+    const double object_yaw_th, const double pcd_distance_th, const double grace_period,
+    const double stopped_vel_th)
   : on_time_buffer_(on_time_buffer),
     off_time_buffer_(off_time_buffer),
     object_distance_th_(object_distance_th),
     object_yaw_th_(object_yaw_th),
     pcd_distance_th_(pcd_distance_th),
-    grace_period_(grace_period)
+    grace_period_(grace_period),
+    stopped_vel_th_(stopped_vel_th)
   {
   }
 
@@ -606,7 +609,8 @@ struct ObstacleTracker
    */
   void set_params(
     const double on_time_buffer, const double off_time_buffer, const double object_distance_th,
-    const double object_yaw_th, const double pcd_distance_th, const double grace_period)
+    const double object_yaw_th, const double pcd_distance_th, const double grace_period,
+    const double stopped_vel_th)
   {
     on_time_buffer_ = on_time_buffer;
     off_time_buffer_ = off_time_buffer;
@@ -614,6 +618,7 @@ struct ObstacleTracker
     object_yaw_th_ = object_yaw_th;
     pcd_distance_th_ = pcd_distance_th;
     grace_period_ = grace_period;
+    stopped_vel_th_ = stopped_vel_th;
   }
 
   /**
@@ -650,6 +655,7 @@ private:
   double object_yaw_th_;
   double pcd_distance_th_;
   double grace_period_;
+  double stopped_vel_th_;
 
   struct PersistentObstacle
   {

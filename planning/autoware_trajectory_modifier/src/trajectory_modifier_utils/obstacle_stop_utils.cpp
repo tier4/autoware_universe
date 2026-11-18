@@ -16,6 +16,7 @@
 
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/object_recognition_utils/predicted_path_utils.hpp>
 #include <autoware/trajectory_time_overlap/footprints.hpp>
 #include <autoware/trajectory_time_overlap/overlap.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
@@ -418,6 +419,47 @@ geometry_msgs::msg::Pose extrapolate_object_pose_from_kinematics(
   return autoware_utils::calc_offset_pose(initial_pose, dist, 0, 0);
 }
 
+// Move a stored measurement forward by dt. The stored object itself is left unchanged.
+PredictedObject propagate_predicted_object(
+  const PredictedObject & object, const double dt, const double stopped_vel_th)
+{
+  if (dt <= 0.0) return object;
+
+  // Stopped objects keep the measured pose; their predicted paths are unstable.
+  const auto & linear = object.kinematics.initial_twist_with_covariance.twist.linear;
+  if (std::hypot(linear.x, linear.y) < stopped_vel_th) return object;
+
+  const autoware_perception_msgs::msg::PredictedPath * best_path = nullptr;
+  for (const auto & path : object.kinematics.predicted_paths) {
+    if (path.path.size() < 2) continue;
+    if (!best_path || path.confidence > best_path->confidence) best_path = &path;
+  }
+
+  auto propagated = object;
+  auto & pose = propagated.kinematics.initial_pose_with_covariance.pose;
+  if (!best_path) {
+    pose = extrapolate_object_pose_from_kinematics(object, dt);
+    return propagated;
+  }
+
+  const auto interpolated =
+    autoware::object_recognition_utils::calcInterpolatedPose(*best_path, dt);
+  pose = interpolated ? *interpolated : best_path->path.back();
+
+  autoware_perception_msgs::msg::PredictedPath trimmed;
+  trimmed.confidence = best_path->confidence;
+  trimmed.time_step = best_path->time_step;
+  trimmed.path.push_back(pose);
+  if (interpolated) {
+    const double time_step = rclcpp::Duration(best_path->time_step).seconds();
+    for (size_t i = 1; i < best_path->path.size(); ++i) {
+      if (time_step * static_cast<double>(i) > dt) trimmed.path.push_back(best_path->path[i]);
+    }
+  }
+  propagated.kinematics.predicted_paths = {trimmed};
+  return propagated;
+}
+
 double get_safe_distance(
   const double ego_vel, const double ego_decel, const double object_stopping_distance,
   const double reaction_time, const double safety_margin)
@@ -788,15 +830,6 @@ void ObstacleTracker::update_objects(
   const PredictedObjects & objects, TargetObjects & persistent_objects, const rclcpp::Time & stamp,
   const rclcpp::Time & now)
 {
-  auto estimate_pose = [&](const PersistentObject & object) -> geometry_msgs::msg::Pose {
-    const auto & pose = object.object.kinematics.initial_pose_with_covariance.pose;
-    const auto & twist = object.object.kinematics.initial_twist_with_covariance.twist.linear;
-    const auto dt = (stamp - object.last_stamp).seconds();
-    const auto dx = twist.x * dt;
-    const auto dy = twist.y * dt;
-    return autoware_utils::calc_offset_pose(pose, dx, dy, 0.0);
-  };
-
   auto get_closest_object_uuid =
     [&](const PredictedObject & object) -> std::optional<boost::uuids::uuid> {
     std::optional<boost::uuids::uuid> closest_uuid = std::nullopt;
@@ -815,19 +848,19 @@ void ObstacleTracker::update_objects(
       const auto stamp_gap = (stamp - existing_object.last_stamp).seconds();
       const auto reach = existing_object.is_active ? off_time_buffer_ : grace_period_;
       if (stamp_gap > reach) continue;
+      const auto propagated =
+        propagate_predicted_object(existing_object.object, stamp_gap, stopped_vel_th_);
+      const auto & propagated_pose = propagated.kinematics.initial_pose_with_covariance.pose;
       const auto distance = autoware_utils::calc_distance2d(
-        object.kinematics.initial_pose_with_covariance.pose.position,
-        estimate_pose(existing_object).position);
+        object.kinematics.initial_pose_with_covariance.pose.position, propagated_pose.position);
       if (distance > min_distance) continue;
       // ignore orientation difference for symmetric objects
       const bool is_symmetric =
         std::abs(object.shape.dimensions.x - object.shape.dimensions.y) < 0.1;
       const auto yaw_diff =
         is_symmetric ? 0.0
-                     : std::abs(
-                         autoware_utils_geometry::calc_yaw_deviation(
-                           object.kinematics.initial_pose_with_covariance.pose,
-                           existing_object.object.kinematics.initial_pose_with_covariance.pose));
+                     : std::abs(autoware_utils_geometry::calc_yaw_deviation(
+                         object.kinematics.initial_pose_with_covariance.pose, propagated_pose));
       if (yaw_diff > object_yaw_th_) continue;
       min_distance = distance;
       closest_uuid = uuid;
@@ -867,7 +900,9 @@ void ObstacleTracker::update_objects(
 
   for (const auto & [uuid, entry] : persistent_objects_map_) {
     if (entry.is_active) {
-      persistent_objects.emplace_back(entry.object);
+      persistent_objects.emplace_back(
+        propagate_predicted_object(
+          entry.object, std::max(0.0, (now - entry.last_stamp).seconds()), stopped_vel_th_));
     }
   }
 }
