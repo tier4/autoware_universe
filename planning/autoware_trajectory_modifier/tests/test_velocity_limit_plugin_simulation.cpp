@@ -316,7 +316,6 @@ TEST_F(VelocityLimitPluginSimulation, ExternalLimitClearReleasesBothVelocityStag
   auto params = make_params();
   params.use_velocity_optimizer = true;
   params.max_vel = 30.0;
-  params.trajectory_velocity_optimizer.limit_speed = true;
   params.trajectory_velocity_optimizer.smooth_velocities = false;
   params.trajectory_velocity_optimizer.set_engage_speed = false;
 

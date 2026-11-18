@@ -14,6 +14,8 @@
 
 #include "autoware/boundary_departure_checker/detail/geometry_projection.hpp"
 
+#include "autoware/boundary_departure_checker/detail/conversion.hpp"
+
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <tf2/utils.hpp>
 
@@ -106,7 +108,7 @@ std::optional<ProjectionToBound> calc_nearest_projection(
 
 ProjectionToBound find_closest_segment(
   const Segment2d & ego_side_seg, const Segment2d & ego_front_seg, const Segment2d & ego_rear_seg,
-  const size_t curr_fp_idx, const std::vector<SegmentWithIdx> & boundary_segments)
+  const size_t curr_fp_idx, const std::vector<Segment3dWithIdx> & boundary_segments)
 {
   std::optional<ProjectionToBound> closest_proj;
 
@@ -124,7 +126,8 @@ ProjectionToBound find_closest_segment(
     return std::nullopt;
   };
 
-  for (const auto & [seg, id] : boundary_segments) {
+  for (const auto & [seg_3d, id] : boundary_segments) {
+    const auto seg = utils::to_segment_2d(seg_3d);
     if (const auto intersecting_front = is_intersecting(ego_front_seg, seg, 0.0)) {
       closest_proj = intersecting_front;
       break;

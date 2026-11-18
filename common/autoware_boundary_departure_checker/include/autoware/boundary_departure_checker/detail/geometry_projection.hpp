@@ -54,7 +54,7 @@ std::optional<ProjectionToBound> calc_nearest_projection(
  */
 ProjectionToBound find_closest_segment(
   const Segment2d & ego_side_seg, const Segment2d & ego_front_seg, const Segment2d & ego_rear_seg,
-  const size_t curr_fp_idx, const std::vector<SegmentWithIdx> & boundary_segments);
+  const size_t curr_fp_idx, const std::vector<Segment3dWithIdx> & boundary_segments);
 
 /**
  * @brief Calculate signed lateral distance to a boundary.

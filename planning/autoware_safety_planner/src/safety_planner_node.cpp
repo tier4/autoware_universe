@@ -41,7 +41,9 @@ SafetyPlannerNode::SafetyPlannerNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("safety_planner_node", options),
   normal_generator_uuid_(autoware_utils_uuid::generate_uuid()),
   cautious_generator_uuid_(autoware_utils_uuid::generate_uuid()),
-  vehicle_info_(vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
+  vehicle_info_(vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()),
+  tf_buffer_(get_clock()),
+  tf_listener_(tf_buffer_)
 {
   param_listener_ =
     std::make_shared<::safety_planner::ParamListener>(get_node_parameters_interface());
@@ -303,6 +305,19 @@ bool SafetyPlannerNode::update_input(const InputData & input_data)
     input_data.external_velocity_limit_ptr
       ? std::make_optional<double>(input_data.external_velocity_limit_ptr->max_velocity)
       : std::nullopt;
+
+  if (params_.surround_obstacle_stop.use_pointcloud && input_data.obstacle_pointcloud_ptr) {
+    try {
+      input_.obstacle_sensor_to_base_link = tf_buffer_.lookupTransform(
+        "base_link", input_data.obstacle_pointcloud_ptr->header.frame_id,
+        input_data.obstacle_pointcloud_ptr->header.stamp, tf2::durationFromSec(0.5));
+      input_.obstacle_pointcloud = input_data.obstacle_pointcloud_ptr;
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 1000, "No transform found for pointcloud: %s",
+        ex.what());
+    }
+  }
 
   return true;
 }

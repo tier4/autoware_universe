@@ -42,6 +42,7 @@
   <depend>autoware_trajectory</depend>
   <depend>autoware_trajectory_time_overlap</depend>
   <depend>autoware_utils</depend>
+  <depend>autoware_utils_diagnostics</depend>
   <depend>autoware_utils_geometry</depend>
   <depend>autoware_utils_math</depend>
   <depend>autoware_utils_rclcpp</depend>

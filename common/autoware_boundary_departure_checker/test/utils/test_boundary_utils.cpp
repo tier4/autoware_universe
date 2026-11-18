@@ -80,9 +80,9 @@ TEST(UncrossableBoundaryUtilsTest, TestFindClosestSegmentRearIntersection)
   Segment2d ego_front_seg{{0.0, 4.0}, {2.0, 4.0}};
   size_t curr_fp_idx = 42;
 
-  std::vector<SegmentWithIdx> boundary_segments;
+  std::vector<Segment3dWithIdx> boundary_segments;
   IdxForRTreeSegment id{1, 0, 1};
-  boundary_segments.emplace_back(Segment2d{{1.0, -1.0}, {1.0, 1.0}}, id);
+  boundary_segments.emplace_back(Segment3d{{1.0, -1.0, 0.0}, {1.0, 1.0, 0.0}}, id);
 
   // Act:
   auto result = geometry_projection::find_closest_segment(
@@ -103,9 +103,9 @@ TEST(UncrossableBoundaryUtilsTest, TestFindClosestSegmentFrontIntersection)
   Segment2d ego_front_seg{{0.0, 4.0}, {2.0, 4.0}};
   size_t curr_fp_idx = 42;
 
-  std::vector<SegmentWithIdx> boundary_segments;
+  std::vector<Segment3dWithIdx> boundary_segments;
   IdxForRTreeSegment id{1, 0, 1};
-  boundary_segments.emplace_back(Segment2d{{1.0, 5.0}, {1.0, 3.0}}, id);
+  boundary_segments.emplace_back(Segment3d{{1.0, 5.0, 0.0}, {1.0, 3.0, 0.0}}, id);
 
   // Act:
   auto result = geometry_projection::find_closest_segment(
@@ -127,9 +127,9 @@ TEST(UncrossableBoundaryUtilsTest, TestFindClosestSegmentFallback)
 
   size_t curr_fp_idx = 99;
 
-  std::vector<SegmentWithIdx> boundary_segments;
+  std::vector<Segment3dWithIdx> boundary_segments;
   IdxForRTreeSegment id{1, 0, 1};
-  boundary_segments.emplace_back(Segment2d{{4.0, -2.0}, {5.0, -2.0}}, id);
+  boundary_segments.emplace_back(Segment3d{{4.0, -2.0, 0.0}, {5.0, -2.0, 0.0}}, id);
 
   // Act:
   auto result = geometry_projection::find_closest_segment(
