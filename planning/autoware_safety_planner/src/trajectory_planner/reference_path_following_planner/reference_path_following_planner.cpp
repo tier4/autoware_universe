@@ -307,36 +307,52 @@ std::pair<PlannedTrajectory, PlanningFactorData> ReferencePathFollowingPlanner::
   const std::vector<Constraint> & constraints, std::optional<Trajectory> & previous_trajectory,
   std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const
 {
-  const auto & p = params_.reference_path_following_planner;
-  const auto & vo = p.velocity_optimizer;
+  auto optimized_path = optimize_path(context, constraints, previous_path, debug);
+  return plan_trajectory_on_path(
+    turn_indicator_decider, context, constraints, std::move(optimized_path), previous_trajectory,
+    debug);
+}
+
+std::optional<PathPointTrajectory> ReferencePathFollowingPlanner::optimize_path(
+  const PlannerContext & context, const std::vector<Constraint> & constraints,
+  std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const
+{
+  if (!params_.reference_path_following_planner.lateral_optimization.enable) {
+    return context.reference_path;
+  }
 
   auto phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "compile_constraint_list", *time_keeper_);
-  auto compiled_constraints = compile_constraint_list(context, constraints);
+  const auto compiled_constraints = compile_constraint_list(context, constraints);
+  phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+    "optimize_lateral_offset", *time_keeper_);
+  auto shifted = shift_path_within_hard_bounds(context, compiled_constraints, previous_path, debug);
+  previous_path = shifted;
+  return shifted;
+}
+
+std::pair<PlannedTrajectory, PlanningFactorData>
+ReferencePathFollowingPlanner::plan_trajectory_on_path(
+  TurnIndicatorDecider & turn_indicator_decider, const PlannerContext & context,
+  const std::vector<Constraint> & constraints, std::optional<PathPointTrajectory> optimized_path,
+  std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug) const
+{
+  const auto & p = params_.reference_path_following_planner;
+  const auto & vo = p.velocity_optimizer;
+
+  const bool lateral_failed = !optimized_path;
+  std::optional<PlannerContext> optimized_context;
+  if (optimized_path) {
+    optimized_context.emplace(context);
+    optimized_context->reference_path = std::move(*optimized_path);
+  }
+  const PlannerContext & ctx = optimized_context ? *optimized_context : context;
+
+  auto phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+    "compile_constraint_list", *time_keeper_);
+  const auto compiled_constraints = compile_constraint_list(ctx, constraints);
   phase.reset();
 
-  // The path the velocity is planned on: the reference_path, or the path shifted from the ego back
-  // to it and clear of the road_borders. The constraints are then compiled again on the shifted
-  // path, since the arc length of every projected view refers to the path it was projected on
-  std::optional<PlannerContext> shifted_context;
-  bool lateral_failed = false;
-  if (p.lateral_optimization.enable) {
-    phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
-      "optimize_lateral_offset", *time_keeper_);
-    if (
-      auto shifted =
-        shift_path_within_hard_bounds(context, compiled_constraints, previous_path, debug)) {
-      shifted_context.emplace(context);
-      shifted_context->reference_path = std::move(*shifted);
-      compiled_constraints = compile_constraint_list(*shifted_context, constraints);
-    } else {
-      lateral_failed = true;
-    }
-    previous_path =
-      shifted_context ? std::make_optional(shifted_context->reference_path) : std::nullopt;
-    phase.reset();
-  }
-  const PlannerContext & ctx = shifted_context ? *shifted_context : context;
   const auto planning_factor_data =
     create_planning_factor_data(ctx, compiled_constraints, params_.trajectory_horizon_s);
 
