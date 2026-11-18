@@ -1,0 +1,7 @@
+<library path="autoware_virtual_traffic_light_rviz_plugin">
+  <class
+    type="autoware::virtual_traffic_light_rviz_plugin::VirtualTrafficLightPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Lists the virtual traffic lights that planning requests and publishes an approval / finalization state for each of them.</description>
+  </class>
+</library>
