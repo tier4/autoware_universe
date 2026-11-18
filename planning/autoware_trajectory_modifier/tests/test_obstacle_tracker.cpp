@@ -128,9 +128,9 @@ TEST(ObstacleTracker, UnmatchedInactiveTrackDiesAfterGracePeriod)
   const auto car = make_objects(0.0, 0.0);
   const auto none = PredictedObjects{};
 
-  // Aging uses a strict `>`, and it runs before association. An idle of exactly
+  // Aging uses a strict `>` and runs after association. An unmatched idle of exactly
   // grace_period_ keeps the unconfirmed track, so sightings spaced by 200 ms still
-  // share first_seen and confirm once the span reaches on_time_buffer_.
+  // share first_arrival and confirm once the span reaches on_time_buffer_.
   update(tracker, car, output, time_ms(0), time_ms(0));
   update(tracker, none, output, time_ms(200), time_ms(200));
   update(tracker, car, output, time_ms(200), time_ms(200));
@@ -140,12 +140,12 @@ TEST(ObstacleTracker, UnmatchedInactiveTrackDiesAfterGracePeriod)
   EXPECT_EQ(output.size(), 1U);
 
   // 300 ms is past grace_period_, so the empty update erases the track. The sighting
-  // at 300 ms starts a new clock, and the 400 ms gap to 700 ms erases that one too.
+  // at 300 ms starts a new clock, and the unmatched 400 ms gap to 700 ms erases that one too.
   auto restarted = make_tracker();
   update(restarted, car, output, time_ms(0), time_ms(0));
   update(restarted, none, output, time_ms(300), time_ms(300));
   update(restarted, car, output, time_ms(300), time_ms(300));
-  update(restarted, car, output, time_ms(700), time_ms(700));
+  update(restarted, none, output, time_ms(700), time_ms(700));
   EXPECT_TRUE(output.empty());
 }
 
@@ -204,7 +204,7 @@ TEST(ObstacleTracker, DISABLED_ReplayedMessageAgesOut)
   EXPECT_TRUE(output.empty());
 }
 
-TEST(ObstacleTracker, DISABLED_AssociatesAcrossOneSecondStampGap)
+TEST(ObstacleTracker, AssociatesAcrossOneSecondStampGap)
 {
   auto tracker = make_tracker();
   TargetObjects output;
