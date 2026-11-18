@@ -113,7 +113,26 @@ bool is_segment_within_ego_height(
   return height_diff < ego_height;
 }
 
-std::vector<SegmentWithIdx> find_closest_boundary_segments(
+double calc_boundary_height(
+  const autoware_utils_geometry::Segment3d & boundary_segment, const Point & ego_position)
+{
+  const auto & start = boundary_segment.first;
+  const auto & end = boundary_segment.second;
+
+  const Point2d direction{end.x() - start.x(), end.y() - start.y()};
+  const Point2d start_to_ego{ego_position.x - start.x(), ego_position.y - start.y()};
+
+  // A zero-length segment has no direction, so its start point is used.
+  const double ego_dot_direction = boost::geometry::dot_product(start_to_ego, direction);
+  const double squared_length = boost::geometry::dot_product(direction, direction);
+  const double ratio =
+    squared_length > 0.0 ? std::clamp(ego_dot_direction / squared_length, 0.0, 1.0) : 0.0;
+
+  const double boundary_z = start.z() + ratio * (end.z() - start.z());
+  return boundary_z - ego_position.z;
+}
+
+std::vector<Segment3dWithIdx> find_closest_boundary_segments(
   const UncrossableBoundariesRTree & rtree, const lanelet::LaneletMapPtr & lanelet_map_ptr,
   const UncrossableBoundaryDepartureParam & param, const Segment2d & ego_ref_segment,
   const Segment2d & ego_opposite_ref_segment, const double ego_z_position,
@@ -127,7 +146,7 @@ std::vector<SegmentWithIdx> find_closest_boundary_segments(
   std::vector<SegmentWithIdx> nearest_raw = rtree.query(
     Point2d{ego_ref_segment.first.x(), ego_ref_segment.first.y()}, param.max_lateral_rtree_queries);
 
-  std::vector<SegmentWithIdx> new_segments;
+  std::vector<Segment3dWithIdx> new_segments;
   for (const auto & nearest : nearest_raw) {
     const auto & id = nearest.second;
     if (unique_id.find(id) != unique_id.end()) {
@@ -144,7 +163,7 @@ std::vector<SegmentWithIdx> find_closest_boundary_segments(
 
     if (is_closest_to_boundary_segment(
           boundary_segment, ego_ref_segment, ego_opposite_ref_segment)) {
-      new_segments.emplace_back(boundary_segment, id);
+      new_segments.emplace_back(boundary_segment_3d, id);
     }
   }
   return new_segments;

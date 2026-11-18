@@ -175,8 +175,9 @@ struct IdxForRTreeSegmentHash
 };
 
 using SegmentWithIdx = std::pair<Segment2d, IdxForRTreeSegment>;
+using Segment3dWithIdx = std::pair<Segment3d, IdxForRTreeSegment>;
 using UncrossableBoundsRTree = boost::geometry::index::rtree<SegmentWithIdx, bgi::rstar<16>>;
-using BoundarySegmentsBySide = Side<std::vector<SegmentWithIdx>>;
+using BoundarySegmentsBySide = Side<std::vector<Segment3dWithIdx>>;
 using FootprintSideSegments = Side<Segment2d>;
 using FootprintSideSegmentsArray = std::vector<FootprintSideSegments>;
 
