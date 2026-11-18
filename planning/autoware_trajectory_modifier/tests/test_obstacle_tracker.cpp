@@ -253,7 +253,7 @@ TEST(ObstacleTracker, RejectsMatchWhenStampGapExceedsBuffer)
   EXPECT_TRUE(output.empty());
 }
 
-TEST(ObstacleTracker, DISABLED_TenHzWithLatencyStillConfirms)
+TEST(ObstacleTracker, TenHzWithLatencyStillConfirms)
 {
   auto tracker = make_tracker();
   TargetObjects output;
@@ -266,7 +266,7 @@ TEST(ObstacleTracker, DISABLED_TenHzWithLatencyStillConfirms)
   EXPECT_EQ(output.size(), 1U);
 }
 
-TEST(ObstacleTracker, DISABLED_FiveHzBoundaryStillConfirms)
+TEST(ObstacleTracker, FiveHzBoundaryStillConfirms)
 {
   auto tracker = make_tracker();
   TargetObjects output;
