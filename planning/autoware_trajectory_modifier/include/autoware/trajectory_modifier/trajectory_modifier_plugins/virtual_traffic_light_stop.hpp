@@ -22,8 +22,10 @@
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <tier4_v2x_msgs/msg/infrastructure_command_array.hpp>
 #include <tier4_v2x_msgs/msg/virtual_traffic_light_state_array.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -109,11 +111,11 @@ private:
     bool stop_line_relevant{false};
     std::optional<double> message_age_sec;
     std::optional<double> start_arc_path;
-    std::optional<double> start_arc_centerline;
+    std::optional<double> start_arc_route;
     std::optional<double> stop_arc_path;
-    std::optional<double> stop_arc_centerline;
+    std::optional<double> stop_arc_route;
     std::optional<double> end_arc_path;
-    std::optional<double> end_arc_centerline;
+    std::optional<double> end_arc_route;
     std::optional<double> stop_distance;
   };
 
@@ -136,6 +138,10 @@ private:
     ModuleState state{ModuleState::NONE};
     std::optional<State> virtual_traffic_light_state;
     std::optional<ActiveEndLine> active_end_line;
+    //! [m] arc length of each line center along the route lanelets
+    std::optional<double> start_line_route_arc_m;
+    std::optional<double> stop_line_route_arc_m;
+    std::optional<double> end_line_route_arc_m;
     bool end_hold_active{false};
     std::optional<tier4_v2x_msgs::msg::InfrastructureCommand> infrastructure_command;
     DebugData debug_data;
@@ -148,12 +154,15 @@ private:
   TrajectoryModifierParams::StoppingConstraints stopping_params_;
   bool enabled_{false};
   std::vector<lanelet::Id> route_lanelet_ids_;
+  lanelet::ConstLanelets route_lanelets_;
   std::shared_ptr<lanelet::LaneletMap> last_lanelet_map_;
   std::vector<Module> modules_;
   bool cycle_initialized_{false};
   rclcpp::Time cycle_time_;
-  std::optional<nav_msgs::msg::Odometry> cycle_odometry_;
-  double cycle_acceleration_{0.0};
+  nav_msgs::msg::Odometry::ConstSharedPtr cycle_odometry_;
+  geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr cycle_acceleration_;
+  //! [m] arc length of ego (base_link) along the route lanelets
+  std::optional<double> cycle_ego_route_arc_m_;
   std::unique_ptr<
     autoware_utils_rclcpp::InterProcessPollingSubscriber<VirtualTrafficLightStateArray>>
     virtual_traffic_light_states_sub_;
@@ -178,6 +187,9 @@ private:
 
   void update_command(Module & module);
   void set_state(Module & module, ModuleState state, std::optional<lanelet::Id> end_line_id = {});
+  std::optional<double> calc_distance_from_vehicle_front(
+    const std::optional<double> & line_route_arc_m) const;
+  std::optional<double> calc_state_age_sec(const Module & module) const;
   bool is_state_timeout(const Module & module) const;
   bool has_right_of_way(const Module & module) const;
 
@@ -191,4 +203,6 @@ private:
 };
 }  // namespace autoware::trajectory_modifier::plugin
 
-#endif  // VIRTUAL_TRAFFIC_LIGHT_STOP_HPP_
+// clang-format off
+#endif  // AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__VIRTUAL_TRAFFIC_LIGHT_STOP_HPP_  // NOLINT
+// clang-format on
