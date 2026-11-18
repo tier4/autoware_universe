@@ -34,6 +34,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -116,8 +117,6 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     }
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), e.what() << ". Inference will be disabled.");
-    diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
-    diagnostics_inference_->publish(get_clock()->now());
     if (params_.build_only) {
       RCLCPP_ERROR(get_logger(), "Build only mode: exiting due to model load failure.");
       std::exit(EXIT_FAILURE);
@@ -297,28 +296,53 @@ void MLPlanner::set_up_params()
     this->declare_parameter<bool>("debug_params.publish_debug_linestrings", true);
 }
 
+void MLPlanner::fill_model_key_values()
+{
+  diagnostics_inference_->add_key_value("backend", params_.backend);
+  diagnostics_inference_->add_key_value("model_loaded", core_->is_model_loaded());
+  if (!params_.model_path.empty()) {
+    diagnostics_inference_->add_key_value("onnx_model_path", params_.model_path);
+  }
+}
+
+void MLPlanner::publish_inference_status(const int8_t level, const std::string & message)
+{
+  diagnostics_inference_->clear();
+  fill_model_key_values();
+  if (level > DiagnosticStatus::OK) {
+    diagnostics_inference_->update_level_and_message(level, message);
+  }
+  diagnostics_inference_->publish(get_clock()->now());
+}
+
 void MLPlanner::load_model()
 {
-  diagnostics_inference_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
-  diagnostics_inference_->publish(get_clock()->now());
+  publish_inference_status(DiagnosticStatus::WARN, "Loading model");
   core_->update_params(params_);
 
   const std::filesystem::path base_dir(params_.base_model_directory);
   params_.model_path = (base_dir / params_.onnx_model_filename).string();
 
-  // Verify the model against metadata.json before building the engine:
-  // SHA-256 first, then the major version this node is built against.
-  const auto metadata_path = utils::model_metadata_path(params_.model_path);
-  const auto metadata = utils::load_model_metadata(metadata_path);
-  const auto sha256 = utils::verify_model_sha256(metadata, params_.model_path);
-  RCLCPP_INFO_STREAM(
-    get_logger(), "Model metadata (" << metadata_path << "):\n"
-                                     << metadata.dump(2));
-  utils::verify_model_major_version(metadata, ML_PLANNER_WEIGHT_MAJOR_VERSION);
+  std::string sha256;
+  try {
+    // Verify the model against metadata.json before building the engine:
+    // SHA-256 first, then the major version this node is built against.
+    const auto metadata_path = utils::model_metadata_path(params_.model_path);
+    const auto metadata = utils::load_model_metadata(metadata_path);
+    sha256 = utils::verify_model_sha256(metadata, params_.model_path);
+    RCLCPP_INFO_STREAM(
+      get_logger(), "Model metadata (" << metadata_path << "):\n"
+                                       << metadata.dump(2));
+    utils::verify_model_major_version(metadata, ML_PLANNER_WEIGHT_MAJOR_VERSION);
 
-  core_->load_model();
-  diagnostics_inference_->update_level_and_message(DiagnosticStatus::OK, "Model loaded");
-  diagnostics_inference_->publish(get_clock()->now());
+    core_->load_model();
+  } catch (const std::exception & e) {
+    model_load_error_ = e.what();
+    publish_inference_status(DiagnosticStatus::ERROR, *model_load_error_);
+    throw;
+  }
+  model_load_error_.reset();
+  publish_inference_status(DiagnosticStatus::OK);
 
   RCLCPP_INFO_STREAM(
     get_logger(), "Loaded model_path=" << params_.model_path << " (sha256=" << sha256 << ")");
@@ -679,14 +703,17 @@ void MLPlanner::on_timer()
   stop_watch_ptr_ = std::make_unique<autoware_utils_system::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("processing_time");
 
-  diagnostics_inference_->clear();
-
   const rclcpp::Time current_time(get_clock()->now());
+
+  diagnostics_inference_->clear();
+  fill_model_key_values();
+
   if (!core_->is_model_loaded()) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "Model not loaded. Inference is disabled. Check model.* parameters.");
-    diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, "Model not loaded");
+    diagnostics_inference_->update_level_and_message(
+      DiagnosticStatus::ERROR, model_load_error_.value_or("Model not loaded"));
     diagnostics_inference_->publish(current_time);
     return;
   }
