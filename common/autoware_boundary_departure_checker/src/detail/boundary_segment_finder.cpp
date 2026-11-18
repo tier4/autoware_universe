@@ -132,6 +132,23 @@ double calc_boundary_height(
   return boundary_z - ego_position.z;
 }
 
+BoundarySegmentsByHeight separate_by_height(
+  const std::vector<Segment3dWithIdx> & segments, const Point & ego_position,
+  const double height_threshold_m)
+{
+  BoundarySegmentsByHeight result;
+  for (const auto & segment : segments) {
+    const bool is_low = height_threshold_m > 0.0 &&
+                        calc_boundary_height(segment.first, ego_position) < height_threshold_m;
+    if (is_low) {
+      result.low.push_back(segment);
+    } else {
+      result.tall.push_back(segment);
+    }
+  }
+  return result;
+}
+
 std::vector<Segment3dWithIdx> find_closest_boundary_segments(
   const UncrossableBoundariesRTree & rtree, const lanelet::LaneletMapPtr & lanelet_map_ptr,
   const UncrossableBoundaryDepartureParam & param, const Segment2d & ego_ref_segment,

@@ -178,6 +178,15 @@ using SegmentWithIdx = std::pair<Segment2d, IdxForRTreeSegment>;
 using Segment3dWithIdx = std::pair<Segment3d, IdxForRTreeSegment>;
 using UncrossableBoundsRTree = boost::geometry::index::rtree<SegmentWithIdx, bgi::rstar<16>>;
 using BoundarySegmentsBySide = Side<std::vector<Segment3dWithIdx>>;
+
+/**
+ * @brief Boundary segments of one side, grouped by their height above a trajectory point.
+ */
+struct BoundarySegmentsByHeight
+{
+  std::vector<Segment3dWithIdx> tall;  ///< segments that use the original footprint
+  std::vector<Segment3dWithIdx> low;   ///< segments that use the low boundary footprint
+};
 using FootprintSideSegments = Side<Segment2d>;
 using FootprintSideSegmentsArray = std::vector<FootprintSideSegments>;
 

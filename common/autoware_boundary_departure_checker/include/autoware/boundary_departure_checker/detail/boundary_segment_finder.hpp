@@ -73,6 +73,19 @@ bool is_segment_within_ego_height(
   const autoware_utils_geometry::Segment3d & boundary_segment, const Point & ego_position);
 
 /**
+ * @brief Separate the boundary segments of one side into tall and low segments.
+ * @details A segment is low if height_threshold_m is more than 0.0 and the segment height from
+ * calc_boundary_height is lower than height_threshold_m. Each group keeps the input order.
+ * @param[in] segments boundary segments of one side
+ * @param[in] ego_position position of the trajectory point
+ * @param[in] height_threshold_m height below which a segment is low, 0.0 turns this off [m]
+ * @return boundary segments grouped by height
+ */
+[[nodiscard]] BoundarySegmentsByHeight separate_by_height(
+  const std::vector<Segment3dWithIdx> & segments, const Point & ego_position,
+  const double height_threshold_m);
+
+/**
  * @brief Find closest boundary segments from R-tree.
  * @param[in] rtree R-tree of boundary segments
  * @param[in] lanelet_map_ptr pointer to lanelet map
