@@ -435,12 +435,6 @@
                   "default": 0.25,
                   "minimum": 0
                 },
-                "max_lateral_velocity_th": {
-                  "type": "number",
-                  "description": "Maximum lateral velocity threshold for target object to be considered for obstacle stop [m/s]",
-                  "default": 1,
-                  "minimum": 0
-                },
                 "safety_buffer": {
                   "type": "number",
                   "description": "Safety buffer to expand object shape [m]",
@@ -691,12 +685,6 @@
                   "description": "Safety margin to consider for RSS calculation [m]",
                   "default": 1.5,
                   "minimum": 0
-                },
-                "lookahead_horizon": {
-                  "type": "number",
-                  "description": "Lookahead horizon for RSS calculation [s]",
-                  "default": 1.5,
-                  "minimum": 0
                 }
               },
               "required": [],
@@ -731,6 +719,13 @@
                   "minimum": 0.1,
                   "maximum": 10
                 },
+                "max_acceleration": {
+                  "type": "number",
+                  "description": "Maximum acceleration of the cruise velocity profile [m/s^2]",
+                  "default": 1.0,
+                  "minimum": 0.0,
+                  "maximum": 10
+                },
                 "max_deceleration": {
                   "type": "number",
                   "description": "Maximum deceleration of the cruise velocity profile [m/s^2]",
@@ -744,6 +739,11 @@
                   "default": 1.0,
                   "minimum": 0.1,
                   "maximum": 10
+                },
+                "reuse_previous_profile": {
+                  "type": "boolean",
+                  "description": "Start the cruise profile from the previous plan at the current time instead of the measured ego state, while the ego tracks that plan. Reset thresholds come from velocity_limits.fixed_profile.",
+                  "default": false
                 }
               },
               "required": [],

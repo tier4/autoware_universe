@@ -88,12 +88,6 @@
           "default": [1.0],
           "description": "Initial Gaussian noise scale for each batch item. Its length must equal batch_size."
         },
-        "line_string_max_step_m": {
-          "type": "number",
-          "default": 5.0,
-          "exclusiveMinimum": 0,
-          "description": "Maximum arc-length step per model point when resampling line strings [m]. Smaller values produce more fixed-size sub-segments per line string."
-        },
         "trajectory_optimization": {
           "type": "object",
           "properties": {
@@ -131,8 +125,15 @@
             },
             "weight_acceleration": {
               "type": "number",
+              "default": 0.0,
+              "minimum": 0.0,
+              "description": "Weight on squared acceleration-state magnitude relative to zero"
+            },
+            "weight_jerk": {
+              "type": "number",
               "default": 0.1,
-              "description": "Regularization weight on the acceleration input"
+              "minimum": 0.0,
+              "description": "Regularization weight on the jerk input"
             },
             "weight_steering_rate": {
               "type": "number",
@@ -196,12 +197,22 @@
             "min_acceleration_mps2": {
               "type": "number",
               "default": -4.0,
-              "description": "Lower acceleration bound [m/s^2]"
+              "description": "Lower acceleration state bound [m/s^2]"
             },
             "max_acceleration_mps2": {
               "type": "number",
               "default": 3.0,
-              "description": "Upper acceleration bound [m/s^2]"
+              "description": "Upper acceleration state bound [m/s^2]"
+            },
+            "min_jerk_mps3": {
+              "type": "number",
+              "default": -5.0,
+              "description": "Lower jerk input bound [m/s^3]"
+            },
+            "max_jerk_mps3": {
+              "type": "number",
+              "default": 5.0,
+              "description": "Upper jerk input bound [m/s^3]"
             },
             "max_steering_rate_rps": {
               "type": "number",
@@ -338,6 +349,12 @@
             }
           },
           "required": ["enable"]
+        },
+        "turn_indicator_hold_duration_sec": {
+          "type": "number",
+          "default": 0.0,
+          "minimum": 0.0,
+          "description": "After left or right is turned on, it is kept on at least this long; a DISABLE from the model within it is replaced by the side. Switching to the other side is allowed and starts a new hold [s]"
         },
         "planning_factor": {
           "type": "object",

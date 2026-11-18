@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/mppi_optimizer/detail/colored_noise_params.hpp"
 #include "autoware/mppi_optimizer/detail/plant_prediction_utils.hpp"
-#include "autoware/mppi_optimizer/detail/temporal_mpt_nominal.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_utils.hpp"
 #include "autoware/mppi_optimizer/detail/trajectory_validator.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
@@ -452,10 +452,14 @@ void applyUserCostParams(
   cost_params.lateral_jerk_coeff = user.lateral_jerk_coeff;
   cost_params.longitudinal_jerk_coeff = user.longitudinal_jerk_coeff;
   cost_params.obstacle_collision_margin = user.obstacle_collision_margin;
+  cost_params.vegetation_collision_margin = user.vegetation_collision_margin;
   cost_params.road_border_collision_margin = user.road_border_collision_margin;
   cost_params.obstacle_safe_margin = user.obstacle_safe_margin;
   cost_params.obstacle_barrier_weight =
     calc_weight(user.crash_contact_penalty, user.obstacle_safe_margin);
+  cost_params.vegetation_safe_margin = user.vegetation_safe_margin;
+  cost_params.vegetation_barrier_weight =
+    calc_weight(user.crash_contact_penalty, user.vegetation_safe_margin);
   cost_params.road_border_safe_margin = user.road_border_safe_margin;
   cost_params.road_border_barrier_weight =
     calc_weight(user.crash_contact_penalty, user.road_border_safe_margin);
@@ -860,7 +864,9 @@ struct FirstOrderDubinsMppiInterface::Impl
   Trajectory diffusion_reference;
   /** Cumulative chord length [m] along diffusion_reference.points (s[0]=0). */
   std::vector<float> diffusion_reference_chord_length_s;
-  TrackedObjects tracked_objects;
+  PredictedObjects predicted_objects;
+  std::vector<std::size_t> obstacle_source_indices;
+  std::vector<VegetationPoint> vegetation_points;
   PreferredLaneCenterlineInput preferred_lane_centerline;
   std::vector<Segment> road_borders;
   std::vector<Segment> drivable_area;
@@ -928,6 +934,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
+  int validation_interpolation_substeps{1};
   float min_optimization_length{0.0F};
   float steering_hold_reference_length_threshold_m{0.5F};
   float min_trajectory_progress_m{0.0F};
@@ -948,13 +955,10 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool short_reference_steering_hold_active{false};
   bool standstill_steering_hold_valid{false};
   float standstill_steering_hold_command_rad{0.0F};
-  /** Cold-seed u_nom from acados temporal MPT instead of geometric diffusion seed. */
-  bool use_temporal_mpt_as_nominal{false};
   /** Prevent acceleration commands and integrated states from producing reverse velocity. */
   bool prevent_reverse_velocity{true};
   /** When false, force N_acc = N_steer = 0 (vehicle delay params ignored). */
   bool enable_input_delay_compensation{true};
-  detail::TemporalMptNominalSeeder temporal_mpt_nominal_seeder;
   /** Fill debug.rollouts with top-K weighted samples (CPU replay). Offline retune only by default.
    */
   bool enable_rollout_visualization{false};
@@ -1006,7 +1010,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::vector<detail::FirstOrderDubinsMppiControlHistoryEntry> prediction_control_history_{};
 
   // Execution history is committed only when the candidate is accepted. Sampler statistics
-  // and the optional temporal seed may evolve during candidate computation; they are proposals.
+  // may evolve during candidate computation; they are proposals.
   struct TrackingState
   {
     Mppi::control_trajectory controls;
@@ -1122,11 +1126,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     dyn.max_accel = vehicle_params.max_accel();
     dyn.prevent_reverse_velocity = prevent_reverse_velocity;
     model.setParams(dyn);
-    temporal_mpt_nominal_seeder.setBicycleParameters(
-      vehicle_params.wheel_base, vehicle_params.ego_axle_to_box_center,
-      vehicle_params.acc_time_constant, vehicle_params.steer_time_constant,
-      vehicle_params.steer_rate_lim);
-
     acc_delay_steps = enable_input_delay_compensation
                         ? sampledDelaySteps(0.0F, vehicle_params.acc_time_delay, kDt)
                         : 0;
@@ -1169,10 +1168,10 @@ struct FirstOrderDubinsMppiInterface::Impl
     sp.std_dev_decay = user_cost_params_.std_dev_decay;
     sp.sum_strides = std::max(32, (kNumRollouts + 1023) / 1024);
 #ifdef USE_COLOURED_NOISE
-    sp.exponents[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD)] =
-      user_cost_params_.accel_cmd_noise_exponent;
-    sp.exponents[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
-      user_cost_params_.steer_cmd_noise_exponent;
+    detail::configureColoredNoise(
+      sp, user_cost_params_,
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD),
+      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD));
 #elif defined(USE_SMOOTH_MPPI)
     // Smooth-MPPI samples action derivatives and integrates with dt.
     sp.dt = kDt;
@@ -1266,7 +1265,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     accel_delay_buffer.clear();
     steer_delay_buffer.clear();
     delay_buffer_seeded = false;
-    temporal_mpt_nominal_seeder.resetWarmStart();
     prediction_anchor_.valid = false;
     prediction_control_history_.clear();
     stopped_state_initialized = false;
@@ -1856,29 +1854,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     }
   }
 
-  bool seedNominalControlFromTemporalMpt(
-    const Trajectory & reference, const detail::InitialState & ego)
-  {
-    auto nominal = temporal_mpt_nominal_seeder.solve(reference, ego, vehicle_params, kMppiHorizon);
-    if (!nominal) {
-      temporal_mpt_nominal_seeder.resetWarmStart();
-      seedNominalControlFromDiffusionReference(reference, tracking_start_idx, ego.velocity);
-      return false;
-    }
-    if (enable_input_delay_compensation && (acc_delay_steps > 0 || steer_delay_steps > 0)) {
-      nominal =
-        detail::shiftNominalControlForInputDelay(*nominal, acc_delay_steps, steer_delay_steps);
-    }
-    const int accel_idx =
-      static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
-    const int steer_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
-    for (int t = 0; t < kMppiHorizon; ++t) {
-      u_nom(accel_idx, t) = (*nominal)[static_cast<size_t>(t)].accel_cmd;
-      u_nom(steer_idx, t) = (*nominal)[static_cast<size_t>(t)].steer_cmd;
-    }
-    return true;
-  }
-
   void applyActiveVelocityLimitToNominal()
   {
     if (!active_velocity_limit_profile.active) {
@@ -1889,8 +1864,13 @@ struct FirstOrderDubinsMppiInterface::Impl
     const int count =
       std::min(kMppiHorizon, static_cast<int>(active_velocity_limit_profile.controls.size()));
     for (int timestep = 0; timestep < count; ++timestep) {
-      u_nom(accel_idx, timestep) =
+      const float candidate =
         active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
+      // Keep a nominal command that is already braking harder than the cap profile.
+      if (!(candidate < u_nom(accel_idx, timestep))) {
+        continue;
+      }
+      u_nom(accel_idx, timestep) = candidate;
     }
   }
 
@@ -1980,29 +1960,6 @@ struct FirstOrderDubinsMppiInterface::Impl
       return;
     }
 
-    if (use_temporal_mpt_as_nominal) {
-      // t-MPT warm-starts from its own previous x/u, shifted one stage. Do not inject MPPI u_opt.
-      if (stopped_state || step_count == 0) {
-        temporal_mpt_nominal_seeder.resetWarmStart();
-      }
-      const bool temporal_seeded = seedNominalControlFromTemporalMpt(reference, ego);
-      filterNominalControl(ego);
-      const bool mpc_seeded =
-        mpc_predicted_trajectory && overlayMpcPredictedSteering(*mpc_predicted_trajectory, ego);
-      applyNominalSteeringContinuityGuard(ego, steering_measurement_available);
-      nominal_seed_source =
-        mpc_seeded ? FirstOrderDubinsMppiNominalSeedSource::mpc_predicted_trajectory
-                   : (temporal_seeded ? FirstOrderDubinsMppiNominalSeedSource::temporal_mpt
-                                      : FirstOrderDubinsMppiNominalSeedSource::diffusion_reference);
-      if (!force_cold_start_each_step) {
-        nominal_reset_reason = (mpc_seeded || temporal_seeded)
-                                 ? FirstOrderDubinsMppiNominalResetReason::none
-                                 : FirstOrderDubinsMppiNominalResetReason::unavailable;
-      }
-      snapshotNominalForLog();
-      return;
-    }
-
     // Always construct a current-reference seed. Reused controls overwrite its prefix while its
     // suffix supplies newly exposed horizon samples.
     seedNominalControlFromDiffusionReference(reference, start_idx, ego.velocity);
@@ -2035,9 +1992,10 @@ struct FirstOrderDubinsMppiInterface::Impl
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects_in, const std::vector<Segment> & road_borders_in,
     const std::vector<Segment> & drivable_area_in,
+    const std::vector<VegetationPoint> & vegetation_points_in,
     const FirstOrderDubinsMppiKinematicLimits & kinematic_limits,
     const std::optional<Trajectory> & mpc_predicted_trajectory,
-    const PreferredLaneCenterlineInput & preferred_input = {})
+    const PreferredLaneCenterlineInput & preferred_input, const PredictedObjects & predictions_in)
   {
     const auto check_capacity = [](std::size_t count, std::size_t capacity, const char * kind) {
       if (count > capacity) {
@@ -2048,6 +2006,11 @@ struct FirstOrderDubinsMppiInterface::Impl
     };
     if (!ignore_obstacles)
       check_capacity(tracked_objects_in.objects.size(), COST::kMaxObstacles, "tracked objects");
+    auto selected_predictions =
+      ignore_obstacles ? PredictedObjects{}
+                       : predictionsForTrackedObjects(tracked_objects_in, predictions_in);
+    // Account for all highest-confidence ties before changing controller state or GPU data.
+    predictedObjectObstacleCount(selected_predictions);
     if (!ignore_road_borders)
       check_capacity(road_borders_in.size(), COST::kMaxRoadBorderSegments, "road borders");
     if (!ignore_drivable_area)
@@ -2071,7 +2034,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     const auto & position = odometry.pose.pose.position;
     if (frame.valid && frame.frame_id != odometry.header.frame_id) {
       invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::unavailable);
-      temporal_mpt_nominal_seeder.resetWarmStart();
       prediction_anchor_.valid = false;
     }
     if (frame.needsRecenter(position.x, position.y, odometry.header.frame_id)) {
@@ -2105,7 +2067,6 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     if (force_cold_start_each_step) {
       invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::forced_cold_start);
-      temporal_mpt_nominal_seeder.resetWarmStart();
     }
 
     diffusion_reference = reference;
@@ -2123,7 +2084,23 @@ struct FirstOrderDubinsMppiInterface::Impl
     cost.setKinematicLimits(makeKinematicLimitCostData(cost_limits));
     syncKinematicLimitsToModel();
     diffusion_reference_chord_length_s = detail::computeCumulativeChordLength(diffusion_reference);
-    tracked_objects = ignore_obstacles ? TrackedObjects{} : tracked_objects_in;
+    predicted_objects = std::move(selected_predictions);
+    obstacle_source_indices.clear();
+    for (std::size_t i = 0; i < predicted_objects.objects.size(); ++i) {
+      const auto count =
+        std::max(std::size_t{1}, selectPredictedPaths(predicted_objects.objects[i]).size());
+      obstacle_source_indices.insert(obstacle_source_indices.end(), count, i);
+    }
+    vegetation_points.clear();
+    if (!ignore_obstacles) {
+      vegetation_points.reserve(vegetation_points_in.size());
+      for (const auto & point : vegetation_points_in) {
+        if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+          throw std::invalid_argument("MPPI vegetation point has non-finite coordinates");
+        }
+        vegetation_points.push_back({frame.x(point.x), frame.y(point.y)});
+      }
+    }
     road_borders = ignore_road_borders ? std::vector<Segment>() : road_borders_in;
     drivable_area = ignore_drivable_area ? std::vector<Segment>() : drivable_area_in;
     obstacles.clear();
@@ -2387,11 +2364,11 @@ struct FirstOrderDubinsMppiInterface::Impl
 
       int obstacle_count = 0;
       cost.setDynamicObstacleHorizon(dynamic_obstacle_horizon_s, kDt);
-      if (!tracked_objects.objects.empty()) {
-        buildObstacleTrajectoryBuffersFromTrackedObjects(
-          tracked_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw, obs_half_length,
-          obs_half_width, 0.0F, frame.origin_x, frame.origin_y);
-        obstacle_count = trackedObjectObstacleCount(tracked_objects);
+      if (!predicted_objects.objects.empty()) {
+        buildObstacleTrajectoryBuffersFromPredictedObjects(
+          predicted_objects, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
+          obs_half_length, obs_half_width, frame.origin_x, frame.origin_y);
+        obstacle_count = predictedObjectObstacleCount(predicted_objects);
       } else if (!obstacles.empty()) {
         mppi::cost::buildObstacleTrajectoryBuffers(
           obstacles, sim_time, kDt, kRefHorizon, obs_traj_x, obs_traj_y, obs_traj_yaw,
@@ -2411,6 +2388,7 @@ struct FirstOrderDubinsMppiInterface::Impl
         obstacle_count > 0 ? obs_traj_yaw.data() : nullptr,
         obstacle_count > 0 ? obs_half_length.data() : nullptr,
         obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
+      cost.setVegetationPoints(vegetation_points);
       uploadBoundarySegments();
       cost.commitDataUpdate();
     }
@@ -2463,12 +2441,19 @@ struct FirstOrderDubinsMppiInterface::Impl
       const int count = std::min(
         static_cast<int>(u_opt_traj.cols()),
         static_cast<int>(active_velocity_limit_profile.controls.size()));
+      bool profile_lowered_acceleration = false;
       for (int timestep = 0; timestep < count; ++timestep) {
-        u_opt_traj(accel_idx, timestep) =
+        const float candidate =
           active_velocity_limit_profile.controls[static_cast<std::size_t>(timestep)].accel_cmd;
+        // The cap can demand a harder brake. It must not release one the optimizer already chose.
+        if (!(candidate < u_opt_traj(accel_idx, timestep))) {
+          continue;
+        }
+        u_opt_traj(accel_idx, timestep) = candidate;
+        profile_lowered_acceleration = true;
       }
-      // Publication reads the controller's state sequence, so replay profile overrides too.
-      control_sequence_modified = control_sequence_modified || count > 0;
+      // Publication reads the controller's state sequence, so replay a lowered command.
+      control_sequence_modified = control_sequence_modified || profile_lowered_acceleration;
     }
     control_sequence_modified =
       projectControlSequenceToDynamics(u_opt_traj, x) || control_sequence_modified;
@@ -2635,6 +2620,8 @@ void validateCostMarginsAndNoise(const FirstOrderDubinsMppiCostParams & p)
      {"lateral_boundary_soft_margin", p.lateral_boundary_soft_margin},
      {"obstacle_collision_margin", p.obstacle_collision_margin},
      {"obstacle_safe_margin", p.obstacle_safe_margin},
+     {"vegetation_collision_margin", p.vegetation_collision_margin},
+     {"vegetation_safe_margin", p.vegetation_safe_margin},
      {"road_border_collision_margin", p.road_border_collision_margin},
      {"road_border_safe_margin", p.road_border_safe_margin},
      {"drivable_area_safe_margin", p.drivable_area_safe_margin},
@@ -2647,6 +2634,7 @@ void validateCostMarginsAndNoise(const FirstOrderDubinsMppiCostParams & p)
      {"nominal_curvature_fit_window_m", p.nominal_curvature_fit_window_m}});
   if (
     p.obstacle_safe_margin < p.obstacle_collision_margin ||
+    p.vegetation_safe_margin < p.vegetation_collision_margin ||
     p.road_border_safe_margin < p.road_border_collision_margin) {
     throw std::invalid_argument("MPPI safety margins must be at least their collision margins");
   }
@@ -2656,7 +2644,7 @@ void validateCostMarginsAndNoise(const FirstOrderDubinsMppiCostParams & p)
   };
   if (
     !finite_barrier(p.lateral_boundary_soft_margin) || !finite_barrier(p.obstacle_safe_margin) ||
-    !finite_barrier(p.road_border_safe_margin)) {
+    !finite_barrier(p.vegetation_safe_margin) || !finite_barrier(p.road_border_safe_margin)) {
     throw std::invalid_argument(
       "MPPI crash penalty and margins produce a non-finite barrier weight");
   }
@@ -2734,6 +2722,11 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
       throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
     }
     if (
+      options.validation_interpolation_substeps < 1 ||
+      options.validation_interpolation_substeps > 100) {
+      throw std::invalid_argument("MPPI validation interpolation substeps must be in [1, 100]");
+    }
+    if (
       !std::isfinite(options.dynamic_obstacle_horizon_s) ||
       options.dynamic_obstacle_horizon_s < 0.0F ||
       !std::isfinite(options.min_optimization_length) || options.min_optimization_length < 0.0F ||
@@ -2769,12 +2762,12 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     impl_->invalidateNominalWarmStart(
       FirstOrderDubinsMppiNominalResetReason::configuration_changed);
     impl_->prevent_reverse_velocity = options.prevent_reverse_velocity;
-    impl_->use_temporal_mpt_as_nominal = options.use_temporal_mpt_as_nominal;
     impl_->enable_input_delay_compensation = options.enable_input_delay_compensation;
     impl_->min_optimization_length = options.min_optimization_length;
     impl_->steering_hold_reference_length_threshold_m =
       options.steering_hold_reference_length_threshold_m;
     impl_->min_trajectory_progress_m = options.min_trajectory_progress_m;
+    impl_->validation_interpolation_substeps = options.validation_interpolation_substeps;
     impl_->dynamic_obstacle_horizon_s = options.dynamic_obstacle_horizon_s;
     impl_->nominal_initial_steering_max_deviation_rad =
       options.nominal_initial_steering_max_deviation_rad;
@@ -2827,9 +2820,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     }
     RCLCPP_INFO(
       mppiLogger(),
-      "MPPI nominal seed: use_temporal_mpt_as_nominal=%s enable_input_delay_compensation=%s "
+      "MPPI nominal seed: enable_input_delay_compensation=%s "
       "prevent_reverse_velocity=%s nominal_initial_steering_max_deviation_rad=%.3f",
-      options.use_temporal_mpt_as_nominal ? "true" : "false",
       options.enable_input_delay_compensation ? "true" : "false",
       options.prevent_reverse_velocity ? "true" : "false",
       options.nominal_initial_steering_max_deviation_rad);
@@ -2884,6 +2876,7 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   runtime.steering_hold_reference_length_threshold_m =
     impl_->steering_hold_reference_length_threshold_m;
   runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
+  runtime.validation_interpolation_substeps = impl_->validation_interpolation_substeps;
   runtime.use_last_control_as_nominal = use_last_control_as_nominal;
   runtime.nominal_initial_steering_max_deviation_rad =
     impl_->nominal_initial_steering_max_deviation_rad;
@@ -2904,7 +2897,6 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
     impl_->last_control_warm_start_stop_enter_velocity_mps;
   runtime.last_control_warm_start_stop_exit_velocity_mps =
     impl_->last_control_warm_start_stop_exit_velocity_mps;
-  runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
   runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
   runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
   runtime.enable_iteration_rollout_debug = impl_->enable_iteration_rollout_debug;
@@ -3057,7 +3049,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const FirstOrderDubinsMppiControlSequencePostprocessor & control_postprocessor,
   const bool defer_commit, const std::optional<Trajectory> & mpc_predicted_trajectory,
   const PreferredLaneCenterlineInput & preferred_lane_centerline, const bool force_optimization,
-  const FirstOrderDubinsMppiOutputOptions & output_options)
+  const FirstOrderDubinsMppiOutputOptions & output_options,
+  const std::vector<VegetationPoint> & vegetation_points,
+  const PredictedObjects & predicted_objects)
 try {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -3065,10 +3059,13 @@ try {
   impl_->pending_trajectory_.reset();
   FirstOrderDubinsMppiOptimizationResult result;
   const auto not_enough_input_points = input.points.size() < 2U;
+  const bool degenerate_reference = detail::hasZeroPlanarExtent(input);
   const bool short_reference = impl_->referenceIsShortForSteeringHold(input);
+  // A collision trigger never overrides the minimum stopping-reference length.
+  (void)force_optimization;  // Retained for source compatibility with existing callers.
   const bool optimization_required =
-    force_optimization || detail::isOptimizationRequired(input, impl_->min_optimization_length);
-  if (not_enough_input_points || !optimization_required) {
+    detail::isOptimizationRequired(input, impl_->min_optimization_length);
+  if (degenerate_reference || !optimization_required) {
     const auto initial_state =
       detail::makeInitialState(odometry, acceleration, steering_status, impl_->vehicle_params);
     const bool steering_measurement_available =
@@ -3077,8 +3074,10 @@ try {
     impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::skipped);
     RCLCPP_WARN(
       mppiLogger(), "MPPI skipped: %s",
-      not_enough_input_points ? "trajectory has fewer than 2 points"
-                              : "trajectory does not require optimization");
+      not_enough_input_points
+        ? "trajectory has fewer than 2 points"
+        : (degenerate_reference ? "trajectory has no planar extent"
+                                : "trajectory does not require optimization"));
 
     result.trajectory = input;
     if (impl_->short_reference_steering_hold_active && impl_->standstill_steering_hold_valid) {
@@ -3105,7 +3104,8 @@ try {
 
   impl_->updateDiffusionReference(
     input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area,
-    kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline);
+    vegetation_points, kinematic_limits, mpc_predicted_trajectory, preferred_lane_centerline,
+    predicted_objects);
   Impl::TrackingTransaction transaction(*impl_);
   result.debug.preferred_lane_center_status = impl_->preferred_lane_centerline.status;
   result.debug.preferred_lane_center_segment_count =
@@ -3227,26 +3227,15 @@ try {
 
   Trajectory output = detail::buildOptimizedTrajectory(
     input, optimized_states, optimized_controls, output_options, impl_->frame);
-  if (impl_->active_velocity_limit_profile.active) {
-    // buildOptimizedTrajectory intentionally preserves the suffix outside the MPPI horizon.
-    // An active velocity profile must not allow that suffix to jump back to its input speed.
-    const auto & profile = impl_->active_velocity_limit_profile;
-    for (std::size_t index = num_points; index < output.points.size(); ++index) {
-      auto & point = output.points[index];
-      if (index < profile.velocities.size()) {
-        point.longitudinal_velocity_mps = profile.velocities[index];
-        point.acceleration_mps2 = profile.accelerations[index];
-      } else {
-        point.longitudinal_velocity_mps = profile.target_velocity;
-        point.acceleration_mps2 = 0.0F;
-      }
-    }
-  }
+  // buildOptimizedTrajectory preserves the suffix outside the MPPI horizon. Cap that suffix with
+  // the active profile, without raising a point that is already slower than the profile.
+  detail::applyActiveVelocityLimitProfile(output, impl_->active_velocity_limit_profile, num_points);
 
   // Validate every published optimized state, including reconstructed x[H]. Obstacle slot i
   // represents the same post-step time (i + 1) * dt as optimized_states[i].
   auto validation = detail::validateOptimizedTrajectory(
-    impl_->cost, optimized_states, impl_->min_trajectory_progress_m);
+    impl_->cost, optimized_states, impl_->min_trajectory_progress_m,
+    impl_->validation_interpolation_substeps);
   if (no_eligible_rollouts) {
     validation.reasons =
       validation.reasons | FirstOrderDubinsMppiInvalidityReason::no_eligible_rollouts;
@@ -3267,10 +3256,8 @@ try {
     !impl_->effective_max_velocity_by_reference_point.empty()
       ? impl_->effective_max_velocity_by_reference_point.front()
       : std::nullopt;
-  if (!output_options.acceleration_state) {
-    // The engage helper overwrites both velocity and acceleration with fixed values.
-    detail::setInitialEngageVelocity(output, initial_effective_maximum);
-  }
+  // Engage adjustment applies to both command and physical-acceleration output modes.
+  detail::setInitialEngageVelocity(output, initial_effective_maximum);
 
   result.trajectory = output;
   result.debug.reference_trajectory = input;
@@ -3315,8 +3302,10 @@ try {
         mppi::safety::geometryIndex(stats.first_violation_status);
       const int index = diagnostic.first_violation_geometry_index;
       if (
-        reason == 2 && index >= 0 && static_cast<size_t>(index) < tracked_objects.objects.size()) {
-        const auto & uuid = tracked_objects.objects[static_cast<size_t>(index)].object_id.uuid;
+        reason == 2 && index >= 0 &&
+        static_cast<size_t>(index) < impl_->obstacle_source_indices.size()) {
+        const auto source_index = impl_->obstacle_source_indices[static_cast<size_t>(index)];
+        const auto & uuid = impl_->predicted_objects.objects[source_index].object_id.uuid;
         constexpr char hex[] = "0123456789abcdef";
         for (size_t byte = 0; byte < uuid.size(); ++byte) {
           if (byte == 4 || byte == 6 || byte == 8 || byte == 10)
@@ -3395,6 +3384,7 @@ try {
       runtime.steering_hold_reference_length_threshold_m =
         impl_->steering_hold_reference_length_threshold_m;
       runtime.min_trajectory_progress_m = impl_->min_trajectory_progress_m;
+      runtime.validation_interpolation_substeps = impl_->validation_interpolation_substeps;
       runtime.use_last_control_as_nominal = impl_->use_last_control_as_nominal;
       runtime.last_control_warm_start_max_age_s = impl_->last_control_warm_start_max_age_s;
       runtime.last_control_warm_start_max_position_error_m =
@@ -3413,7 +3403,6 @@ try {
         impl_->last_control_warm_start_stop_enter_velocity_mps;
       runtime.last_control_warm_start_stop_exit_velocity_mps =
         impl_->last_control_warm_start_stop_exit_velocity_mps;
-      runtime.use_temporal_mpt_as_nominal = impl_->use_temporal_mpt_as_nominal;
       runtime.prevent_reverse_velocity = impl_->prevent_reverse_velocity;
       runtime.enable_input_delay_compensation = impl_->enable_input_delay_compensation;
       runtime.enable_iteration_rollout_debug = impl_->enable_iteration_rollout_debug;

@@ -40,7 +40,8 @@ DEFAULT_WEIGHT_POSITION = 0.5
 DEFAULT_WEIGHT_YAW = 0.05
 DEFAULT_WEIGHT_VELOCITY = 0.01
 DEFAULT_WEIGHT_STEERING = 1.0
-DEFAULT_WEIGHT_ACCELERATION = 0.1
+DEFAULT_WEIGHT_ACCELERATION = 0.0
+DEFAULT_WEIGHT_JERK = 0.1
 DEFAULT_WEIGHT_STEERING_RATE = 10.0
 DEFAULT_TERMINAL_WEIGHT_SCALE = 2.5
 
@@ -69,8 +70,8 @@ def build_ocp(N=HORIZON_N, Tf=HORIZON_TF_S):
 
     ocp.code_export_directory = "c_generated_code"
 
-    nx = model.x.rows()  # 5: x, y, psi, v, delta
-    nu = model.u.rows()  # 2: a, delta_rate
+    nx = model.x.rows()  # 6: x, y, psi, v, delta, a
+    nu = model.u.rows()  # 2: jerk, delta_rate
     ny = nx + nu
     ny_e = nx
 
@@ -83,9 +84,10 @@ def build_ocp(N=HORIZON_N, Tf=HORIZON_TF_S):
             DEFAULT_WEIGHT_YAW,
             DEFAULT_WEIGHT_VELOCITY,
             DEFAULT_WEIGHT_STEERING,
+            DEFAULT_WEIGHT_ACCELERATION,
         ]
     )
-    r_diag = np.array([DEFAULT_WEIGHT_ACCELERATION, DEFAULT_WEIGHT_STEERING_RATE])
+    r_diag = np.array([DEFAULT_WEIGHT_JERK, DEFAULT_WEIGHT_STEERING_RATE])
 
     # acados scales stage costs by the step length dt = Tf / N; multiply by N / Tf so the
     # configured weights keep their intuitive per-sample magnitude (same convention on the
@@ -109,18 +111,18 @@ def build_ocp(N=HORIZON_N, Tf=HORIZON_TF_S):
     ocp.cost.yref = np.zeros(ny)
     ocp.cost.yref_e = np.zeros(ny_e)
 
-    # Input box constraints
-    ocp.constraints.lbu = np.array([model.a_min, -model.delta_rate_max])
-    ocp.constraints.ubu = np.array([model.a_max, model.delta_rate_max])
+    # Input box constraints: jerk and steering rate.
+    ocp.constraints.lbu = np.array([model.jerk_min, -model.delta_rate_max])
+    ocp.constraints.ubu = np.array([model.jerk_max, model.delta_rate_max])
     ocp.constraints.idxbu = np.array([0, 1])
 
-    # State box constraints on v and delta (stages 1..N-1 and terminal stage)
-    ocp.constraints.idxbx = np.array([3, 4])
-    ocp.constraints.lbx = np.array([model.v_min, -model.delta_max])
-    ocp.constraints.ubx = np.array([model.v_max, model.delta_max])
-    ocp.constraints.idxbx_e = np.array([3, 4])
-    ocp.constraints.lbx_e = np.array([model.v_min, -model.delta_max])
-    ocp.constraints.ubx_e = np.array([model.v_max, model.delta_max])
+    # State box constraints on v, delta, and a (stages 1..N-1 and terminal stage).
+    ocp.constraints.idxbx = np.array([3, 4, 5])
+    ocp.constraints.lbx = np.array([model.v_min, -model.delta_max, model.a_min])
+    ocp.constraints.ubx = np.array([model.v_max, model.delta_max, model.a_max])
+    ocp.constraints.idxbx_e = np.array([3, 4, 5])
+    ocp.constraints.lbx_e = np.array([model.v_min, -model.delta_max, model.a_min])
+    ocp.constraints.ubx_e = np.array([model.v_max, model.delta_max, model.a_max])
 
     # Initial state equality constraint (stage-0 lbx == ubx, set per solve)
     ocp.constraints.x0 = np.zeros(nx)

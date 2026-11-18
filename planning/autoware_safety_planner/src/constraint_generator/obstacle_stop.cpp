@@ -48,29 +48,6 @@ using autoware::trajectory_modifier::utils::obstacle_stop::TargetObject;
 using autoware::trajectory_modifier::utils::obstacle_stop::TargetObjects;
 using autoware::trajectory_modifier::utils::obstacle_stop::TrajectoryShape;
 
-TrajectoryPoints make_trajectory_points(
-  const PathPointTrajectory & path, const double s_ego, const geometry_msgs::msg::Point & ego_point)
-{
-  constexpr double RESAMPLE_INTERVAL_M = 0.5;
-
-  TrajectoryPoints points;
-  const auto push = [&](const double s) {
-    const auto & point = path.compute(s).point;
-    TrajectoryPoint trajectory_point;
-    trajectory_point.pose = point.pose;
-    trajectory_point.longitudinal_velocity_mps = point.longitudinal_velocity_mps;
-    trajectory_point.lateral_velocity_mps = point.lateral_velocity_mps;
-    trajectory_point.heading_rate_rps = point.heading_rate_rps;
-    points.push_back(trajectory_point);
-  };
-  for (double s = s_ego; s + 1e-3 < path.length(); s += RESAMPLE_INTERVAL_M) {
-    push(s);
-  }
-  push(path.length());
-  autoware::motion_utils::calculate_time_from_start(points, ego_point);
-  return points;
-}
-
 MarkerArray make_debug_markers(
   const TrajectoryShape & shape, const TargetObjects & target_objects,
   const builtin_interfaces::msg::Time & stamp, const double ego_z)
@@ -178,12 +155,20 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   const rclcpp::Time now(context.odometry.header.stamp);
 
   const double s_ego = compute_ego_frenet_state(context).s;
-  const auto traj_points = make_trajectory_points(context.reference_path, s_ego, ego_pose.position);
+  constexpr double RESAMPLE_INTERVAL_M = 0.5;
+  const auto traj_points =
+    make_trajectory_points(context.reference_path, s_ego, ego_pose.position, RESAMPLE_INTERVAL_M);
   // NOTE(odashima): Why not ego_accel as is: the deceleration for this very stop would shorten the
   // detection range until the obstacle drops out of it, releasing the stop mid-way
+  const auto active_collision_point = get_nearest_collision_point();
+  const double detection_margin = active_collision_point
+                                    ? std::max(
+                                        p.stop_margin, active_collision_point->arc_length -
+                                                         vehicle_info.max_longitudinal_offset_m)
+                                    : p.stop_margin;
   const auto trajectory_shape = build_trajectory_footprint_index(
     traj_points, ego_pose, vehicle_info, ego_vel, std::max(ego_accel, 0.0),
-    p.nominal_stopping_decel, p.stopping_jerk, p.stop_margin, p.delay_response_time);
+    p.nominal_stopping_decel, p.stopping_jerk, detection_margin, p.delay_response_time);
 
   TargetObjects target_objects;
   std::optional<CollisionPoint> collision_point;
@@ -214,8 +199,7 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
 
     ObjectFilter object_filter(
       p.objects.target_objects.bbox, p.objects.target_objects.polygon,
-      p.objects.stopped_velocity_th, p.objects.max_lateral_velocity_th, p.objects.safety_buffer,
-      p.objects.low_velocity_th);
+      p.objects.stopped_velocity_th, p.objects.safety_buffer, p.objects.low_velocity_th);
     auto filtered_objects = *context.predicted_objects;
     object_filter.filter_objects(filtered_objects);
     target_objects.reserve(filtered_objects.objects.size());
@@ -223,19 +207,14 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
       target_objects.emplace_back(object);
     }
     object_filter.filter_by_target_area(
-      target_objects, traj_points, vehicle_info, trajectory_shape, lateral_margin_map);
+      target_objects, vehicle_info, trajectory_shape, lateral_margin_map, object_decel_map);
 
     collision_point = get_nearest_object_collision(
-      target_objects, traj_points, vehicle_info, object_decel_map, p.rss_params.ego_decel,
-      p.delay_response_time, p.stop_margin, p.rss_params.safety_margin,
-      p.objects.stopped_velocity_th, p.rss_params.lookahead_horizon, p.rss_params.enable);
+      target_objects, traj_points, p.rss_params.ego_decel, p.delay_response_time, p.stop_margin,
+      p.rss_params.safety_margin, p.rss_params.enable);
     if (collision_point) {
-      const auto it = std::find_if(
-        target_objects.begin(), target_objects.end(),
-        [](const TargetObject & object) { return !object.is_safe; });
-      if (it != target_objects.end()) {
-        colliding_object_id = autoware_utils_uuid::to_hex_string(it->object.object_id);
-      }
+      colliding_object_id = autoware_utils_uuid::to_hex_string(
+        target_objects[collision_point->target_source_index].object.object_id);
     }
   }
 
@@ -244,9 +223,20 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
   ConstraintGeneratorOutput output;
   if (const auto nearest_collision_point = get_nearest_collision_point()) {
     const auto stop_margin = p.stop_margin + vehicle_info.max_longitudinal_offset_m;
+    const double desired_stop_point_arc_length = nearest_collision_point->arc_length - stop_margin;
     auto target_stop_point_arc_length = clamp_stop_point_arc_length(
-      nearest_collision_point->arc_length - stop_margin, trajectory_shape.trajectory_length,
-      ego_vel, ego_accel, p.maximum_stopping_decel, p.stopping_jerk, p.delay_response_time);
+      desired_stop_point_arc_length, trajectory_shape.trajectory_length, ego_vel, ego_accel,
+      p.maximum_stopping_decel, p.stopping_jerk, p.delay_response_time);
+    if (target_stop_point_arc_length <= desired_stop_point_arc_length) {
+      clamped_stop_point_.reset();
+    } else if (clamped_stop_point_) {
+      target_stop_point_arc_length = std::min(
+        target_stop_point_arc_length,
+        autoware::motion_utils::calcSignedArcLength(traj_points, 0LU, *clamped_stop_point_));
+    } else {
+      clamped_stop_point_ = autoware::motion_utils::calcLongitudinalOffsetPoint(
+        traj_points, 0LU, target_stop_point_arc_length);
+    }
     if (target_stop_point_arc_length < p.arrived_distance_threshold) {
       target_stop_point_arc_length = 0.0;
     }
@@ -263,6 +253,8 @@ ConstraintGeneratorOutput ObstacleStopConstraintGenerator::generate_constraints(
     constraint.payload = Gate{Segment2d{left, right}};
     constraint.source = Source{get_name(), colliding_object_id, "stop_line"};
     output.constraints.push_back(std::move(constraint));
+  } else {
+    clamped_stop_point_.reset();
   }
 
   output.debug_markers = make_debug_markers(

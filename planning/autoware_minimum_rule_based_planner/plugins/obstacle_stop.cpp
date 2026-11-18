@@ -58,8 +58,8 @@ void ObstacleStop::on_initialize(const MinimumRuleBasedPlannerParams & params)
 
   object_filter_ = std::make_unique<trajectory_modifier::utils::obstacle_stop::ObjectFilter>(
     params_.objects.target_objects.bbox, params_.objects.target_objects.polygon,
-    params_.objects.stopped_velocity_th, params_.objects.max_lateral_velocity_th,
-    params_.objects.safety_buffer, params_.objects.low_velocity_th);
+    params_.objects.stopped_velocity_th, params_.objects.safety_buffer,
+    params_.objects.low_velocity_th);
 
   pub_filtered_pointcloud_ =
     get_node_ptr()->create_publisher<PointCloud2>("~/obstacle_stop/debug/filtered_points", 1);
@@ -199,22 +199,17 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   }
 
   object_filter_->filter_by_target_area(
-    debug_data_.target_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape,
-    lateral_margin_map_);
+    debug_data_.target_objects, context_->vehicle_info, debug_data_.trajectory_shape,
+    lateral_margin_map_, object_decel_map_);
 
   auto collision_point = get_nearest_object_collision(
-    debug_data_.target_objects, traj_points, context_->vehicle_info, object_decel_map_,
-    params_.rss_params.ego_decel, params_.delay_response_time, params_.stop_margin,
-    params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
-    params_.rss_params.lookahead_horizon, params_.rss_params.enable);
+    debug_data_.target_objects, traj_points, params_.rss_params.ego_decel,
+    params_.delay_response_time, params_.stop_margin, params_.rss_params.safety_margin,
+    params_.rss_params.enable);
 
   if (collision_point) {
-    auto it = std::find_if(
-      debug_data_.target_objects.begin(), debug_data_.target_objects.end(),
-      [&](const TargetObject & object) { return !object.is_safe; });
-    if (it != debug_data_.target_objects.end()) {
-      debug_data_.colliding_object = it->object;
-    }
+    debug_data_.colliding_object =
+      debug_data_.target_objects[collision_point->target_source_index].object;
   }
 
   return collision_point;

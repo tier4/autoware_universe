@@ -16,6 +16,7 @@
 
 #include "../../utils/frenet_utils.hpp"
 #include "../../utils/velocity_optimizer.hpp"
+#include "../planning_factors.hpp"
 
 #include <autoware_frenet_planner/polynomials.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -378,48 +379,45 @@ TrajectoryPlannerResult FrenetSamplingBasedPlanner::plan_trajectories(
   TrajectoryPlannerResult result;
   {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
-    if (
-      auto trajectory = plan_one_side(
-        input.context, grid, input.normal_constraints, normal_previous_trajectory_,
-        result.normal_debug)) {
-      auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
-        "decide_turn_indicators", *time_keeper_);
-      const auto turn_indicators =
-        normal_turn_indicator_decider_.decide(input.context, *trajectory);
-      turn_st.reset();
-      normal_previous_trajectory_ = *trajectory;
-      result.normal_trajectory = PlannedTrajectory{std::move(*trajectory), turn_indicators};
-    }
+    const auto [trajectory, planning_factor_data] = plan_one_side(
+      input.context, grid, input.normal_constraints, normal_previous_trajectory_,
+      result.normal_debug);
+    auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+      "decide_turn_indicators", *time_keeper_);
+    const auto turn_indicators = normal_turn_indicator_decider_.decide(input.context, trajectory);
+    turn_st.reset();
+    normal_previous_trajectory_ = trajectory;
+    result.normal_trajectory = PlannedTrajectory{std::move(trajectory), turn_indicators};
+    result.normal_planning_factor_data = planning_factor_data;
   }
   const bool cautious_differs = std::any_of(
     input.cautious_constraints.begin(), input.cautious_constraints.end(),
     [](const Constraint & constraint) { return constraint.certainty == Certainty::POSSIBLE; });
   if (cautious_differs) {
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
-    if (
-      auto trajectory = plan_one_side(
-        input.context, grid, input.cautious_constraints, cautious_previous_trajectory_,
-        result.cautious_debug)) {
-      auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
-        "decide_turn_indicators", *time_keeper_);
-      const auto turn_indicators =
-        cautious_turn_indicator_decider_.decide(input.context, *trajectory);
-      turn_st.reset();
-      cautious_previous_trajectory_ = *trajectory;
-      result.cautious_trajectory = PlannedTrajectory{std::move(*trajectory), turn_indicators};
-    }
+    const auto [trajectory, planning_factor_data] = plan_one_side(
+      input.context, grid, input.cautious_constraints, cautious_previous_trajectory_,
+      result.cautious_debug);
+    auto turn_st = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
+      "decide_turn_indicators", *time_keeper_);
+    const auto turn_indicators = cautious_turn_indicator_decider_.decide(input.context, trajectory);
+    turn_st.reset();
+    cautious_previous_trajectory_ = trajectory;
+    result.cautious_trajectory = PlannedTrajectory{std::move(trajectory), turn_indicators};
+    result.cautious_planning_factor_data = planning_factor_data;
   } else {
     // Copied rather than solved again: the sampling is deterministic and holds no state across
     // calls, so the same constraint set gives back the same trajectory. Not left empty either,
     // since the node publishes the cautious candidate every cycle
     result.cautious_trajectory = result.normal_trajectory;
+    result.cautious_planning_factor_data = result.normal_planning_factor_data;
     result.cautious_debug = result.normal_debug;
     cautious_previous_trajectory_ = normal_previous_trajectory_;
   }
   return result;
 }
 
-std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
+std::pair<Trajectory, PlanningFactorData> FrenetSamplingBasedPlanner::plan_one_side(
   const PlannerContext & context, const ReferenceGrid & grid,
   const std::vector<Constraint> & constraints,
   const std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug)
@@ -445,6 +443,9 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "compile_constraint_list", *time_keeper_);
   const auto compiled_constraints = compile_constraint_list(context, simplified_constraints);
+
+  const auto planning_factor_data =
+    create_planning_factor_data(context, compiled_constraints, params_.trajectory_horizon_s);
 
   phase.reset();
   phase =
@@ -575,7 +576,7 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
         *path_choice);
       phase.reset();
       if (optimized && optimized->valid) {
-        return to_trajectory_msg(context, *optimized);
+        return {to_trajectory_msg(context, *optimized), planning_factor_data};
       }
     }
   }
@@ -608,9 +609,9 @@ std::optional<Trajectory> FrenetSamplingBasedPlanner::plan_one_side(
     // the steer limit within a few meters, and the fallback is not checked
     const auto hold = hold_steer_path(context, grid, initial_state);
     const auto stop = make_stop_profile(initial_state, tables.limits);
-    return to_trajectory_msg(context, combine(hold, stop));
+    return {to_trajectory_msg(context, combine(hold, stop)), planning_factor_data};
   }
-  return to_trajectory_msg(context, *best);
+  return {to_trajectory_msg(context, *best), planning_factor_data};
 }
 
 FrenetSamplingBasedPlanner::InitialState FrenetSamplingBasedPlanner::compute_initial_state(

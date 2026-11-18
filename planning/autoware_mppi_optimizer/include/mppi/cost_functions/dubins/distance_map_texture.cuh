@@ -53,6 +53,7 @@ struct alignas(16) DistanceMapTextureState
   cudaTextureObject_t nearest_segment_texture_ = 0;
   bool road_border_texture_valid_ = false;
   bool drivable_area_texture_valid_ = false;
+  bool vegetation_texture_valid_ = false;
   bool obstacle_texture_valid_ = false;
   bool obstacle_texture_has_obstacles_ = false;
   bool nearest_segment_texture_valid_ = false;

@@ -122,6 +122,20 @@ class ReportIntegrityTest(unittest.TestCase):
         self.assertEqual(case.status, "FAIL")
         self.assertIn("must be blank", case.errors[0])
 
+    def test_encoded_safety_status_round_trip(self):
+        # Same bit layout as rollout_safety_status.cuh; include overlapping reason bits.
+        status = ((((79 + 1) << 12) | (2 << 10) | (63 + 1)) << 4) | 4 | 8
+        self.tables["steps"][0]["crash"] = status
+        case = self.load()
+        self.assertEqual(case.status, "PASS", case.errors)
+        self.assertEqual(case.rows[0]["crash"], status)
+
+    def test_invalid_safety_status_is_rejected(self):
+        for status in (-1, 0.5, 16, 2147483648):
+            with self.subTest(status=status):
+                self.tables["steps"][0]["crash"] = status
+                self.assertEqual(self.load().status, "FAIL")
+
     def test_incorrect_time_is_rejected(self):
         self.tables["steps"][0]["time_s"] = 0
         self.assertEqual(self.load().status, "FAIL")

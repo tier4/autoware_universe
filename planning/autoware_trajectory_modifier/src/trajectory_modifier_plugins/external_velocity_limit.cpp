@@ -14,8 +14,11 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/external_velocity_limit.hpp"
 
+#include "autoware/trajectory_modifier/trajectory_modifier_utils/set_max_velocity.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -56,6 +59,17 @@ void ExternalVelocityLimit::on_initialize(const TrajectoryModifierParams & param
       "~/debug/velocity_profile_reset", rclcpp::QoS{10}.reliable().durability_volatile());
   debug_trajectory_pub_ = get_node_ptr()->create_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/external_velocity_limit/trajectory", rclcpp::QoS{1});
+  pub_current_velocity_limit_ =
+    get_node_ptr()->create_publisher<autoware_internal_planning_msgs::msg::VelocityLimit>(
+      "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
+}
+
+void ExternalVelocityLimit::publish_current_velocity_limit(
+  const autoware_internal_planning_msgs::msg::VelocityLimit & velocity_limit)
+{
+  auto msg = velocity_limit;
+  msg.stamp = get_node_ptr()->now();
+  pub_current_velocity_limit_->publish(msg);
 }
 
 void ExternalVelocityLimit::update_params(const TrajectoryModifierParams & params)
@@ -75,6 +89,9 @@ ProcessingResult ExternalVelocityLimit::process(
   if (!input.has_external_velocity_limit_snapshot) {
     context_->refresh_external_velocity_limit();
   }
+  if (!input.has_scenario_max_velocity_snapshot) {
+    context_->refresh_scenario_max_velocity();
+  }
   const auto clear_revision = input.has_external_velocity_limit_snapshot
                                 ? input.external_velocity_limit_clear_revision
                                 : context_->external_velocity_limit.clear_revision();
@@ -91,6 +108,39 @@ ProcessingResult ExternalVelocityLimit::process(
   const auto velocity_limit = input.has_external_velocity_limit_snapshot
                                 ? input.external_velocity_limit
                                 : context_->external_velocity_limit.active_limit();
+  const auto scenario_limit = input.has_scenario_max_velocity_snapshot
+                                ? input.scenario_max_velocity
+                                : context_->scenario_max_velocity();
+  const auto finite_speed =
+    [](const autoware_internal_planning_msgs::msg::VelocityLimit::ConstSharedPtr & limit)
+    -> std::optional<double> {
+    if (!limit || !std::isfinite(limit->max_velocity) || limit->max_velocity < 0.0F) {
+      return std::nullopt;
+    }
+    return static_cast<double>(limit->max_velocity);
+  };
+  const auto external_speed = finite_speed(velocity_limit);
+  const auto scenario_speed = finite_speed(scenario_limit);
+  // A tie uses the scenario cap. Its profile is the in-place reclamp, not the jerk-limited brake.
+  const bool scenario_binds =
+    scenario_speed.has_value() && (!external_speed || *scenario_speed <= *external_speed);
+  if (scenario_binds) {
+    fixed_profile_.clear();
+    const auto before = traj_points;
+    autoware::trajectory_modifier::utils::set_max_velocity(
+      traj_points, static_cast<float>(*scenario_speed));
+    publish_current_velocity_limit(*scenario_limit);
+    publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
+    const bool changed =
+      before.size() != traj_points.size() ||
+      !std::equal(
+        before.begin(), before.end(), traj_points.begin(),
+        [](const auto & lhs, const auto & rhs) {
+          return lhs.longitudinal_velocity_mps == rhs.longitudinal_velocity_mps &&
+                 lhs.acceleration_mps2 == rhs.acceleration_mps2;
+        });
+    return changed ? ProcessingResult::Modified : ProcessingResult::Unchanged;
+  }
   if (!velocity_limit) {
     fixed_profile_.clear();
     publish_selected_debug_trajectory(debug_trajectory_pub_, traj_points, input);
@@ -102,6 +152,7 @@ ProcessingResult ExternalVelocityLimit::process(
     *velocity_limit, constraints_.max_deceleration);
   constraints.max_jerk =
     detail::get_external_velocity_limit_min_jerk(*velocity_limit, constraints_.max_jerk);
+  publish_current_velocity_limit(*velocity_limit);
   const double max_velocity = velocity_limit->max_velocity;
   stop_state.zero_speed_limit = max_velocity <= detail::k_fixed_profile_stop_velocity_threshold_mps;
   const auto start = fixed_profile_.start(input, stop_state, traj_points);

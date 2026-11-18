@@ -35,6 +35,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::safety_planner
@@ -59,7 +60,7 @@ public:
 private:
   using MppiInterface = autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
 
-  PlannedTrajectory plan_one_side(
+  std::pair<PlannedTrajectory, PlanningFactorData> plan_one_side(
     MppiInterface & optimizer, TurnIndicatorDecider & turn_indicator_decider,
     const PlannerContext & context, const std::vector<Constraint> & constraints,
     TrajectoryPlannerDebug & debug);

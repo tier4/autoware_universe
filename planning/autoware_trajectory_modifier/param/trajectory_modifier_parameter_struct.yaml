@@ -261,13 +261,6 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-      max_lateral_velocity_th:
-        type: double
-        default_value: 1.0
-        description: Maximum lateral velocity threshold for target object to be considered for obstacle stop [m/s]
-        validation:
-          bounds<>: [0.0, 10.0]
-        read_only: false
       safety_buffer:
         type: double
         default_value: 0.0
@@ -395,13 +388,6 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-      lookahead_horizon:
-        type: double
-        default_value: 1.5
-        description: lookahead horizon for RSS calculation [s]
-        validation:
-          bounds<>: [0.0, 10.0]
-        read_only: false
 
     cruise:
       enable:
@@ -430,6 +416,13 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.1, 10.0]
         read_only: false
+      max_acceleration:
+        type: double
+        default_value: 1.0
+        description: Maximum acceleration of the cruise velocity profile [m/s^2]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
       max_deceleration:
         type: double
         default_value: 1.0
@@ -443,6 +436,11 @@ trajectory_modifier_params:
         description: Maximum jerk of the cruise velocity profile [m/s^3]
         validation:
           bounds<>: [0.1, 10.0]
+        read_only: false
+      reuse_previous_profile:
+        type: bool
+        default_value: false
+        description: Start the cruise profile from the previous plan at the current time instead of the measured ego state, while the ego tracks that plan. Reset thresholds come from velocity_limits.fixed_profile.
         read_only: false
 
   surround_obstacle_stop:

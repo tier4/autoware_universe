@@ -59,8 +59,8 @@ using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
-using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using autoware_vehicle_msgs::msg::SteeringReport;
+using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using nav_msgs::msg::Odometry;
 using unique_identifier_msgs::msg::UUID;
@@ -116,10 +116,10 @@ struct MLPlannerParams
   double traffic_light_group_msg_timeout_seconds;
   int batch_size;
   std::vector<double> noise_scale_list;
-  double line_string_max_step_m;
   optimization::TrajectoryOptimizationParams trajectory_optimization;
   postprocess::RoadBorderAvoidanceParams road_border_avoidance;
   postprocess::StopPointFixingParams stop_point_fixing;
+  double turn_indicator_hold_duration_sec;
 };
 
 /**
@@ -238,11 +238,14 @@ public:
    * @param timestamp The ROS time stamp for the messages.
    * @param generator_uuid The unique identifier for the planner instance.
    * @param current_steering_angle_rad Measured steering angle used by trajectory optimization.
+   * @param current_acceleration_mps2 Measured longitudinal acceleration used as the jerk-model
+   *        initial state. Zero is used when no acceleration sample is available.
    * @return PlannerOutput containing all output messages.
    */
   PlannerOutput create_planner_output(
     const InferenceOutput & inference_output, const rclcpp::Time & timestamp,
-    const UUID & generator_uuid, double current_steering_angle_rad);
+    const UUID & generator_uuid, double current_steering_angle_rad,
+    double current_acceleration_mps2);
 
   /**
    * @brief Get the first traffic light on the route for debugging.
@@ -255,7 +258,7 @@ public:
    * @brief Count valid elements in input data for diagnostics.
    *
    * @param input_data_map Input data map
-   * @param data_key Key to count (e.g., "lanes", "route_lanes", "intersection_area")
+   * @param data_key Key to count (e.g., "lanes", "route_waypoints", "intersection_area")
    * @return Count of valid elements
    */
   int64_t count_valid_elements(
@@ -287,6 +290,7 @@ private:
 
   // Postprocessing
   std::vector<preprocess::SelectedAgent> selected_agents_;
+  postprocess::TurnIndicatorHold turn_indicator_hold_;
 
   // Raw message history buffers, bounded to the model input time window.
   // All derived history data is computed statelessly from these buffers.
