@@ -271,6 +271,24 @@ void ReferencePathFollowingPlanner::on_initialize(
   cautious_turn_indicator_decider_.update_params(turn_signal_params);
 }
 
+PathOptimizationResult ReferencePathFollowingPlanner::optimize_path(
+  const PlannerContext & context, const std::vector<Constraint> & constraints,
+  TrajectoryPlannerDebug & debug)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  if (!params_.reference_path_following_planner.lateral_optimization.enable) {
+    return PathOptimizationResult{std::nullopt};
+  }
+  const auto compiled_constraints = compile_constraint_list(context, constraints);
+  previous_path_ =
+    shift_path_within_hard_bounds(context, compiled_constraints, previous_path_, debug);
+  if (!previous_path_) {
+    return tl::make_unexpected(std::string{"lateral QP did not solve"});
+  }
+  return PathOptimizationResult{previous_path_};
+}
+
 TrajectoryPlannerResult ReferencePathFollowingPlanner::plan_trajectories(
   const TrajectoryPlannerInput & input)
 {
@@ -281,7 +299,7 @@ TrajectoryPlannerResult ReferencePathFollowingPlanner::plan_trajectories(
     autoware_utils_debug::ScopedTimeTrack side_st("plan_normal", *time_keeper_);
     std::tie(result.normal_trajectory, result.normal_planning_factor_data) = plan_one_side(
       normal_turn_indicator_decider_, input.context, input.normal_constraints,
-      normal_previous_trajectory_, normal_previous_path_, result.normal_debug);
+      input.path_optimization_failure, normal_previous_trajectory_, result.normal_debug);
   }
   const bool cautious_differs = std::any_of(
     input.cautious_constraints.begin(), input.cautious_constraints.end(),
@@ -290,66 +308,47 @@ TrajectoryPlannerResult ReferencePathFollowingPlanner::plan_trajectories(
     autoware_utils_debug::ScopedTimeTrack side_st("plan_cautious", *time_keeper_);
     std::tie(result.cautious_trajectory, result.cautious_planning_factor_data) = plan_one_side(
       cautious_turn_indicator_decider_, input.context, input.cautious_constraints,
-      cautious_previous_trajectory_, cautious_previous_path_, result.cautious_debug);
+      input.path_optimization_failure, cautious_previous_trajectory_, result.cautious_debug);
   } else {
     // Not left empty, since the node publishes the cautious candidate every cycle
     result.cautious_trajectory = result.normal_trajectory;
     result.cautious_planning_factor_data = result.normal_planning_factor_data;
     result.cautious_debug = result.normal_debug;
     cautious_previous_trajectory_ = normal_previous_trajectory_;
-    cautious_previous_path_ = normal_previous_path_;
   }
   return result;
 }
 
 std::pair<PlannedTrajectory, PlanningFactorData> ReferencePathFollowingPlanner::plan_one_side(
   TurnIndicatorDecider & turn_indicator_decider, const PlannerContext & context,
-  const std::vector<Constraint> & constraints, std::optional<Trajectory> & previous_trajectory,
-  std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const
+  const std::vector<Constraint> & constraints,
+  const std::optional<std::string> & path_optimization_failure,
+  std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug) const
 {
   const auto & p = params_.reference_path_following_planner;
   const auto & vo = p.velocity_optimizer;
 
+  // context.reference_path is the path the velocity is planned on, so the arc length of every
+  // projected view refers to it
   auto phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
     "compile_constraint_list", *time_keeper_);
-  auto compiled_constraints = compile_constraint_list(context, constraints);
+  const auto compiled_constraints = compile_constraint_list(context, constraints);
   phase.reset();
 
-  // The path the velocity is planned on: the reference_path, or the path shifted from the ego back
-  // to it and clear of the road_borders. The constraints are then compiled again on the shifted
-  // path, since the arc length of every projected view refers to the path it was projected on
-  std::optional<PlannerContext> shifted_context;
-  bool lateral_failed = false;
-  if (p.lateral_optimization.enable) {
-    phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(
-      "optimize_lateral_offset", *time_keeper_);
-    if (
-      auto shifted =
-        shift_path_within_hard_bounds(context, compiled_constraints, previous_path, debug)) {
-      shifted_context.emplace(context);
-      shifted_context->reference_path = std::move(*shifted);
-      compiled_constraints = compile_constraint_list(*shifted_context, constraints);
-    } else {
-      lateral_failed = true;
-    }
-    previous_path =
-      shifted_context ? std::make_optional(shifted_context->reference_path) : std::nullopt;
-    phase.reset();
-  }
-  const PlannerContext & ctx = shifted_context ? *shifted_context : context;
   const auto planning_factor_data =
-    create_planning_factor_data(ctx, compiled_constraints, params_.trajectory_horizon_s);
+    create_planning_factor_data(context, compiled_constraints, params_.trajectory_horizon_s);
 
   phase = std::make_unique<autoware_utils_debug::ScopedTimeTrack>("plan_velocity", *time_keeper_);
   const auto limits = collect_kinematic_limits(compiled_constraints);
   const double nominal_jerk =
     std::min(limits.j_nom, global_hard_bound_max(compiled_constraints, BoundedQuantity::LON_JERK));
 
-  const double s0 = compute_ego_frenet_state(ctx).s;
-  const double s_stop = stop_target_s(ctx, compiled_constraints, params_.trajectory_horizon_s, s0);
+  const double s0 = compute_ego_frenet_state(context).s;
+  const double s_stop =
+    stop_target_s(context, compiled_constraints, params_.trajectory_horizon_s, s0);
   const double v_ego = std::max(0.0, context.odometry.twist.twist.linear.x);
 
-  auto path = ctx.reference_path;
+  auto path = context.reference_path;
   auto & speed_limit = path.longitudinal_velocity_mps();
   speed_limit = limits.v_hard;
   for (const auto & bound : compiled_constraints.scalar_bounds) {
@@ -396,7 +395,7 @@ std::pair<PlannedTrajectory, PlanningFactorData> ReferencePathFollowingPlanner::
   const auto num_points =
     static_cast<std::size_t>(std::round(params_.trajectory_horizon_s / p.time_step_s)) + 1;
   std::optional<TrajectoryPoints> points;
-  if (!lateral_failed) {
+  if (!path_optimization_failure) {
     points = plan_velocity(path, s0, initial, vp_params, num_points, p.time_step_s);
   }
   phase.reset();
@@ -408,9 +407,8 @@ std::pair<PlannedTrajectory, PlanningFactorData> ReferencePathFollowingPlanner::
   if (points) {
     trajectory.points = std::move(*points);
   } else {
-    const char * FAILURE =
-      lateral_failed ? "lateral QP did not solve" : "velocity QP did not solve";
-    RCLCPP_WARN_THROTTLE(logger(), steady_clock(), 5000, "%s", FAILURE);
+    const auto failure = path_optimization_failure.value_or("velocity QP did not solve");
+    RCLCPP_WARN_THROTTLE(logger(), steady_clock(), 5000, "%s", failure.c_str());
     // No fallback on purpose, as the MPPI planner: the failure has to be visible downstream, so
     // only the ego point is output and the reason is recorded as a marker. That holds for the
     // lateral QP too, although it stops the ego where the road is narrower than the footprint with
@@ -419,7 +417,7 @@ std::pair<PlannedTrajectory, PlanningFactorData> ReferencePathFollowingPlanner::
     point.pose = context.odometry.pose.pose;
     trajectory.points.push_back(point);
     debug.markers["reference_path_following_failure"].markers.push_back(
-      make_failure_marker(context, "reference_path_following_failure", FAILURE));
+      make_failure_marker(context, "reference_path_following_failure", failure.c_str()));
   }
   phase.reset();
 
