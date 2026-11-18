@@ -262,4 +262,39 @@ TEST_F(FootprintGeneratorTest, TestGetSidesFromFootprints)
   EXPECT_DOUBLE_EQ(sides_array[1].right.second.x(), offset_fp[VehicleInfo::RearRightIndex].x());
   EXPECT_DOUBLE_EQ(sides_array[1].right.second.y(), offset_fp[VehicleInfo::RearRightIndex].y());
 }
+
+TEST_F(FootprintGeneratorTest, TestIsValidOffset)
+{
+  // 1-line summary: Verifies that an offset is valid only while the footprint length and width
+  // stay more than zero.
+
+  // Arrange: the vehicle is 4.89 m long (1.0 + 2.79 + 1.1) and 4.268 m wide (1.64 + 2.5 + 0.128).
+  FootprintOffset expand_and_shrink;
+  expand_and_shrink.front_m = 0.5;
+  expand_and_shrink.left_m = -0.1;
+
+  FootprintOffset small_width;  // width 0.068 m
+  small_width.left_m = -2.5;
+  small_width.right_m = -1.7;
+
+  FootprintOffset negative_width;  // width -0.032 m
+  negative_width.left_m = -2.5;
+  negative_width.right_m = -1.8;
+
+  FootprintOffset small_length;  // length 0.09 m
+  small_length.front_m = -3.0;
+  small_length.rear_m = -1.8;
+
+  FootprintOffset negative_length;  // length -0.11 m
+  negative_length.front_m = -3.0;
+  negative_length.rear_m = -2.0;
+
+  // Act & Assert:
+  EXPECT_TRUE(footprints::is_valid_offset(vehicle_info_, FootprintOffset{}));
+  EXPECT_TRUE(footprints::is_valid_offset(vehicle_info_, expand_and_shrink));
+  EXPECT_TRUE(footprints::is_valid_offset(vehicle_info_, small_width));
+  EXPECT_FALSE(footprints::is_valid_offset(vehicle_info_, negative_width));
+  EXPECT_TRUE(footprints::is_valid_offset(vehicle_info_, small_length));
+  EXPECT_FALSE(footprints::is_valid_offset(vehicle_info_, negative_length));
+}
 }  // namespace autoware::boundary_departure_checker

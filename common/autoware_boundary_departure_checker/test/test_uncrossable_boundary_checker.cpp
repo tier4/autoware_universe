@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 namespace autoware::boundary_departure_checker
@@ -38,7 +39,8 @@ UncrossableBoundaryDepartureParam create_default_param()
   return param;
 }
 
-UncrossableBoundaryChecker create_default_checker()
+UncrossableBoundaryChecker create_default_checker(
+  const UncrossableBoundaryDepartureParam & param = create_default_param())
 {
   // 1. Setup Vehicle Info (Standard Sedan Size)
   auto vehicle_info = autoware::vehicle_info_utils::createVehicleInfo(
@@ -54,10 +56,7 @@ UncrossableBoundaryChecker create_default_checker()
     0.70    // min_steer_angle [rad]
   );
 
-  // 2. Param
-  const auto param = create_default_param();
-
-  // 3. Create a LaneletMap with a straight road border at Y = 2.0
+  // 2. Create a LaneletMap with a straight road border at Y = 2.0
   auto map = std::make_shared<lanelet::LaneletMap>();
   lanelet::Point3d p1(lanelet::utils::getId(), -100.0, 2.0, 0.0);
   lanelet::Point3d p2(lanelet::utils::getId(), 100.0, 2.0, 0.0);
@@ -381,5 +380,31 @@ TEST(UncrossableBoundaryCheckerTest, TestIndependentHysteresisStates)
   // Assert: state_b is unaffected by state_a's critical history.
   EXPECT_TRUE(res_b.status == DepartureType::NONE)
     << "Independent state_b must stay NONE and not inherit state_a's CRITICAL holdover.";
+}
+
+// ==============================================================================
+// Low Boundary Footprint Offset Tests
+// ==============================================================================
+TEST(UncrossableBoundaryCheckerTest, TestInvalidFootprintOffsetThrowsOnConstruction)
+{
+  // Verifies that an offset that removes the whole footprint width is rejected.
+  // The default checker vehicle is 4.268 m wide (1.64 + 2.5 + 0.128), so this offset gives
+  // -0.232 m.
+  auto param = create_default_param();
+  param.low_boundary.footprint_offset.left_m = -2.5;
+  param.low_boundary.footprint_offset.right_m = -2.0;
+
+  EXPECT_THROW(create_default_checker(param), std::invalid_argument);
+}
+
+TEST(UncrossableBoundaryCheckerTest, TestInvalidFootprintOffsetThrowsOnUpdate)
+{
+  // Verifies that a parameter update with an invalid offset is rejected.
+  // The default checker vehicle is 4.89 m long (1.0 + 2.79 + 1.1), so this offset gives -0.11 m.
+  auto checker = create_default_checker();
+  auto param = create_default_param();
+  param.low_boundary.footprint_offset.front_m = -5.0;
+
+  EXPECT_THROW(checker.update_parameters(param), std::invalid_argument);
 }
 }  // namespace autoware::boundary_departure_checker
