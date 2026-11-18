@@ -297,4 +297,41 @@ TEST_F(FootprintGeneratorTest, TestIsValidOffset)
   EXPECT_TRUE(footprints::is_valid_offset(vehicle_info_, small_length));
   EXPECT_FALSE(footprints::is_valid_offset(vehicle_info_, negative_length));
 }
+
+TEST_F(FootprintGeneratorTest, TestFootprintOffsetMovesEachSide)
+{
+  // 1-line summary: Verifies that the footprint offset moves each side by its own value.
+
+  // Arrange: without the offset, the footprint at (0, 0) goes from x = -1.1 (rear overhang) to
+  // x = 3.79 (wheel base 2.79 + front overhang 1.0), and from y = -0.948 (0.82 + 0.128) to
+  // y = 3.32 (0.82 + 2.5).
+  FootprintOffset offset;
+  offset.front_m = 0.1;
+  offset.rear_m = 0.2;
+  offset.left_m = -0.05;
+  offset.right_m = -0.08;
+
+  // Act:
+  const auto footprints = footprints::generate(pred_traj_, vehicle_info_, pose_with_cov_, offset);
+
+  // Assert:
+  ASSERT_EQ(footprints.size(), pred_traj_.size());
+  const auto & fp = footprints.front();
+  constexpr double front_x = 3.89;
+  constexpr double rear_x = -1.3;
+  constexpr double left_y = 3.27;
+  constexpr double right_y = -0.868;
+  constexpr double eps = 1e-9;
+  EXPECT_NEAR(fp[VehicleInfo::FrontLeftIndex].x(), front_x, eps);
+  EXPECT_NEAR(fp[VehicleInfo::FrontLeftIndex].y(), left_y, eps);
+  EXPECT_NEAR(fp[VehicleInfo::FrontRightIndex].x(), front_x, eps);
+  EXPECT_NEAR(fp[VehicleInfo::FrontRightIndex].y(), right_y, eps);
+  EXPECT_NEAR(fp[VehicleInfo::RearLeftIndex].x(), rear_x, eps);
+  EXPECT_NEAR(fp[VehicleInfo::RearLeftIndex].y(), left_y, eps);
+  EXPECT_NEAR(fp[VehicleInfo::RearRightIndex].x(), rear_x, eps);
+  EXPECT_NEAR(fp[VehicleInfo::RearRightIndex].y(), right_y, eps);
+
+  // The second trajectory point is at x = 1.0, so its footprint front is at 4.89.
+  EXPECT_NEAR(footprints[1][VehicleInfo::FrontLeftIndex].x(), front_x + 1.0, eps);
+}
 }  // namespace autoware::boundary_departure_checker
