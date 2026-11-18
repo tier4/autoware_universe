@@ -133,10 +133,11 @@ std::vector<TrajectoryPoint> align_to_ego_pose(
 Footprints generate(
   const std::vector<TrajectoryPoint> & trajectory_points,
   const vehicle_info_utils::VehicleInfo & vehicle_info,
-  const geometry_msgs::msg::PoseWithCovariance & covariance)
+  const geometry_msgs::msg::PoseWithCovariance & covariance, const FootprintOffset & offset)
 {
   const auto margin = calc_margin_from_covariance(covariance, 0.0);
-  const auto local_vehicle_footprint = vehicle_info.createFootprint(margin.lat_m, margin.lon_m);
+  const auto local_vehicle_footprint =
+    apply_offset_to_overhangs(vehicle_info, offset).createFootprint(margin.lat_m, margin.lon_m);
 
   Footprints footprints{};
   footprints.reserve(trajectory_points.size());

@@ -74,12 +74,14 @@ std::vector<TrajectoryPoint> align_to_ego_pose(
  * @param[in] trajectory_points points along the trajectory
  * @param[in] vehicle_info information about the vehicle
  * @param[in] covariance pose covariance to consider for margin
+ * @param[in] offset offset of each side of the footprint
  * @return list of generated footprints
  */
 Footprints generate(
   const std::vector<TrajectoryPoint> & trajectory_points,
   const vehicle_info_utils::VehicleInfo & vehicle_info,
-  const geometry_msgs::msg::PoseWithCovariance & covariance);
+  const geometry_msgs::msg::PoseWithCovariance & covariance,
+  const FootprintOffset & offset = FootprintOffset{});
 
 /**
  * @brief Check that a footprint offset keeps a valid footprint polygon.
