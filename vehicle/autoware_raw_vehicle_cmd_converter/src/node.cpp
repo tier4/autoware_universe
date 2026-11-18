@@ -69,6 +69,7 @@ RawVehicleCommandConverterNode::RawVehicleCommandConverterNode(
       vgr_with_us_.setUndersteerParams(k_us, vehicle_info_.wheel_base_m);
     } else if (convert_steer_cmd_method_.value() == "understeer_compensation") {
       const double k_us = declare_parameter<double>("understeer_gradient");
+      static_understeer_gradient_ = k_us;
       understeer_comp_.setUndersteerParams(k_us, vehicle_info_.wheel_base_m);
     } else if (convert_steer_cmd_method_.value() == "steer_map") {
       const auto csv_path_steer_map = declare_parameter<std::string>("csv_path_steer_map");
@@ -96,6 +97,22 @@ RawVehicleCommandConverterNode::RawVehicleCommandConverterNode(
       steer_pid_.setInitialized();
     } else {
       throw std::invalid_argument("Invalid steer conversion method.");
+    }
+
+    use_dynamic_understeer_gradient_ =
+      declare_parameter<bool>("use_dynamic_understeer_gradient", false);
+    max_estimated_understeer_gradient_age_sec_ =
+      declare_parameter<double>("max_estimated_understeer_gradient_age_sec", 1.0);
+    if (use_dynamic_understeer_gradient_) {
+      if (convert_steer_cmd_method_.value() != "understeer_compensation") {
+        RCLCPP_WARN(
+          get_logger(),
+          "use_dynamic_understeer_gradient is ignored unless convert_steer_cmd_method is "
+          "understeer_compensation");
+        use_dynamic_understeer_gradient_ = false;
+      } else {
+        sub_estimated_understeer_gradient_.emplace(this, "~/input/estimated_understeer_gradient");
+      }
     }
   }
 
@@ -139,6 +156,25 @@ RawVehicleCommandConverterNode::RawVehicleCommandConverterNode(
   }
 
   logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
+}
+
+void RawVehicleCommandConverterNode::updateUndersteerGradient()
+{
+  if (!use_dynamic_understeer_gradient_) {
+    return;
+  }
+
+  const auto estimated_understeer_gradient = sub_estimated_understeer_gradient_->take_data();
+  if (
+    estimated_understeer_gradient &&
+    (now() - rclcpp::Time(estimated_understeer_gradient->stamp)).seconds() <=
+      max_estimated_understeer_gradient_age_sec_) {
+    const double k_us = std::max(estimated_understeer_gradient->data, 0.0);
+    understeer_comp_.setUndersteerParams(k_us, vehicle_info_.wheel_base_m);
+    return;
+  }
+
+  understeer_comp_.setUndersteerParams(static_understeer_gradient_, vehicle_info_.wheel_base_m);
 }
 
 void RawVehicleCommandConverterNode::publishActuationCmd()
@@ -218,6 +254,7 @@ void RawVehicleCommandConverterNode::publishActuationCmd()
       vgr_with_us_.calculateVariableGearRatio(vel, current_steer_wheel);
     desired_steer_cmd = steer * adaptive_gear_ratio;
   } else if (convert_steer_cmd_method_.value() == "understeer_compensation") {
+    updateUndersteerGradient();
     desired_steer_cmd = steer * understeer_comp_.calculateUndersteerRatio(vel);
     const double max_steer_tire_angle = vehicle_info_.max_steer_angle_rad;
     desired_steer_cmd = std::clamp(desired_steer_cmd, -max_steer_tire_angle, max_steer_tire_angle);
@@ -349,6 +386,7 @@ void RawVehicleCommandConverterNode::onActuationStatus(
       steering_msg.steering_tire_angle = *current_steer_ptr_;
       pub_steering_status_->publish(steering_msg);
     } else if (convert_steer_cmd_method_.value() == "understeer_compensation") {
+      updateUndersteerGradient();
       current_steer_ptr_ = std::make_unique<double>(understeer_comp_.calculateSteeringTireState(
         current_odometry_->twist.twist.linear.x, actuation_status_ptr_->status.steer_status));
       Steering steering_msg{};
