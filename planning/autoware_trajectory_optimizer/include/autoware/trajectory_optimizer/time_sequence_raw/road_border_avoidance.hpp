@@ -40,6 +40,13 @@ struct RoadBorderAvoidanceParams
   bool propagate_shift{true};
 };
 
+/// Road border line string (map frame) with the height of each vertex.
+struct RoadBorder
+{
+  autoware_utils_geometry::LineString2d line;
+  std::vector<double> z;
+};
+
 struct RoadBorderAvoidanceResult
 {
   Trajectory trajectory;
@@ -49,6 +56,13 @@ struct RoadBorderAvoidanceResult
   [[nodiscard]] bool modified() const { return num_shifted_points + num_unresolved_points > 0; }
 };
 
+/**
+ * @brief Shifts raw trajectory points laterally away from overlapping lanelet road borders.
+ *
+ * Borders are split into fixed-size chunks and filtered once per adjust() call in the 3D ego frame
+ * using autoware_ml_planner's is_on_ego_level() criterion
+ * (abs(z_ego) <= 4.0 + 0.05 * horizontal_distance at the ego-closest chunk vertex).
+ */
 class RoadBorderAvoidance
 {
 public:
@@ -58,7 +72,10 @@ public:
 
   void set_map(const lanelet::LaneletMap & lanelet_map);
 
-  void set_road_borders(std::vector<autoware_utils_geometry::LineString2d> road_borders);
+  void set_road_borders(std::vector<RoadBorder> road_borders);
+
+  /// Set road borders without height (all at z = 0). Used by unit tests.
+  void set_road_borders(const std::vector<autoware_utils_geometry::LineString2d> & road_borders);
 
   [[nodiscard]] RoadBorderAvoidanceResult adjust(
     const Trajectory & raw_trajectory, const geometry_msgs::msg::Pose & ego_pose) const;
@@ -66,7 +83,7 @@ public:
 private:
   RoadBorderAvoidanceParams params_;
   autoware_utils_geometry::LinearRing2d base_footprint_;
-  std::vector<autoware_utils_geometry::LineString2d> road_borders_;
+  std::vector<RoadBorder> road_borders_;
 };
 
 }  // namespace autoware::trajectory_optimizer::time_sequence_raw
