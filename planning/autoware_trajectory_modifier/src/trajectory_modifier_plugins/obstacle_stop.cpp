@@ -108,7 +108,7 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
     const auto & p = params_.obstacle_tracking;
     obstacle_tracker_ = std::make_unique<utils::obstacle_stop::ObstacleTracker>(
       p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
-      p.grace_period);
+      p.grace_period, params_.objects.stopped_velocity_th);
   }
 
   {
@@ -172,7 +172,7 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
     const auto & p = params_.obstacle_tracking;
     obstacle_tracker_->set_params(
       p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
-      p.grace_period);
+      p.grace_period, params_.objects.stopped_velocity_th);
   }
 
   {

@@ -95,7 +95,7 @@ PredictedPath make_path(const std::vector<double> & xs, const double time_step)
 ObstacleTracker make_tracker(
   const double on_time = 0.5, const double off_time = 0.7, const double grace = 0.2)
 {
-  return ObstacleTracker(on_time, off_time, 1.0, 0.1745, 1.0, grace);
+  return ObstacleTracker(on_time, off_time, 1.0, 0.1745, 1.0, grace, 0.3);
 }
 
 void confirm_stopped_car(ObstacleTracker & tracker, TargetObjects & output)
@@ -216,8 +216,8 @@ TEST(ObstacleTracker, ReplayedMessageAgesOut)
 TEST(ObstacleTracker, AssociatesAcrossOneSecondStampGap)
 {
   // off_time_buffer_ is 1.5 s, so the 1 s perception gap still matches this active track.
-  // The message arrives 1.7 s after last_arrival, past that buffer, and the stored pose is
-  // extrapolated by the stamp gap.
+  // The message arrives 1.7 s after last_arrival, past that buffer. The emitted pose is the
+  // stored measurement moved forward by now - stamp (0.7 s).
   auto tracker = make_tracker(0.5, 1.5);
   TargetObjects output;
   constexpr double velocity = 10.0;
@@ -231,7 +231,7 @@ TEST(ObstacleTracker, AssociatesAcrossOneSecondStampGap)
   update(tracker, make_objects(15.0, velocity), output, time_ms(1500), time_ms(2200));
   ASSERT_EQ(output.size(), 1U);
   EXPECT_NEAR(
-    output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 15.0, 1e-6);
+    output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 22.0, 1e-6);
 }
 
 TEST(ObstacleTracker, RejectsMatchWhenStampGapExceedsBuffer)
@@ -278,39 +278,57 @@ TEST(ObstacleTracker, DISABLED_FiveHzBoundaryStillConfirms)
   EXPECT_EQ(output.size(), 1U);
 }
 
-TEST(ObstacleTracker, DISABLED_PropagatesOutputToModuleTime)
+TEST(ObstacleTracker, PropagatesOutputToModuleTime)
 {
   auto tracker = make_tracker(0.5, 2.0, 0.2);
   TargetObjects output;
   confirm_stopped_car(tracker, output);
 
+  // Confirmation already consumed stamp 500, so the measured object needs a newer stamp.
   auto braking = make_car(0.0, 10.0);
   braking.kinematics.predicted_paths.push_back(make_path({0.0, 4.0, 6.0}, 0.5));
-  update(tracker, make_objects(braking), output, time_ms(500), time_ms(500));
-  update(tracker, PredictedObjects{}, output, time_ms(500), time_ms(1000));
+  update(tracker, make_objects(braking), output, time_ms(600), time_ms(600));
+  update(tracker, PredictedObjects{}, output, time_ms(600), time_ms(1100));
   ASSERT_EQ(output.size(), 1U);
-  EXPECT_NEAR(output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 4.0, 1e-3);
+  EXPECT_NEAR(
+    output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 4.0, 1e-3);
 
   auto coasting = make_tracker(0.5, 2.0, 0.2);
   confirm_stopped_car(coasting, output);
-  update(coasting, make_objects(0.0, 10.0), output, time_ms(500), time_ms(500));
-  update(coasting, PredictedObjects{}, output, time_ms(500), time_ms(700));
+  update(coasting, make_objects(0.0, 10.0), output, time_ms(600), time_ms(600));
+  update(coasting, PredictedObjects{}, output, time_ms(600), time_ms(800));
   ASSERT_EQ(output.size(), 1U);
-  EXPECT_NEAR(output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 2.0, 1e-3);
+  EXPECT_NEAR(
+    output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 2.0, 1e-3);
 
   auto held = make_tracker(0.5, 2.0, 0.2);
   confirm_stopped_car(held, output);
   auto short_path = make_car(0.0, 10.0);
   short_path.kinematics.predicted_paths.push_back(make_path({0.0, 4.0}, 0.3));
-  update(held, make_objects(short_path), output, time_ms(500), time_ms(500));
-  update(held, PredictedObjects{}, output, time_ms(500), time_ms(1100));
+  update(held, make_objects(short_path), output, time_ms(600), time_ms(600));
+  update(held, PredictedObjects{}, output, time_ms(600), time_ms(1200));
   ASSERT_EQ(output.size(), 1U);
-  EXPECT_NEAR(output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 4.0, 1e-3);
+  EXPECT_NEAR(
+    output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 4.0, 1e-3);
 
+  // The stored car is already at x=5; a module time before its stamp must not move it.
   auto clamped = make_tracker(0.5, 2.0, 0.2);
-  confirm_stopped_car(clamped, output);
-  update(clamped, make_objects(5.0, 10.0), output, time_ms(500), time_ms(500));
+  for (int64_t ms = 0; ms <= 500; ms += 100) {
+    update(clamped, make_objects(5.0, 10.0), output, time_ms(ms), time_ms(ms));
+  }
   update(clamped, PredictedObjects{}, output, time_ms(500), time_ms(400));
   ASSERT_EQ(output.size(), 1U);
-  EXPECT_NEAR(output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 5.0, 1e-3);
+  EXPECT_NEAR(
+    output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 5.0, 1e-3);
+
+  // A near-zero velocity keeps the measured pose even when its predicted path drifts.
+  auto parked = make_tracker(0.5, 2.0, 0.2);
+  confirm_stopped_car(parked, output);
+  auto slow = make_car(0.0, 0.2);
+  slow.kinematics.predicted_paths.push_back(make_path({0.0, 4.0, 6.0}, 0.5));
+  update(parked, make_objects(slow), output, time_ms(600), time_ms(600));
+  update(parked, PredictedObjects{}, output, time_ms(600), time_ms(1100));
+  ASSERT_EQ(output.size(), 1U);
+  EXPECT_NEAR(
+    output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 0.0, 1e-3);
 }
