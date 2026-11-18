@@ -46,6 +46,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -130,9 +131,22 @@ private:
   /**
    * @brief Load TensorRT model from model.base_model_directory and the ONNX filename.
    *
+   * On failure, stores the exception text in model_load_error_ and publishes it on
+   * inference_status before rethrowing.
+   *
    * @throws std::runtime_error if the model path is invalid or engine setup fails.
    */
   void load_model();
+
+  /**
+   * @brief Add model path and backend key-values to inference_status.
+   */
+  void fill_model_key_values();
+
+  /**
+   * @brief Clear inference_status, refill model key-values, set level/message, and publish.
+   */
+  void publish_inference_status(int8_t level, const std::string & message = "");
 
   /**
    * @brief Timer callback for periodic processing and publishing.
@@ -254,6 +268,7 @@ private:
   VehicleInfo vehicle_info_;
 
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
+  std::optional<std::string> model_load_error_;
   std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_{nullptr};
 
   std::unique_ptr<autoware_utils_system::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
