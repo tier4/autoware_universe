@@ -812,6 +812,9 @@ void ObstacleTracker::update_objects(
           ? ObjectClassification::UNKNOWN
           : autoware::object_recognition_utils::getHighestProbLabel(object.classification);
       if (existing_obj_label != obj_label) continue;
+      const auto stamp_gap = (stamp - existing_object.last_stamp).seconds();
+      const auto reach = existing_object.is_active ? off_time_buffer_ : grace_period_;
+      if (stamp_gap > reach) continue;
       const auto distance = autoware_utils::calc_distance2d(
         object.kinematics.initial_pose_with_covariance.pose.position,
         estimate_pose(existing_object).position);
@@ -874,6 +877,8 @@ void ObstacleTracker::update_points(
     if (persistent_point_map_.empty()) return std::nullopt;
     double min_distance = pcd_distance_th_ + std::numeric_limits<double>::epsilon();
     for (const auto & [uuid, existing_point] : persistent_point_map_) {
+      const auto reach = existing_point.is_active ? off_time_buffer_ : grace_period_;
+      if ((now - existing_point.last_stamp).seconds() > reach) continue;
       const auto distance = autoware_utils::calc_distance2d(point, existing_point.point);
       if (distance > min_distance) continue;
       min_distance = distance;
