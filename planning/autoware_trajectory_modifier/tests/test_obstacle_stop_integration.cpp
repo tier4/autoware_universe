@@ -196,6 +196,19 @@ sensor_msgs::msg::PointCloud2::ConstSharedPtr make_blocking_pointcloud(double x,
   return std::make_shared<const sensor_msgs::msg::PointCloud2>(cloud);
 }
 
+TrajectoryModifierData with_object_stamp(
+  const TrajectoryModifierData & input, const rclcpp::Time & stamp)
+{
+  if (!input.predicted_objects) {
+    return input;
+  }
+  auto objects = std::make_shared<PredictedObjects>(*input.predicted_objects);
+  objects->header.stamp = stamp;
+  auto stamped = input;
+  stamped.predicted_objects = objects;
+  return stamped;
+}
+
 TrajectoryModifierData create_input_data(
   Odometry::ConstSharedPtr current_odometry,
   AccelWithCovarianceStamped::ConstSharedPtr current_acceleration,
@@ -295,9 +308,9 @@ protected:
 
   bool process_with_hysteresis(TrajectoryPoints & trajectory, const TrajectoryModifierData & input)
   {
-    process_plugin(*plugin_, trajectory, input);
+    process_plugin(*plugin_, trajectory, with_object_stamp(input, node_->now()));
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    return process_plugin(*plugin_, trajectory, input);
+    return process_plugin(*plugin_, trajectory, with_object_stamp(input, node_->now()));
   }
 
   bool has_planning_factor(const uint16_t behavior) const
@@ -399,9 +412,7 @@ TEST_F(ObstacleStopIntegrationTest, TrajectoryNotModifiedWhenObjectIsBesidePath)
     create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), car_beside_path);
 
   // Act
-  process_plugin(*plugin_, trajectory, input);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = process_plugin(*plugin_, trajectory, input);
+  const bool modified = process_with_hysteresis(trajectory, input);
 
   // Assert
   EXPECT_FALSE(modified);
@@ -422,9 +433,7 @@ TEST_F(ObstacleStopIntegrationTest, SlowTrajectoryIgnoresObjectOutsideLowSpeedMa
   const auto input =
     create_input_data(make_odometry(0.0, 0.0, 1.0), make_acceleration(0.0), car_beside_path);
 
-  process_plugin(*plugin_, trajectory, input);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = process_plugin(*plugin_, trajectory, input);
+  const bool modified = process_with_hysteresis(trajectory, input);
 
   EXPECT_FALSE(modified);
 }
@@ -442,9 +451,7 @@ TEST_F(ObstacleStopIntegrationTest, FastTrajectoryStopsForObjectWithinNormalMarg
   const auto input =
     create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), car_beside_path);
 
-  process_plugin(*plugin_, trajectory, input);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = process_plugin(*plugin_, trajectory, input);
+  const bool modified = process_with_hysteresis(trajectory, input);
 
   EXPECT_TRUE(modified);
 }
@@ -459,9 +466,7 @@ TEST_F(ObstacleStopIntegrationTest, TrajectoryModifiedWhenObjectBlocksPath)
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  process_plugin(*plugin_, trajectory, input);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = process_plugin(*plugin_, trajectory, input);
+  const bool modified = process_with_hysteresis(trajectory, input);
 
   // Assert
   EXPECT_TRUE(modified);
@@ -478,9 +483,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedBeforeObject)
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  process_plugin(*plugin_, trajectory, input);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = process_plugin(*plugin_, trajectory, input);
+  const bool modified = process_with_hysteresis(trajectory, input);
 
   // Assert
   ASSERT_TRUE(modified);
@@ -505,9 +508,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedBeforeObject_ReachMaxDecel)
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  process_plugin(*plugin_, trajectory, input);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = process_plugin(*plugin_, trajectory, input);
+  const bool modified = process_with_hysteresis(trajectory, input);
 
   // Assert
   ASSERT_TRUE(modified);
@@ -529,9 +530,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  process_plugin(*plugin_, trajectory, input);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = process_plugin(*plugin_, trajectory, input);
+  const bool modified = process_with_hysteresis(trajectory, input);
 
   // Assert
   ASSERT_TRUE(modified);
@@ -565,9 +564,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
 
   // Act: obstacle tracker requires `on_time_buffer` of continuous observation
   //      before becoming active
-  process_plugin(*plugin_, trajectory, input);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  const bool modified = process_plugin(*plugin_, trajectory, input);
+  const bool modified = process_with_hysteresis(trajectory, input);
 
   // Assert
   ASSERT_TRUE(modified);
@@ -686,4 +683,29 @@ TEST_F(ObstacleStopIntegrationTest, CruiseLeavesAlreadySlowerInputUnchanged)
   EXPECT_FALSE(process_with_hysteresis(trajectory, input));
   EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 2.0F);
   EXPECT_FALSE(has_planning_factor(PlanningFactor::SLOW_DOWN));
+}
+
+TEST_F(ObstacleStopIntegrationTest, RepeatedObjectStampDoesNotActivateThenAgesOut)
+{
+  auto trajectory = create_straight_trajectory(30.0, 8.0);
+  auto objects = std::make_shared<PredictedObjects>(*make_blocking_car(20.0, 0.0));
+  const auto stamp = node_->now();
+  objects->header.stamp = stamp;
+  const auto input =
+    create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), objects);
+
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, input));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, input));
+
+  // The repeated stamp does not refresh the track, so this idle passes grace_period_.
+  std::this_thread::sleep_for(std::chrono::milliseconds(600));
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, input));
+
+  objects->header.stamp = stamp + rclcpp::Duration::from_seconds(0.1);
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, input));
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  objects->header.stamp = stamp + rclcpp::Duration::from_seconds(0.2);
+  EXPECT_TRUE(process_plugin(*plugin_, trajectory, input));
 }
