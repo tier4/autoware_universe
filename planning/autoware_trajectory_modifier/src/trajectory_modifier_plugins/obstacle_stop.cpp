@@ -500,8 +500,10 @@ void ObstacleStop::detect_objects(const TrajectoryModifierData & input)
   object_filter_->filter_objects(debug_data_.filtered_objects);
 
   const auto now = get_clock()->now();
+  const auto stamp =
+    rclcpp::Time(input.predicted_objects->header.stamp, now.get_clock_type());
   obstacle_tracker_->update_objects(
-    debug_data_.filtered_objects, debug_data_.target_objects, now, now);
+    debug_data_.filtered_objects, debug_data_.target_objects, stamp, now);
 
   object_filter_->filter_by_target_area(
     debug_data_.target_objects, context_->vehicle_info, debug_data_.trajectory_shape,
