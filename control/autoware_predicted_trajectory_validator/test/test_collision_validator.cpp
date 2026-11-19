@@ -35,12 +35,16 @@ TEST(CollisionValidatorTest, NothingRaisedGivesAnEmptyArray)
   const auto pose = make_pose(0.0, 0.0, 0.0);
   const auto now = at(10.0);
 
-  HazardWarningSources sources;
-  validator.validate(
-    make_trajectory(now, pose), make_odom(now, pose), make_objects(now, {make_car(15.0, 5.0)}),
-    test_vehicle_info(), nullptr, sources);
-  ASSERT_TRUE(sources.collision.has_value());
-  EXPECT_TRUE(sources.collision->empty());
+  auto short_trajectory = make_trajectory(now, pose);
+  short_trajectory.points.resize(1);
+  for (const auto & trajectory : {make_trajectory(now, pose), short_trajectory}) {
+    HazardWarningSources sources;
+    validator.validate(
+      trajectory, make_odom(now, pose), make_objects(now, {make_car(15.0, 5.0)}),
+      test_vehicle_info(), nullptr, sources);
+    ASSERT_TRUE(sources.collision.has_value());
+    EXPECT_TRUE(sources.collision->empty());
+  }
 }
 
 struct SkippedCase
@@ -78,8 +82,6 @@ INSTANTIATE_TEST_SUITE_P(
   CollisionValidatorTest, CollisionSourcesUnsetTest,
   ::testing::Values(
     SkippedCase{"NoInput", [](auto &) {}, [](auto &) {}, false, false},
-    SkippedCase{
-      "ShortTrajectory", [](auto &) {}, [](auto & t) { t.points.resize(1); }, true, false},
     SkippedCase{
       "UnsortedTrajectory", [](auto &) {},
       [](auto & t) { t.points[1].time_from_start = rclcpp::Duration::from_seconds(100.0); }, true,

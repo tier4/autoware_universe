@@ -250,7 +250,8 @@ TEST_F(UncrossableBoundDepartureValidatorTest, DepartureIsNotHandedOverWhenDisab
   EXPECT_TRUE(is_handed_over(params_, map, trajectory));
   EXPECT_FALSE(is_handed_over(no_warning, map, trajectory));
   EXPECT_FALSE(is_handed_over(params_, nullptr, trajectory));
-  EXPECT_FALSE(is_handed_over(params_, map, Trajectory{}));
+  EXPECT_TRUE(is_handed_over(params_, map, Trajectory{}));
+  EXPECT_FALSE(is_handed_over(no_warning, map, Trajectory{}));
 }
 
 TEST_F(UncrossableBoundDepartureValidatorTest, WarningIsRaisedWhileTheMrmCheckIsDisabled)

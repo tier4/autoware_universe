@@ -33,6 +33,9 @@ void UncrossableBoundDepartureValidator::validate(
   visualization_msgs::msg::MarkerArray & debug_markers, HazardWarningSources & hazard_sources)
 {
   if (predicted_trajectory.points.size() < 2) {
+    if (enable_warning_) {
+      hazard_sources.departure.emplace();
+    }
     return;
   }
 

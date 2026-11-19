@@ -207,11 +207,6 @@ void PredictedTrajectoryValidator::on_predicted_trajectory(const Trajectory::Con
     const auto now = get_clock()->now();
     collision_validator_.validate(
       *msg, *kinematics_msg, objects_msg, vehicle_info_, pointcloud_msg, hazard_sources);
-    if (
-      msg->points.size() < 2 && (params_.collision_validator.enable_warning ||
-                                 params_.uncrossable_bound_departure_validator.enable_warning)) {
-      hazard_sources = HazardWarningSources::empty();
-    }
     const auto alert = hazard_warning_.make_alert(hazard_sources, vehicle_info_, now);
     const double hazard_processing_time_ms = hazard_stop_watch_.toc();
     if (alert) {

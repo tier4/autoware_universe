@@ -187,6 +187,7 @@ void CollisionValidator::validate(
   }
   update_history(odom);
   if (predicted_trajectory.points.size() < 2) {
+    hazard_sources.collision.emplace();
     return;
   }
   const auto & points = predicted_trajectory.points;
