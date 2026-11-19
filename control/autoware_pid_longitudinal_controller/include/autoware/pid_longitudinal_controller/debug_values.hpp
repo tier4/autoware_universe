@@ -70,6 +70,9 @@ public:
     TEMPORAL_OBSERVATION_USED = 40,
     TEMPORAL_WINDOW_MIN = 41,
     TEMPORAL_WINDOW_MAX = 42,
+    STOPPING_SCENE_ACTIVE = 43,
+    STOPPING_SCENE_ACCEL_BIAS = 44,
+    STOPPING_SCENE_DELAYED_ACC = 45,
 
     SIZE  // this is the number of enum elements
   };
