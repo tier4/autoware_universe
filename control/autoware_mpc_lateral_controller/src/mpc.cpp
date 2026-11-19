@@ -39,6 +39,7 @@ using autoware_utils::rad2deg;
 
 namespace
 {
+
 bool interpolateReferenceStateAtTime(
   const MPCTrajectory & traj, const double target_time, Pose * pose, double * nearest_time,
   size_t * nearest_index)
@@ -292,10 +293,11 @@ void MPC::setReferenceTrajectory(
     mpc_traj_resampled = resampled;
   }
 
-  if (const auto is_forward_shift_opt = MPCUtils::infer_forward_driving(mpc_traj_resampled)) {
-    // if driving direction is unknown, use previous value
-    m_is_forward_shift = is_forward_shift_opt.value();
-  }
+  const auto is_forward_shift =
+    autoware::motion_utils::isDrivingForward(mpc_traj_resampled.toTrajectoryPoints());
+
+  // if driving direction is unknown, use previous value
+  m_is_forward_shift = is_forward_shift ? is_forward_shift.value() : m_is_forward_shift;
 
   // path smoothing
   MPCTrajectory mpc_traj_smoothed = mpc_traj_resampled;  // smooth filtered trajectory
