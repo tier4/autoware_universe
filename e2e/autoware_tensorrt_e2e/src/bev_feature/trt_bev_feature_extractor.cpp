@@ -1,0 +1,512 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "autoware/tensorrt_e2e/bev_feature/trt_bev_feature_extractor.hpp"
+
+#include "autoware/tensorrt_e2e/engine_cache.hpp"
+#include "autoware/tensorrt_e2e/types.hpp"
+
+#include <autoware/bevfusion/preprocess/point_type.hpp>
+#include <autoware/cuda_utils/cuda_check_error.hpp>
+#include <autoware/tensorrt_common/utils.hpp>
+
+#include <sensor_msgs/msg/point_field.hpp>
+
+#include <NvInfer.h>
+
+#include <algorithm>
+#include <filesystem>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace autoware::tensorrt_e2e
+{
+
+using autoware::bevfusion::BEVFusionConfig;
+using autoware::bevfusion::InputPointType;
+using autoware::tensorrt_common::NetworkIO;
+using autoware::tensorrt_common::ProfileDims;
+using autoware::tensorrt_common::Profiler;
+using autoware::tensorrt_common::TrtCommon;
+using autoware::tensorrt_common::TrtCommonConfig;
+
+namespace
+{
+
+BEVFusionConfig make_lidar_only_config(const TrtBevFeatureExtractor::Config & config)
+{
+  if (config.voxels_num.size() != 3) {
+    throw std::runtime_error("bev_feature.extractor.voxels_num must have 3 elements [min,opt,max]");
+  }
+  if (config.point_cloud_range.size() != 6) {
+    throw std::runtime_error("bev_feature.extractor.point_cloud_range must have 6 elements");
+  }
+  if (config.voxel_size.size() != 3) {
+    throw std::runtime_error("bev_feature.extractor.voxel_size must have 3 elements");
+  }
+  // Empty image-backbone paths select the lidar-only mode; the camera parameters are
+  // unused on this path and passed as neutral values. So are the postprocess ones: the
+  // detection head is decoded by this package's own kernel (detection_decode.hpp), and
+  // only the preprocessing reads this config.
+  const auto & detection = config.detection;
+  return BEVFusionConfig(
+    config.plugins_path, "", "", "", detection.out_size_factor, config.cloud_capacity,
+    config.max_points_per_voxel, config.voxels_num, config.point_cloud_range, config.voxel_size,
+    /*d_bound=*/{}, /*x_bound=*/{}, /*y_bound=*/{},
+    /*z_bound=*/{}, /*num_cameras=*/0, /*raw_image_height=*/0, /*raw_image_width=*/0,
+    /*img_aug_scale_x=*/0.0f, /*img_aug_scale_y=*/0.0f, /*roi_height=*/0, /*roi_width=*/0,
+    /*features_height=*/0, /*features_width=*/0, /*num_depth_features=*/0,
+    /*image_feature_channel=*/0, detection.num_proposals, /*circle_nms_dist_threshold=*/0.0f,
+    detection.yaw_norm_thresholds, /*score_threshold=*/0.0f, config.use_intensity);
+}
+
+}  // namespace
+
+TrtBevFeatureExtractor::TrtBevFeatureExtractor(const Config & config, cudaStream_t stream)
+: bevfusion_config_(make_lidar_only_config(config)),
+  feature_tensor_(config.feature_tensor),
+  stream_(stream)
+{
+  preprocess_ =
+    std::make_unique<autoware::bevfusion::PreprocessCuda>(bevfusion_config_, stream_, true);
+
+  points_d_ = autoware::cuda_utils::make_unique<float[]>(
+    static_cast<size_t>(bevfusion_config_.cloud_capacity_) *
+    bevfusion_config_.num_point_feature_size_);
+  voxel_features_d_ = autoware::cuda_utils::make_unique<float[]>(
+    static_cast<size_t>(bevfusion_config_.max_num_voxels_) *
+    bevfusion_config_.max_points_per_voxel_ * bevfusion_config_.num_point_feature_size_);
+  voxel_coords_d_ = autoware::cuda_utils::make_unique<int32_t[]>(
+    static_cast<size_t>(bevfusion_config_.max_num_voxels_) * 3);
+  num_points_per_voxel_d_ = autoware::cuda_utils::make_unique<int32_t[]>(
+    static_cast<size_t>(bevfusion_config_.max_num_voxels_));
+
+  // The single sweep is already in the target frame: identity transform, zero time lag.
+  const std::vector<float> identity = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                       0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+  identity_transform_d_ = autoware::cuda_utils::make_unique<float[]>(identity.size());
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    identity_transform_d_.get(), identity.data(), identity.size() * sizeof(float),
+    cudaMemcpyHostToDevice));
+
+  init_engine(config);
+}
+
+void TrtBevFeatureExtractor::init_engine(const Config & config)
+{
+  // TrtCommon writes its layer dump to the engine path with ".json", which for an engine
+  // beside bevfusion_lidar_feature.onnx is bevfusion_lidar_feature.json -- the exporter's
+  // metadata when a package carries it, so the default cache is
+  // bevfusion_lidar_feature.trt.engine and the dump goes to bevfusion_lidar_feature.trt.json.
+  const std::string engine_path =
+    config.engine_path.empty()
+      ? std::filesystem::path(config.onnx_path).replace_extension(".trt.engine").string()
+      : config.engine_path;
+  const auto trt_config =
+    TrtCommonConfig(config.onnx_path, config.precision, engine_path, config.max_workspace_size);
+
+  // Same lidar-branch IO contract as autoware_bevfusion: dynamic voxel count with a
+  // min/opt/max optimization profile.
+  const int64_t max_ppv = bevfusion_config_.max_points_per_voxel_;
+  const int64_t feature_size = bevfusion_config_.num_point_feature_size_;
+  const auto voxel_dims = [max_ppv, feature_size](const int64_t count) {
+    return nvinfer1::Dims{3, {count, max_ppv, feature_size}};
+  };
+
+  std::vector<ProfileDims> profile_dims;
+  profile_dims.emplace_back(
+    "voxels", voxel_dims(config.voxels_num[0]), voxel_dims(config.voxels_num[1]),
+    voxel_dims(config.voxels_num[2]));
+  profile_dims.emplace_back(
+    "num_points_per_voxel", nvinfer1::Dims{1, {config.voxels_num[0]}},
+    nvinfer1::Dims{1, {config.voxels_num[1]}}, nvinfer1::Dims{1, {config.voxels_num[2]}});
+  profile_dims.emplace_back(
+    "coors", nvinfer1::Dims{2, {config.voxels_num[0], 3}},
+    nvinfer1::Dims{2, {config.voxels_num[1], 3}}, nvinfer1::Dims{2, {config.voxels_num[2], 3}});
+
+  // Same staleness guard as the planner engine: profile dims alone do not detect a
+  // re-exported graph, so a cached engine older than its ONNX is dropped. See
+  // engine_cache.hpp.
+  drop_stale_engine(config.onnx_path, trt_config.engine_path.string(),
+                    rclcpp::get_logger("tensorrt_e2e"), config.precision);
+
+  trt_common_ = std::make_unique<TrtCommon>(
+    trt_config, std::make_shared<Profiler>(), std::vector<std::string>{config.plugins_path});
+  auto profile_dims_ptr = std::make_unique<std::vector<ProfileDims>>(profile_dims);
+  if (!trt_common_->setup(std::move(profile_dims_ptr))) {
+    throw std::runtime_error(
+      "Failed to setup the BEV feature extractor engine from " + config.onnx_path);
+  }
+
+  record_engine_identity(config.onnx_path, trt_config.engine_path.string(),
+                         config.precision);
+
+  // The feature output must have static dimensions (the sparse voxel count only affects the
+  // engine's internal tensors; the scattered BEV grid is fixed by the model).
+  const nvinfer1::Dims feature_dims = trt_common_->getTensorShape(feature_tensor_.c_str());
+  std::vector<int64_t> dims;
+  for (int32_t i = 0; i < feature_dims.nbDims; ++i) {
+    dims.push_back(feature_dims.d[i]);
+  }
+  const bool rank4 = dims.size() == 4 && dims[0] == 1;
+  const bool rank3 = dims.size() == 3;
+  if (!(rank3 || rank4) || std::any_of(dims.begin(), dims.end(), [](int64_t d) { return d < 1; })) {
+    throw std::runtime_error(
+      "BEV feature extractor output '" + feature_tensor_ +
+      "' must have a static [1, C, H, W] or [C, H, W] shape; got " + shape_to_string(dims));
+  }
+  const size_t base = rank4 ? 1 : 0;
+  channels_ = dims[base];
+  height_ = dims[base + 1];
+  width_ = dims[base + 2];
+
+  feature_d_ = autoware::cuda_utils::make_unique<float[]>(
+    static_cast<size_t>(channels_) * height_ * width_);
+
+  trt_common_->setTensorAddress("voxels", voxel_features_d_.get());
+  trt_common_->setTensorAddress("num_points_per_voxel", num_points_per_voxel_d_.get());
+  trt_common_->setTensorAddress("coors", voxel_coords_d_.get());
+  trt_common_->setTensorAddress(feature_tensor_.c_str(), feature_d_.get());
+  bound_outputs_.push_back(feature_tensor_);
+
+  init_detection(config);
+  bind_unread_outputs();
+}
+
+namespace
+{
+size_t element_size(const nvinfer1::DataType dtype)
+{
+  switch (dtype) {
+    case nvinfer1::DataType::kFLOAT:
+    case nvinfer1::DataType::kINT32:
+      return 4;
+    case nvinfer1::DataType::kHALF:
+    case nvinfer1::DataType::kBF16:
+      return 2;
+    case nvinfer1::DataType::kINT64:
+      return 8;
+    case nvinfer1::DataType::kINT8:
+    case nvinfer1::DataType::kUINT8:
+    case nvinfer1::DataType::kBOOL:
+    case nvinfer1::DataType::kFP8:
+      return 1;
+    default:
+      return 0;
+  }
+}
+}  // namespace
+
+void TrtBevFeatureExtractor::bind_unread_outputs()
+{
+  // enqueueV3 requires an address for EVERY output the engine declares, not just the
+  // ones this node reads. The extractor graph carries a detection head whether or not
+  // the deployment asked for boxes, so with the head switched off its three outputs
+  // were left unbound and every inference failed with "Neither address or allocator is
+  // set for output tensor bbox_pred" -- no BEV feature, no trajectory, and nothing in
+  // the node's own logs to say why. Give the leftovers scratch buffers and ignore them.
+  const int32_t num_io = trt_common_->getNbIOTensors();
+  for (int32_t i = 0; i < num_io; ++i) {
+    const char * name = trt_common_->getIOTensorName(i);
+    if (trt_common_->getTensorIOMode(name) != nvinfer1::TensorIOMode::kOUTPUT) {
+      continue;
+    }
+    if (
+      std::find(bound_outputs_.begin(), bound_outputs_.end(), std::string(name)) !=
+      bound_outputs_.end()) {
+      continue;
+    }
+
+    const nvinfer1::Dims dims = trt_common_->getTensorShape(name);
+    size_t count = 1;
+    for (int32_t d = 0; d < dims.nbDims; ++d) {
+      // A dynamic extent would make the size unknowable here; the extractor's profile
+      // is static, so treat one as a graph this node cannot safely run.
+      if (dims.d[d] < 0) {
+        throw std::runtime_error(
+          "The BEV feature extractor's output '" + std::string(name) +
+          "' has a dynamic extent; its size cannot be bound ahead of inference");
+      }
+      count *= static_cast<size_t>(dims.d[d]);
+    }
+    const auto dtype = trt_common_->getTensorDataType(name);
+    const size_t bytes = count * (dtype ? element_size(*dtype) : 0);
+    if (bytes == 0) {
+      throw std::runtime_error(
+        "The BEV feature extractor's output '" + std::string(name) +
+        "' has an unsupported data type; it cannot be given a buffer");
+    }
+
+    unread_output_scratch_.push_back(autoware::cuda_utils::make_unique<uint8_t[]>(bytes));
+    trt_common_->setTensorAddress(name, unread_output_scratch_.back().get());
+    bound_outputs_.emplace_back(name);
+  }
+}
+
+void TrtBevFeatureExtractor::init_detection(const Config & config)
+{
+  const auto & detection = config.detection;
+  if (!detection.enabled) {
+    return;
+  }
+
+  // A graph exported before the head was added is still a valid extractor: say the head
+  // is absent and run without it, rather than failing a deployment that never asked for
+  // boxes. A graph that HAS the tensors but disagrees on their shape is a real mismatch.
+  std::vector<std::string> engine_tensors;
+  const int32_t num_io = trt_common_->getNbIOTensors();
+  engine_tensors.reserve(static_cast<size_t>(num_io));
+  for (int32_t i = 0; i < num_io; ++i) {
+    engine_tensors.emplace_back(trt_common_->getIOTensorName(i));
+  }
+  const auto has_tensor = [&engine_tensors](const std::string & name) {
+    return std::find(engine_tensors.begin(), engine_tensors.end(), name) != engine_tensors.end();
+  };
+  const bool complete = has_tensor(detection.bbox_tensor) && has_tensor(detection.score_tensor) &&
+                        has_tensor(detection.label_tensor);
+  if (!complete) {
+    return;
+  }
+
+  if (detection.num_proposals <= 0) {
+    throw std::runtime_error(
+      "bev_feature.detection is enabled but num_proposals is " +
+      std::to_string(detection.num_proposals));
+  }
+  const auto class_count = static_cast<int64_t>(detection.yaw_norm_thresholds.size());
+  if (class_count <= 0) {
+    throw std::runtime_error(
+      "bev_feature.detection.yaw_norm_thresholds is empty; the decode kernel indexes it by "
+      "class and would read out of bounds");
+  }
+
+  // The decode kernel reads bbox_pred as [num_box_values, num_proposals] and the other two
+  // as [num_proposals]; a graph whose head was exported with a different proposal count
+  // would be read at the wrong stride.
+  const auto expect = [this](const std::string & name, const std::vector<int64_t> & want) {
+    const nvinfer1::Dims dims = trt_common_->getTensorShape(name.c_str());
+    std::vector<int64_t> got;
+    for (int32_t i = 0; i < dims.nbDims; ++i) {
+      got.push_back(dims.d[i]);
+    }
+    if (got != want) {
+      throw std::runtime_error(
+        "The BEV feature extractor's detection output '" + name + "' has shape " +
+        shape_to_string(got) + ", expected " + shape_to_string(want) +
+        " (bev_feature.detection.num_proposals disagrees with the graph)");
+    }
+  };
+  const int64_t proposals = detection.num_proposals;
+  const int64_t box_values = bevfusion_config_.num_box_values_;
+  expect(detection.bbox_tensor, {box_values, proposals});
+  expect(detection.score_tensor, {proposals});
+  expect(detection.label_tensor, {proposals});
+
+  bbox_pred_d_ =
+    autoware::cuda_utils::make_unique<float[]>(static_cast<size_t>(box_values) * proposals);
+  score_d_ = autoware::cuda_utils::make_unique<float[]>(static_cast<size_t>(proposals));
+  label_pred_d_ = autoware::cuda_utils::make_unique<int64_t[]>(static_cast<size_t>(proposals));
+
+  trt_common_->setTensorAddress(detection.bbox_tensor.c_str(), bbox_pred_d_.get());
+  trt_common_->setTensorAddress(detection.score_tensor.c_str(), score_d_.get());
+  trt_common_->setTensorAddress(detection.label_tensor.c_str(), label_pred_d_.get());
+  bound_outputs_.push_back(detection.bbox_tensor);
+  bound_outputs_.push_back(detection.score_tensor);
+  bound_outputs_.push_back(detection.label_tensor);
+
+  const auto table = make_score_threshold_table(
+    detection.distance_bin_upper_limits, detection.score_thresholds,
+    static_cast<size_t>(class_count));
+  const std::vector<float> yaw_norm_thresholds(
+    detection.yaw_norm_thresholds.begin(), detection.yaw_norm_thresholds.end());
+  const auto upload = [this](const std::vector<float> & values) {
+    auto device = autoware::cuda_utils::make_unique<float[]>(values.size());
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      device.get(), values.data(), values.size() * sizeof(float), cudaMemcpyHostToDevice, stream_));
+    return device;
+  };
+  yaw_norm_thresholds_d_ = upload(yaw_norm_thresholds);
+  squared_upper_limits_d_ = upload(table.squared_upper_limits);
+  score_thresholds_d_ = upload(table.thresholds);
+  // The uploads read host vectors that end with this scope.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+
+  decode_geometry_.num_proposals = static_cast<int32_t>(proposals);
+  decode_geometry_.num_classes = static_cast<int32_t>(class_count);
+  decode_geometry_.num_bands = static_cast<int32_t>(table.squared_upper_limits.size());
+  decode_geometry_.out_size_factor = static_cast<float>(detection.out_size_factor);
+  decode_geometry_.voxel_size_x = config.voxel_size[0];
+  decode_geometry_.voxel_size_y = config.voxel_size[1];
+  decode_geometry_.min_x_range = config.point_cloud_range[0];
+  decode_geometry_.min_y_range = config.point_cloud_range[1];
+
+  const auto capacity = static_cast<size_t>(proposals);
+  decoded_d_ = autoware::cuda_utils::make_unique<DecodedBox[]>(capacity);
+  decoded_count_d_ = autoware::cuda_utils::make_unique<int32_t[]>(1);
+  decoded_h_ = autoware::cuda_utils::make_unique_host<DecodedBox[]>(capacity, cudaHostAllocDefault);
+  decoded_count_h_ = autoware::cuda_utils::make_unique_host<int32_t[]>(1, cudaHostAllocDefault);
+  decoded_.reserve(capacity);
+  last_detections_.reserve(capacity);
+  detection_enabled_ = true;
+}
+
+bool TrtBevFeatureExtractor::validate_cloud_layout(
+  const sensor_msgs::msg::PointCloud2 & cloud, std::string & error) const
+{
+  // The model's BEV was trained on LIDAR_CONCAT, which T4 records in base_link
+  // (identity extrinsics), and the temporal warp places this frame by the
+  // base_link odometry pose. A cloud in any other frame is misplaced silently.
+  if (cloud.header.frame_id != "base_link") {
+    error = "Point cloud frame is '" + cloud.header.frame_id +
+            "', expected 'base_link' (the frame the training LiDAR was recorded in)";
+    return false;
+  }
+  if (cloud.point_step != sizeof(InputPointType)) {
+    error = "Point cloud point_step is " + std::to_string(cloud.point_step) + ", expected " +
+            std::to_string(sizeof(InputPointType)) +
+            " (Autoware PointXYZIRC layout, as consumed by BEVFusion)";
+    return false;
+  }
+  const auto has_field = [&cloud](const std::string & name, const uint32_t offset) {
+    return std::any_of(
+      cloud.fields.begin(), cloud.fields.end(),
+      [&](const sensor_msgs::msg::PointField & field) {
+        return field.name == name && field.offset == offset;
+      });
+  };
+  if (!has_field("x", 0) || !has_field("y", 4) || !has_field("z", 8) ||
+      !has_field("intensity", 12)) {
+    error = "Point cloud fields do not match the Autoware PointXYZIRC layout";
+    return false;
+  }
+  return true;
+}
+
+const float * TrtBevFeatureExtractor::extract(
+  const cuda_blackboard::CudaPointCloud2 & cloud, std::string & error)
+{
+  if (!validate_cloud_layout(cloud, error)) {
+    return nullptr;
+  }
+
+  size_t num_points = static_cast<size_t>(cloud.width) * cloud.height;
+  if (num_points == 0) {
+    error = "Point cloud is empty";
+    return nullptr;
+  }
+  num_points =
+    std::min(num_points, static_cast<size_t>(bevfusion_config_.cloud_capacity_));
+
+  // The cloud already lives on the device (cuda_blackboard); no staging copy.
+  CHECK_CUDA_ERROR(preprocess_->generateSweepPoints_launch(
+    reinterpret_cast<const InputPointType *>(cloud.data.get()), num_points,
+    /*time_lag=*/0.0f, identity_transform_d_.get(), points_d_.get()));
+
+  // generateVoxels returns the voxel count on the host, which is the one wait this
+  // function cannot avoid: the engine's input shapes are set from it.
+  const auto num_voxels = static_cast<int64_t>(preprocess_->generateVoxels(
+    points_d_.get(), static_cast<unsigned int>(num_points), voxel_features_d_.get(),
+    voxel_coords_d_.get(), num_points_per_voxel_d_.get()));
+
+  last_num_voxels_ = num_voxels;
+  // Same policy as autoware_bevfusion: below the profile minimum the frame cannot run;
+  // above the maximum it runs on a clipped voxel set and diagnostics say so.
+  last_voxels_within_range_ = num_voxels < static_cast<int64_t>(bevfusion_config_.max_num_voxels_);
+  if (num_voxels < bevfusion_config_.min_num_voxels_) {
+    error = "Too few voxels (" + std::to_string(num_voxels) +
+            ") for the optimization profile minimum (" +
+            std::to_string(bevfusion_config_.min_num_voxels_) + ")";
+    return nullptr;
+  }
+  const auto clamped_voxels =
+    std::min(num_voxels, static_cast<int64_t>(bevfusion_config_.max_num_voxels_));
+
+  const int64_t max_ppv = bevfusion_config_.max_points_per_voxel_;
+  const int64_t feature_size = bevfusion_config_.num_point_feature_size_;
+  trt_common_->setInputShape(
+    "voxels", nvinfer1::Dims{3, {clamped_voxels, max_ppv, feature_size}});
+  trt_common_->setInputShape("num_points_per_voxel", nvinfer1::Dims{1, {clamped_voxels}});
+  trt_common_->setInputShape("coors", nvinfer1::Dims{2, {clamped_voxels, 3}});
+
+  if (!trt_common_->enqueueV3(stream_)) {
+    error = "Failed to enqueue the BEV feature extractor engine";
+    return nullptr;
+  }
+  // Not waited for. The feature map is complete in stream order for whoever reads it on
+  // this stream; the proposals stay on the device until decode_detections() asks for them.
+  detections_pending_ = detection_enabled_;
+  return feature_d_.get();
+}
+
+bool TrtBevFeatureExtractor::decode_detections(std::string & error)
+{
+  if (!detections_pending_) {
+    return true;
+  }
+  detections_pending_ = false;
+  // Ordered on the stream behind the extractor engine, so the proposals it reads are
+  // finished. The survivor buffer is copied whole with its count: at most num_proposals
+  // boxes, one transfer and one wait instead of a count round trip first.
+  last_detections_.clear();
+  const size_t capacity = static_cast<size_t>(decode_geometry_.num_proposals);
+  cudaError_t status = cudaMemsetAsync(decoded_count_d_.get(), 0, sizeof(int32_t), stream_);
+  if (status == cudaSuccess) {
+    status = launch_decode_detections(
+      label_pred_d_.get(), bbox_pred_d_.get(), score_d_.get(), yaw_norm_thresholds_d_.get(),
+      squared_upper_limits_d_.get(), score_thresholds_d_.get(), decode_geometry_, decoded_d_.get(),
+      decoded_count_d_.get(), stream_);
+  }
+  if (status == cudaSuccess) {
+    status = cudaMemcpyAsync(
+      decoded_count_h_.get(), decoded_count_d_.get(), sizeof(int32_t), cudaMemcpyDeviceToHost,
+      stream_);
+  }
+  if (status == cudaSuccess) {
+    status = cudaMemcpyAsync(
+      decoded_h_.get(), decoded_d_.get(), capacity * sizeof(DecodedBox), cudaMemcpyDeviceToHost,
+      stream_);
+  }
+  if (status == cudaSuccess) {
+    status = cudaStreamSynchronize(stream_);
+  }
+  if (status != cudaSuccess) {
+    error = std::string("Decoding the detection head failed: ") + cudaGetErrorString(status);
+    return false;
+  }
+
+  const auto count = std::min<size_t>(static_cast<size_t>(decoded_count_h_[0]), capacity);
+  decoded_.assign(decoded_h_.get(), decoded_h_.get() + count);
+  sort_like_bevfusion(decoded_);
+  for (const auto & box : decoded_) {
+    autoware::bevfusion::Box3D out{};
+    out.label = box.label;
+    out.score = box.score;
+    out.x = box.x;
+    out.y = box.y;
+    out.z = box.z;
+    out.width = box.width;
+    out.length = box.length;
+    out.height = box.height;
+    out.yaw = box.yaw;
+    out.vx = box.vx;
+    out.vy = box.vy;
+    last_detections_.push_back(out);
+  }
+  return true;
+}
+
+}  // namespace autoware::tensorrt_e2e

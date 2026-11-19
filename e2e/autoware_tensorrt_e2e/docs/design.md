@@ -1,86 +1,134 @@
 # Design
 
-This document describes the model-agnostic foundation of `autoware_tensorrt_e2e`.
+This document explains the key design concepts of `autoware_tensorrt_e2e`.
 
-## Scope
+## Context and scope
 
-The package provides one ROS 2 node for a single-engine end-to-end planner. Different models can
-use different sensor layouts and optional context tensors while sharing the same TensorRT
-execution, scheduling, diagnostics, and Autoware output path.
+TIER IV is prototyping several end-to-end (E2E) planning models that differ **only in their
+sensing inputs** while sharing the rest of the interface:
 
-The foundation is intentionally independent of any model-vendor feature extractor. A downstream
-model branch can add an `InputProviderInterface` implementation and its own dependencies without
-coupling the common node to that model.
+| Prototype | Sensing input | Other inputs | Output |
+| --------------- | ------------------------------------------ | ---------------------------------- | ---------------------------- |
+| Front camera | 1 camera (`CAM_FRONT_WIDE`) | Diffusion-planner-style (optional) | Ego trajectory, 0.1 s steps   |
+| Surround camera | 5 cameras (front wide + 4 corner wides) | Diffusion-planner-style (optional) | Ego trajectory, 0.1 s steps   |
+| LiDAR | Concatenated point cloud (as in BEVFusion) | Diffusion-planner-style (optional) | Ego trajectory, 0.1 s steps   |
 
-## Goals
+Writing one ROS node per model would duplicate subscription handling, TensorRT plumbing,
+postprocessing, and diagnostics — and every new model variant (new sensor set, added or removed
+context input, different history length) would require another copy. `autoware_tensorrt_e2e`
+instead provides **one abstract node** that adapts itself to the model.
 
-- Load one ONNX/TensorRT planner and inspect its named IO tensors at runtime.
-- Connect model inputs to reusable providers with explicit shape validation.
-- Keep sensor subscriptions and preprocessing out of the TensorRT wrapper.
-- Publish a common trajectory interface, paced by the sensor the model consumes.
-- Fail early with a readable error when the model and deployment configuration do not match.
+## Goals and Non-goals
 
-## Non-goals
+- Goals
+  - Run any single-engine E2E trajectory model without node code changes: sensor modality,
+    context inputs, and tensor dimensions are all derived from the TensorRT engine and ROS
+    parameters.
+  - Keep the trajectory postprocessing identical to `autoware_diffusion_planner`
+    (velocity estimation from consecutive poses, smoothing window, force-stop logic) so that
+    downstream consumers see consistent trajectories regardless of which planner produced them.
+  - Publish stably at 10 Hz.
 
-- Generic multi-engine planner graphs. A provider may own a feature extractor, but that extractor
-  is a downstream extension rather than part of the foundation.
-- A universal decoder for arbitrary model output formats. The common output contract is the
-  trajectory representation described below; a different output format needs a downstream
-  postprocessor.
-- Perception as the primary output. Neighbor trajectories are optional planner outputs.
+- Non-goals
+  - Generic multi-engine *planner* graphs (e.g. separate encoder/decoder planner engines like
+    `autoware_tensorrt_vad`). The planner itself is one ONNX/engine. A sensor *feature
+    extractor* owned by an input provider (e.g. the frozen BEVFusion-L stage of ResWorld) is in
+    scope — the provider abstraction hides it from the node.
+  - Perception outputs as a primary product (detected objects / map polylines). Predicted
+    neighbor trajectories are published only when the model provides them.
+  - Model-specific GPU preprocessing beyond image resize/normalize and the BEVFusion
+    voxelization reused from `autoware_bevfusion`.
 
-## Layered architecture
+## Concepts
+
+The design combines the two proven patterns in this repository:
+
+- From `autoware_diffusion_planner`: polling subscribers, diagnostics, and the trajectory
+  postprocessing pipeline. Its timer is deliberately *not* taken -- see below.
+- From `autoware_bevfusion`, which consumes the same concatenated cloud: the pass is driven
+  by the cloud's own callback, with no timer anywhere.
+- From `autoware_tensorrt_vad`: strict separation between the ROS domain and the CUDA domain,
+  and deployment/model parameter separation.
+
+and adds one new idea that provides the abstraction:
+
+### The engine IO manifest drives everything
+
+A TensorRT engine knows the **names, shapes, and dtypes** of all its IO tensors. At startup the
+`InferenceEngine` wrapper introspects the engine and produces `TensorSpec` lists for inputs and
+outputs. Nothing about the tensor set is hard-coded in the node.
+
+**Input providers** are components that can produce named tensors from ROS data. After the
+engine is loaded, each enabled provider is shown the engine's input specs and *claims* the
+tensors it will produce (`claim_inputs()`), validating dimensions against its own configuration
+(e.g. camera count) and sizing its internal state from the spec (e.g. history length `T` from
+`ego_agent_past: [1, T, 4]`).
+
+Startup fails with an explicit error when:
+
+- an engine input tensor is claimed by no provider (the model needs data the deployment does
+  not produce), or
+- a tensor is claimed by two providers (ambiguous configuration), or
+- a claimed tensor's shape contradicts the provider configuration
+  (e.g. `camera_images: [1, 6, 3, H, W]` but `camera.num_cameras: 5`).
+
+This turns model/deployment mismatches into immediate, readable startup errors instead of
+silent garbage inference.
 
 ```mermaid
 graph TD
-    Node["TensorrtE2eNode\nROS orchestration"]
-    Camera["CameraInputProvider"]
-    Lidar["LidarInputProvider"]
-    Context["ContextInputProvider"]
-    Custom["Downstream custom providers"]
-    Engine["InferenceEngine\nTensorRT execution"]
-    Post["TrajectoryPostprocessor"]
-    Outputs["Trajectory / candidates / objects"]
+    Engine["InferenceEngine<br/>(introspects engine IO)"]
+    Camera["CameraInputProvider<br/>(1..N cameras)"]
+    Lidar["LidarInputProvider<br/>(concatenated point cloud)"]
+    Context["ContextInputProvider<br/>(diffusion-planner-style inputs)"]
+    Node["TensorrtE2eNode<br/>(paced by the cloud)"]
+    Post["TrajectoryPostprocessor<br/>(same math as diffusion planner)"]
 
-    Node -->|"engine IO specs"| Camera
-    Node -->|"engine IO specs"| Lidar
-    Node -->|"engine IO specs"| Context
-    Node -->|"engine IO specs"| Custom
-    Camera -->|"TensorMap"| Node
-    Lidar -->|"TensorMap"| Node
-    Context -->|"TensorMap"| Node
-    Custom -->|"TensorMap"| Node
-    Node -->|"named inputs"| Engine
-    Engine -->|"named outputs"| Post
-    Post --> Outputs
+    Node -->|"input specs"| Camera
+    Node -->|"input specs"| Lidar
+    Node -->|"input specs"| Context
+    Camera -->|"claims camera_images, ..."| Node
+    Lidar -->|"claims points, ..."| Node
+    Context -->|"claims ego_current_state, lanes, ..."| Node
+    Node -->|"TensorMap"| Engine
+    Engine -->|"TensorMap"| Post
+    Post -->|"Trajectory / CandidateTrajectories"| Node
 ```
 
-| Layer | Main type | Responsibility |
-| --- | --- | --- |
-| Node | `TensorrtE2eNode` | Parameters, ego state, orchestration, diagnostics, publishers |
-| Providers | `InputProviderInterface` | ROS subscriptions, synchronization, conversion, and model input ownership |
-| Inference | `InferenceEngine` | Generic named TensorRT IO, device buffers, copies, and execution |
-| Postprocess | `TrajectoryPostprocessor` | Common trajectory decoding, velocity calculation, smoothing, and publication messages |
+### Layered architecture
 
-`TensorMap` is the boundary between layers. A `Tensor` contains a shape and either host data or a
-device pointer. Providers may keep expensive data on the GPU; the engine performs the required
-host-to-device or device-to-device transfer.
+| Layer | Class | Domain | Responsibility |
+| ----------- | ------------------------------ | --------- | ------------------------------------------------------------------ |
+| Node | `TensorrtE2eNode` | ROS | Timer, ego state, publishers, diagnostics, orchestration |
+| Providers | `InputProviderInterface` impls | ROS→CUDA | Subscriptions, synchronization, conversion of ROS msgs to tensors |
+| Inference | `InferenceEngine` | CUDA | Generic TensorRT execution over named tensors |
+| Postprocess | `TrajectoryPostprocessor` | ROS | Model output → `Trajectory` / `CandidateTrajectories` / objects |
 
-## Engine IO manifest
+The boundary type between all layers is `TensorMap` (`std::unordered_map<std::string, Tensor>`),
+where a `Tensor` carries a shape plus either host data (`std::vector<float>`) or a pointer to
+device-resident data. Camera preprocessing writes directly to GPU memory and hands the engine a
+device tensor, so image data never round-trips through the host.
 
-`InferenceEngine` enumerates every engine input and output and exposes it as a `TensorSpec`:
+### Input providers
 
-- tensor name;
-- static shape including batch;
-- data type (`float32`, `bool`, or `int32`).
+#### `CameraInputProvider` — prototypes 1 and 2
 
-A dynamic batch dimension is resolved to one. Other dynamic dimensions are rejected because the
-provider and buffer contracts need deterministic sizes. Device buffers and pinned output buffers
-are allocated once during initialization.
+One provider handles any camera count; the front-camera and surround configurations differ only
+in parameters (`camera.num_cameras`, topic remaps).
 
-The engine does not know what a tensor means. It only checks that each required input is present,
-has the expected element count, and can be copied to the engine's data type. Extra entries in a
-`TensorMap` are ignored, which lets multiple providers share a common collection path.
+- Subscribes to `~/input/camera{i}/image` via `image_transport`
+  (`raw` or `compressed`, per parameter) and stores the latest message per camera
+  (callbacks are trivially cheap; all work happens in the pass the pacing sensor starts).
+- Synchronization follows the `autoware_tensorrt_vad` front-critical strategy: camera 0 in the
+  configured list is the anchor. At collection time the anchor image must be fresher than
+  `camera.max_delay_ms`, and every other camera must be within `camera.sync_tolerance_ms` of
+  the anchor. Non-anchor cameras may optionally be zero-filled when dropped
+  (`camera.allow_dropped_cameras`), again following the VAD precedent.
+- GPU preprocessing (adapted from VAD's kernels): H2D copy of BGR8 images → bilinear resize to
+  the model resolution (taken from the engine spec, not from parameters) → BGR→RGB, mean/std
+  normalization, CHW layout. Output is a device tensor shaped `[1, N, 3, H, W]`.
+- Optionally claims `camera_intrinsics` (`[1, N, 3, 3]`, from `camera_info`, rescaled to the
+  model resolution) and `camera2ego` (`[1, N, 4, 4]`, from TF) when the engine requests them.
 
 Precision belongs to the model, so the engine lets the graph decide it. `precision: "fp16"` sets
 the builder flag; on an all-float32 graph that means any layer may run in half, which is how the
@@ -93,44 +141,71 @@ then computes exactly what the exporter validated. With `precision: "fp32"` such
 upcast and runs slower than intended, and the node says so at startup. The node adds no precision
 knowledge of its own: no layer names, no hop counts, nothing model-specific.
 
+The Autoware camera IDs (e.g. xx1's `camera1` = `CAM_FRONT_WIDE`) appear **only** in launch
+remaps, mirroring the `autoware_to_vad_camera_mapping` design of `autoware_tensorrt_vad`:
+changing the vehicle's camera numbering touches no code.
+
 ## Input provider contract
 
-Providers have two phases:
+#### `LidarInputProvider` — prototype 3
 
-1. `claim_inputs(engine_inputs)` runs once after the engine is loaded. The provider selects the
-   tensor names it understands, validates their shapes, sizes state, and creates only the
-   subscriptions it needs.
-2. `collect(ego, now, inputs, error)` runs once per planning tick and inserts the claimed tensors.
+- Subscribes to `~/input/pointcloud` (the concatenated cloud, same source as BEVFusion).
+- Claims a `points` tensor `[1, P, D]` (`D` = 3–5: x, y, z, intensity, time-lag placeholder)
+  padded/truncated to the engine's `P`, and optionally `num_points` (`[1, 1]`) with the valid
+  count. Voxelization is intentionally left inside the engine (see Non-goals).
 
-The node checks that every engine input has exactly one provider. It rejects both unclaimed and
-multiply claimed tensors before the node is marked ready.
+#### `BevFeatureInputProvider` — temporal LiDAR BEV features (e.g. ResWorld)
 
-### Included providers
+Implements the ResWorld deployment contract (OnePlanner `projects/resworld/deployment`), whose
+ONNX boundary is deliberately the **frozen LiDAR BEVFusion feature map** rather than the raw
+point cloud:
 
-#### Camera
+1. Per new LiDAR frame, a provider-owned TensorRT engine (`TrtBevFeatureExtractor`) runs the
+   frozen BEVFusion-L feature extractor once: voxelization reuses the production
+   `autoware_bevfusion` preprocessing (`PreprocessCuda`), sparse convolution runs via
+   `autoware_tensorrt_plugins`, and the `bev_feature` output (`[1, C, H, W]`, xx1: 512×180×180)
+   stays on the GPU.
+2. `TemporalBevCache` keeps the feature maps of the history window with their source ego poses
+   and assembles the `[1, K, C, H, W]` current-to-past history by time: step k is the map
+   nearest `newest - k * interval_seconds` (the contract's `temporal_cache.interval_seconds`,
+   0.5 s for the current models, not the sensor period), a dropped scan's slot is the next older
+   map, and a time jump or pose discontinuity resets and re-warms the cache. Every slot is
+   **SE(2)-warped** from its source ego frame into the target ego frame (the newest map's own
+   frame, whose slot 0 is then copied, or the planning pose under `planning_time`). The warp kernel replicates the Python reference (`deployment/temporal.py`) exactly:
+   pose format `[x, y, cos(yaw), sin(yaw)]`, BEV axes height = x-forward / width = y-left,
+   half extent 122.4 m, bilinear sampling with zero padding, `align_corners=False`
+   pixel-centre convention. The coordinate math is host-callable and unit-tested.
+3. The stack is claimed as `bev_feature_history` (device-resident, no host round-trip of the
+   ~200 MB tensor).
 
-`CameraInputProvider` supports one or more synchronized cameras. It obtains image dimensions from
-the engine manifest, uses the configured sensor dimensions for source-image validation, and
-performs resize, color conversion, normalization, and CHW packing on a CUDA stream. It can also
-produce camera intrinsics and camera-to-ego transforms when the engine requests them.
+When `bev_feature.contract_path` points at the model's `resworld_deployment_contract.json`,
+the temporal-cache semantics (frames, interval, half extent, feature tensor name) are read
+from it, keeping the model artifact the single source of truth. Warmup follows the contract:
+wait for K real frames, or optionally duplicate the current one
+(`bev_feature.warmup: duplicate_current`).
 
-The camera tensor names are parameters, so model exports with different names do not require code
-changes. Camera topics are selected by launch remaps, keeping vehicle-specific camera numbering
-out of the provider.
+#### `ContextInputProvider` — "the diffusion planner inputs"
 
-#### LiDAR
+Produces any subset of the `autoware_diffusion_planner` input tensors:
 
-`LidarInputProvider` converts a `PointCloud2` message into a fixed `[1, P, D]` tensor, padding or
-truncating to the engine's point capacity. It can also publish the valid point count as `[1, 1]`.
-The provider does not assume a particular downstream voxelizer.
+`ego_current_state`, `ego_agent_past`, `static_objects`,
+`lanes(_speed_limit)(_has_speed_limit)`, `route_lanes(_speed_limit)(_has_speed_limit)`,
+`polygons`, `line_strings`, `goal_pose`, `ego_shape`, `turn_indicators`.
 
-#### Context
+Every tensor is **optional**: only the ones present in the engine manifest are produced, and
+only the subscriptions they need are created (a camera-only model with `ego_current_state`
+subscribes to nothing but odometry/acceleration; a model that also takes `route_lanes` adds
+map/route subscriptions). Free dimensions (history length, lane segment count) are taken from
+the engine spec, so a model trained with e.g. 21 history steps instead of 31 needs no code
+change.
 
-`ContextInputProvider` produces the optional, shared context tensors used by the diffusion-planner
-feature pipeline. It claims only tensors present in the engine manifest and creates subscriptions
-on demand. History lengths and capacity dimensions are taken from the model spec where the
-feature contract allows them. The implementation reuses the exported diffusion-planner utility
-functions so the feature encoding remains consistent with the source pipeline.
+The implementation **reuses the exported `autoware_diffusion_planner` library** —
+`AgentData`, `LaneSegmentContext`, `process_traffic_signals`, `create_ego_current_state`,
+`create_ego_agent_past` — rather than copying ~2000 lines of preprocessing. This guarantees
+bit-identical context features between the diffusion planner and E2E models trained on the same
+feature pipeline. The trade-off (an `e2e` package depending on a `planning` package) is
+accepted deliberately; if it becomes a problem the shared code should be extracted into a
+common library, not forked.
 
 One tensor is the provider's own: `lanes_on_route` `[1, S, 2]` marks, per lane slot, whether the
 mission route runs through it and how far along the route it lies (0 at the route's first visible
@@ -141,72 +216,155 @@ selections of the tick. A route lanelet that is not among the selected lanes mar
 training. The tensor exists because the route stream repeats lane geometry the model already has
 and states identity only implicitly; the marker states it.
 
+Diffusion-specific inputs (`sampled_trajectories`, `delay`) are *not* provided; they belong to
+the diffusion sampling loop, not to the shared feature set. A model requiring them should run
+under `autoware_diffusion_planner`, or a dedicated provider can be added (see
+[Adding a new input](#expected-use-cases)).
+
 ## Common input contract
 
-The following tensor names and shapes are understood by the foundation providers:
+### Inference engine
 
-| Provider | Tensor | Shape |
-| --- | --- | --- |
-| camera | `camera_images` | `[1, N, 3, H, W]` |
-| camera | `camera_intrinsics` | `[1, N, 3, 3]` |
-| camera | `camera2ego` | `[1, N, 4, 4]` |
-| LiDAR | `points` | `[1, P, D]`, `D` in 3–5 |
-| LiDAR | `num_points` | `[1, 1]` |
+`InferenceEngine` is a generic wrapper over `autoware::tensorrt_common::TrtCommon`:
 
-Context tensors are optional and are listed in the package schema. The camera and LiDAR names
-are configurable. A model with a new sensor or feature should add a provider in a downstream
-branch, rather than adding model-specific conditionals to the engine.
+- Loads ONNX (building/caching the engine like other Autoware TensorRT nodes; `build_only`
+  supported) with optional `autoware_tensorrt_plugins`.
+- Enumerates IO tensors, resolves a dynamic batch dimension to 1, rejects other dynamic
+  dimensions, allocates device buffers and pinned host output buffers once, and binds
+  addresses once.
+- `infer(TensorMap)` validates element counts per tensor, performs H2D (or D2D for
+  device-resident tensors) copies with dtype conversion (`float32`, `bool`, `int32` inputs),
+  runs `enqueueV3`, and returns outputs as host tensors.
 
-## Common output contract
+Unlike the diffusion planner's `TensorrtInference` (which hard-codes 19 tensor names), no
+tensor identity is known at compile time.
 
-The primary output tensor is `prediction` by default and may be renamed with
-`postprocess.prediction_tensor`. It has one of these shapes:
+### When the plan starts (`planning_time`)
 
-- `[B, T, 4]` for ego-only models;
-- `[B, A, T, 4]` for models that predict other agents too; only agent 0, the ego, is read.
+A model is trained to plan from one instant, and the node must feed that instant. It is
+stated as `planning_time` in the ml_package file (default `cloud_stamp`), and the node refuses
+a graph that disagrees with it:
 
-Each pose is `(x, y, cos(yaw), sin(yaw))` in the model reference frame. The point interval is
-currently fixed at 0.1 seconds to match the shared postprocessing implementation. The horizon,
-velocity smoothing window, stopping threshold, and generator name are deployment parameters.
+| | `cloud_stamp` | `planning_time` |
+|---|---|---|
+| ego state, ego history, map, route, goal | at the pacing cloud's stamp T | at the newest odometry sample, T + L |
+| BEV maps (current and history) | warped into the pose at T (the current map is copied) | warped into the pose at T + L, the current map included |
+| traffic lights | selected at T | selected at T (as in training) |
+| `sensor_latency` input | absent (refused if the graph has it) | L = T + L − T, in seconds (required) |
+| trajectory stamp | T | T + L |
 
-Additional ego-only trajectory tensors can be listed in
-`postprocess.extra_trajectory_tensors`; each becomes another candidate trajectory.
+T + L is the newest odometry sample, never an extrapolation to the wall clock, so the ego
+state, the trajectory stamp and `sensor_latency` all describe one measured instant. L is
+bounded by `bev_feature.max_delay_ms`, which already drops older clouds. The node publishes
+the value it fed on `~/debug/sensor_latency_ms` and, under `planning_time`, as
+`sensor_latency_ms` on its diagnostic. Post-processing is unchanged: a stamped-ego-state
+consumer looks the ego up at the trajectory stamp, which is now T + L.
 
-The postprocessor converts poses to `Trajectory` and `CandidateTrajectories`. This node plans;
-it does not republish other agents' futures, so the extra agents in a `[B, A, T, 4]` output are
-dropped.
+### Trajectory postprocessing — identical to the diffusion planner
 
-## Scheduling and failure behavior
+The prediction tensor (default name `prediction`) is interpreted exactly like the diffusion
+planner output: `[batch, num_agents, T, 4]` with `(x, y, cos(yaw), sin(yaw))` per step in the
+ego frame at 0.1 s intervals; agent 0 is ego, and is the only agent read. `[batch, T, 4]` is
+accepted as the ego-only degenerate case. `T` comes from the engine and is validated against
+`postprocess.horizon_seconds / postprocess.time_step` (40 for a 4 s model, 60 for a 6 s one;
+the diffusion planner's 80 would work equally).
 
-The node is paced by its sensor: the provider reading the input the model waits on drives
-the pass from its own subscription, the way `autoware_bevfusion` is driven by the same
-cloud. There is no timer. A pass:
+Pose parsing is a dimension-parameterized re-implementation of `parse_predictions`
+(the original hard-codes `OUTPUT_T = 80`); what follows it —
+`postprocess::create_ego_trajectory` (velocity from consecutive poses, smoothing window,
+force-stop) — is **called directly from the diffusion planner library**, so the
+postprocessing cannot drift apart. This node plans; it does not republish other agents'
+futures, so the extra agents in a `[batch, num_agents, T, 4]` output are dropped.
 
-1. takes the latest ego state;
-2. collects all provider tensors -- the pacing provider last, because its sensor callback
-   already queued its GPU work before the pass began, so the other providers' CPU work
-   overlaps it rather than waiting behind it;
-3. applies optional normalization and rejects NaN/Inf host values;
-4. runs TensorRT inference;
-5. decodes and publishes the trajectory;
-6. publishes processing time and diagnostics;
-7. calls every provider's `finish_tick()`, for work that is not on the trajectory's path
-   (a detection head's decode, say), so a consumer of the trajectory never waits for a
-   message it does not read. This step runs after a pass that gave up, too.
+`Trajectory` and `CandidateTrajectories` (one candidate per batch, with generator UUID/name)
+are published, mirroring the diffusion planner topics.
 
-The whole pass runs on one CUDA stream, the engine's, handed to each provider through
-`bind_stream()` before it sizes its buffers. A provider's GPU work, the network, and the
-output copy are ordered on it, so nothing in the middle of a pass drains the device: the
-single host synchronization is the engine's wait for its outputs. A device-resident tensor
-produced on that stream is read by the network where it is, without a copy; host tensors are
-staged into one pinned block and cross the bus in one copy per contiguous run.
+### Output pacing and stability
 
-Not adopted, measured 2026-09-09: replaying the engine's tick as a CUDA graph (input copies,
-`enqueueV3`, output copy captured once and relaunched). On the 619-layer ResWorld planner the
-inference stage read 11.2 ms without the graph and 11.5 ms with it over 560 ticks each -- the
-stage is GPU-bound, its kernels already run back to back, and there was no launch gap for a
-graph to remove. The capture machinery was removed rather than left in as a default-on
-feature that buys nothing.
+- The node is **paced by its sensor**: the provider reading the input the model waits on
+  drives the pass from its own subscription, the way `autoware_bevfusion` is driven by the
+  same cloud. There is no timer, and no fallback to one. A tick firing between sweeps would
+  plan on the previous sample at a rate unrelated to it, and publish a trajectory
+  indistinguishable from one computed on fresh data — the controller could not tell which it
+  had. A model no provider paces is rejected at construction rather than started and left
+  idle. `autoware_diffusion_planner` uses a timer here; this deliberately does not, because
+  the wait a timer imposes is latency the controller pays for an input that had already
+  arrived.
+- All context inputs use polling subscribers (no callback storms); camera/lidar data is
+  latched under a mutex.
+- Per-pass processing time is published (`~/debug/processing_time_ms`) and checked against
+  the interval the sensor actually delivered — the rate the node has to keep up with, rather
+  than a configured one: exceeding it raises a `WARN` diagnostic
+  (`processing time exceeded the planning period`), so rate violations are visible in the
+  field instead of silent.
+- The whole pass runs on **one CUDA stream**, the engine's, handed to each provider through
+  `bind_stream()` before it sizes its buffers. A provider's GPU work, the network, and the
+  output copy are ordered on it, so nothing in the middle of a pass drains the device: the
+  single host synchronization is the engine's wait for its outputs. A device-resident tensor
+  produced on that stream (the BEV history, an image batch) is read by the network where it is,
+  without a copy; host tensors are staged into one pinned block and cross the bus in one copy
+  per contiguous run.
+- The **pacing provider is collected last**. Its sensor callback queued its GPU work (the
+  feature extractor) before the pass began, so the context provider's CPU work — map and route
+  tensors — overlaps it instead of waiting behind it, and the pass costs the longer of the two
+  rather than their sum. Each provider's share is published as
+  `~/debug/processing_time/collect/<provider>_ms`.
+- `finish_tick()` runs on every provider after the trajectory is out, or after the pass gave
+  up: the detection head's decode and its `~/output/detected_objects` message live there,
+  because a consumer of the trajectory should never wait for a message it does not read. Its
+  cost is `~/debug/processing_time/finish_ms`, outside `total_ms`.
+- If a future model cannot fit the 100 ms budget, the intended extension is a double-buffered
+  worker thread (collect in the sensor callback, infer+publish on the worker). The provider/engine
+  interfaces already keep all state exchange in `TensorMap` values, so this changes only the
+  node orchestration.
+- Tried and not adopted, measured 2026-09-09 on the 619-layer ResWorld planner:
+  - Replaying the engine's tick as a **CUDA graph** (input copies, `enqueueV3`, output copy
+    captured once and relaunched): 11.2 ms of inference without it, 11.5 ms with it, over 560
+    ticks each. The stage is GPU-bound and its kernels already run back to back; there was no
+    launch gap for a graph to remove, so the capture machinery was removed.
+  - Building the planner engine in **fp16 from the builder flag alone**: 7.5 ms -> 4.1 ms for
+    the planner (standalone bench), 11.2 ms -> 7.2 ms for the node's inference stage and
+    14.1 ms -> 9.9 ms for the tick on a prdjt replay, but the trajectory moves by up to 3.0 cm
+    against fp32 on identical inputs. The error grows linearly along the horizon (0.4 cm at the
+    first point, 2.3 cm mean at the last): it is float16 quantization of metric coordinates at the
+    graph's two ends (input normalization, output denormalization `x*19.2+20.8`), not the
+    transformer. What replaced it is the exporter writing the precision into the graph
+    (OnePlanner `mixed_precision.py`, `export_resworld_onnx.py --fp16-core`): every node within
+    3 hops of a metric input and 15 hops of an output stays float32, the rest is float16, and
+    this node obeys the tensor types (see "Engine IO manifest"). Measured on the node-built
+    engine: 4.1 ms, trajectory within 0.42 cm of fp32. Widening the rim to 25 output hops or
+    adding the BEV input to it measured no further gain (0.39 cm at 4.1 ms; 0.58 cm at 4.45 ms);
+    pinning every LayerNormalization/Softmax on top cost 0.7 ms for nothing. On bag replays the
+    difference between any two of these engines is below the replay's own fp32 run-to-run
+    spread (0.7-4.7 cm mean across prdjt splits), so the ranking above comes from the
+    deterministic offline bench. Switching the deployed package is an ml_package change
+    (`precision: "fp16"` with the typed graph), decided by the exporter's validation, not here.
+  - TensorRT's **auxiliary streams** (`setMaxAuxStreams(2)`) and **builder optimization
+    level 5**: both build (35 s each, same as the default) and neither is faster -- 7.44 ms
+    and 7.50 ms against 7.46 ms for the default one-stream level-3 engine. Myelin already
+    fuses the whole planner into one foreign node, so there is nothing for extra streams or
+    a longer tactic search to parallelize. The knobs were not kept. The earlier "builder
+    segfaults" note about them was the same host CPU fault.
+
+A builder crash is not evidence about a graph or a flag until it reproduces on a second host.
+This file briefly recorded that the TensorRT 10.16 builder "segfaults in fp16", "segfaults with
+auxiliary streams or optimization level 5", and (in the config) "segfaults below 16 GiB of
+workspace". All of it was one development machine's CPU faulting at its boost clock: the
+identical fp32 build crashed 8 of 8 times at stock clocks, 0 of 8 with the CPU capped at
+4.5 GHz, and 8 of 8 again at stock (2026-09-09). With the CPU capped, every one of those
+configurations builds, and the measurements above were taken that way.
+
+### Separation between model architecture and deployment parameters
+
+Following `autoware_tensorrt_vad`:
+
+- **Model architecture** lives in the engine itself (tensor shapes) plus an optional
+  normalization JSON (`args_path`, same `observation_normalizer` format as the diffusion
+  planner). These ship with the model artifacts.
+- **Deployment** parameters (topics, camera count/resolution, sync tolerances, thresholds)
+  live in the ROS param YAML (`config/*.param.yaml`), one file per sensor prototype.
+
+## Expected Use Cases
 
 A builder crash is not evidence about a graph or a flag until it reproduces on a second host.
 This package's docs briefly recorded that the TensorRT 10.16 builder "segfaults below 16 GiB of
@@ -222,29 +380,33 @@ disable inference and publish an error diagnostic. A pass taking longer than the
 the sensor actually delivered raises a warning, so an output-rate regression is visible
 against the rate the sensor is really running at rather than against a configured one.
 
-A model no provider paces is rejected at construction. A timer in that position would plan
-on whatever sample happened to be latest, at a rate unrelated to it, and publish a
-trajectory that looks exactly like a fresh one.
+### Switching sensor prototypes
 
-## Extending the foundation
+Launch a different launch file / param file. No code changes:
+`e2e_planner_front_camera.launch.xml`, `e2e_planner_surround_cameras.launch.xml`,
+`e2e_planner_lidar.launch.xml`.
 
-### New model with existing providers
+### A retrained model adds or removes a context input
 
-Use a new parameter YAML and launch remaps. If the model follows the common input/output
-contracts, no C++ changes are required.
+Nothing to do. The new engine's manifest requests a different tensor set; the
+`ContextInputProvider` claims accordingly and creates/destroys subscriptions to match.
 
-### New input modality or feature
+### A new sensing modality or feature (e.g. radar, HD-map raster)
 
-Implement `InputProviderInterface`, add the provider to the node's provider factory in the
-downstream branch, and document its tensor contract. The provider can own its subscriptions,
-CUDA preprocessing, feature extractor, and model-specific deployment parameters. Submit GPU
-work on the stream from `bind_stream()` and return device tensors without synchronizing; put
-anything the trajectory does not need in `finish_tick()`.
+Implement `InputProviderInterface` (two methods: `claim_inputs`, `collect`), register it in
+`TensorrtE2eNode::create_providers()`, and enable it via the `sensor_inputs` parameter.
+No changes to the engine wrapper, postprocessing, or existing providers. Submit GPU work on
+the stream from `bind_stream()` and return device tensors without synchronizing; put anything
+the trajectory does not need in `finish_tick()`.
 
-### New output representation
+### A model with a different horizon
 
-Keep the common node orchestration and add a postprocessor/adapter in the downstream branch when
-the model does not emit `(x, y, cos(yaw), sin(yaw))` trajectories.
+Set `postprocess.horizon_seconds` (the engine's `T` is validated against it). The time step is
+fixed at 0.1 s — the same constant baked into the diffusion planner postprocessing that this
+package reuses.
 
-This separation keeps the foundation small and lets each model branch carry only the code and
-runtime dependencies that its artifact actually needs.
+## Coding standards
+
+Follows `autoware_tensorrt_vad`'s standards (`int32_t`/`int64_t` over `int` in new interfaces,
+RCLCPP throttled logging, `double` for map coordinates) and the common Autoware conventions
+(C++17, `autoware_cmake`, Apache-2.0).

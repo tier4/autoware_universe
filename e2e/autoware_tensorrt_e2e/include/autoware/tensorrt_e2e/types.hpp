@@ -15,10 +15,12 @@
 #ifndef AUTOWARE__TENSORRT_E2E__TYPES_HPP_
 #define AUTOWARE__TENSORRT_E2E__TYPES_HPP_
 
+#include <deque>
 #include <Eigen/Dense>
 #include <rclcpp/time.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <cstdint>
@@ -83,10 +85,28 @@ struct EgoFrame
   /// Odometry with the pose replaced by the model reference pose (differs from `odometry` only
   /// when `shift_x: true`). Used for ego history features, mirroring the diffusion planner.
   nav_msgs::msg::Odometry reference_odometry;
+  std::deque<nav_msgs::msg::Odometry> reference_history;
+  std::optional<float> steering_angle;
+  uint64_t localization_generation{0};
   std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration;
   Eigen::Matrix4d ego_to_map{Eigen::Matrix4d::Identity()};
   Eigen::Matrix4d map_to_ego{Eigen::Matrix4d::Identity()};
+  //! When the plan starts (see PlanningTime): the stamp of every ego-derived input and of
+  //! the published trajectory.
   rclcpp::Time stamp;
+  //! The pacing sensor input's stamp. Equal to `stamp` under `cloud_stamp`; under
+  //! `planning_time` it is the older cloud stamp T, and `stamp - sensor_stamp` is the
+  //! model's `sensor_latency`.
+  rclcpp::Time sensor_stamp;
+  //! The base_link pose interpolated to `sensor_stamp`: where the cloud was recorded, and
+  //! so the source pose of its BEV map. Equal to `odometry.pose.pose` under `cloud_stamp`.
+  geometry_msgs::msg::Pose sensor_pose;
+  //! `ego_to_map` / `map_to_ego` for `sensor_pose` (the same reference-pose shift). The map
+  //! crop, slot order and route start are made here, as in training, which selects at the
+  //! cloud pose and only then re-expresses the points in the planning frame. Equal to
+  //! `ego_to_map` / `map_to_ego` under `cloud_stamp`.
+  Eigen::Matrix4d sensor_to_map{Eigen::Matrix4d::Identity()};
+  Eigen::Matrix4d map_to_sensor{Eigen::Matrix4d::Identity()};
 };
 
 int64_t shape_num_elements(const std::vector<int64_t> & shape);

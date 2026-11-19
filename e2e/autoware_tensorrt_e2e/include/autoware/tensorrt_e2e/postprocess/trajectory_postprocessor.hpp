@@ -42,7 +42,7 @@ namespace autoware::tensorrt_e2e
 struct PostprocessParams
 {
   std::string prediction_tensor{"prediction"};
-  //! Additional ego-only trajectory outputs (`[B, T, 4]`, for example a model's prior),
+  //! Additional ego-only trajectory outputs (`[B, T, 4]`, e.g. ResWorld's `prior_trajectory`),
   //! published as extra candidate trajectories.
   std::vector<std::string> extra_trajectory_tensors{};
   double horizon_seconds{4.0};
@@ -109,7 +109,8 @@ private:
     const std::vector<float> & prediction, const Eigen::Matrix4d & ego_to_map,
     const int64_t num_agents) const;
 
-  /// Create one ego trajectory for `batch_idx` (shared by the main and extra outputs).
+  /// Create one ego trajectory for `batch_idx` (shared by the main and extra outputs), led by
+  /// the ego pose at t = 0.
   autoware_planning_msgs::msg::Trajectory create_trajectory(
     const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
     const EgoFrame & ego, const rclcpp::Time & stamp, const int64_t batch_idx) const;
