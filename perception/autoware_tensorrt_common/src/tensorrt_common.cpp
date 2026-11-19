@@ -21,16 +21,62 @@
 #include <NvInferPlugin.h>
 #include <NvInferRuntime.h>
 #include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
 
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <random>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+namespace
+{
+// Write `size` bytes to `target` through a temporary file unique to this call (pid, thread,
+// random suffix, created exclusively) beside it, then rename it into place. Readers see the
+// previous file or the whole new one, never a partial one, and processes that build the same
+// engine at once do not write through each other: the last one to finish wins.
+bool write_file_atomically(const std::string & target, const char * data, const size_t size)
+{
+  std::random_device random;
+  std::ostringstream prefix;
+  prefix << target << ".tmp." << ::getpid() << "."
+         << std::hash<std::thread::id>{}(std::this_thread::get_id()) << ".";
+  std::string temporary;
+  int fd = -1;
+  for (int attempt = 0; fd < 0 && attempt < 16; ++attempt) {
+    std::ostringstream candidate;
+    candidate << prefix.str() << std::hex << random();
+    temporary = candidate.str();
+    fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+    if (fd < 0 && errno != EEXIST) {
+      return false;
+    }
+  }
+  if (fd < 0) {
+    return false;
+  }
+  ::close(fd);
+  std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+  file.write(data, static_cast<std::streamsize>(size));
+  file.close();
+  if (!file || std::rename(temporary.c_str(), target.c_str()) != 0) {
+    std::remove(temporary.c_str());
+    return false;
+  }
+  return true;
+}
+}  // namespace
 
 namespace autoware
 {
@@ -548,14 +594,12 @@ bool TrtCommon::buildEngineFromOnnx()
   }
 
   // Save engine
-  std::ofstream file;
-  file.open(trt_config_->engine_path, std::ios::binary | std::ios::out);
-  if (!file.is_open()) {
-    logger_->log(nvinfer1::ILogger::Severity::kERROR, "Fail to open engine file");
+  if (!write_file_atomically(
+        trt_config_->engine_path.string(),
+        reinterpret_cast<const char *>(plan->data()), plan->size())) {  // NOLINT
+    logger_->log(nvinfer1::ILogger::Severity::kERROR, "Fail to write engine file");
     return false;
   }
-  file.write(reinterpret_cast<const char *>(plan->data()), plan->size());  // NOLINT
-  file.close();
 
   context_ = TrtUniquePtr<nvinfer1::IExecutionContext>(engine_->createExecutionContext());
   if (!context_) {
@@ -569,9 +613,7 @@ bool TrtCommon::buildEngineFromOnnx()
 
   fs::path json_path = trt_config_->engine_path.replace_extension(".json");
   auto ret = getLayerInformation(nvinfer1::LayerInformationFormat::kJSON);
-  std::ofstream os(json_path, std::ofstream::trunc);
-  os << ret << std::flush;
-  os.close();
+  write_file_atomically(json_path.string(), ret.data(), ret.size());
 
   return true;
 }
