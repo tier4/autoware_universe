@@ -14,6 +14,7 @@
 
 #include "road_following.hpp"
 
+#include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/lanelet2_utils/intersection.hpp>
 #include <autoware/lanelet2_utils/topology.hpp>
 
@@ -85,5 +86,14 @@ tl::expected<std::vector<lanelet::ConstLanelets>, std::string> build_lanelet_lis
     }
   }
   return lists;
+}
+
+tl::expected<LaneChain, std::string> build_lane_chain(const lanelet::ConstLanelets & lanelets)
+{
+  const auto shape = autoware::experimental::lanelet2_utils::combine_lanelets_shape(lanelets);
+  if (!shape) {
+    return tl::make_unexpected("cannot combine an empty lanelet list");
+  }
+  return LaneChain{lanelets, *shape};
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following

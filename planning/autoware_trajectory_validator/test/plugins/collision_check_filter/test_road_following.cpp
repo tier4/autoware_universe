@@ -21,8 +21,11 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/lanelet_segment.hpp>
 
+#include <boost/geometry/algorithms/area.hpp>
+
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 
 #include <algorithm>
@@ -45,8 +48,9 @@ using IdLists = std::vector<std::vector<lanelet::Id>>;
 
 constexpr double k_half_width = 1.5;
 
-// Builds a small lanelet map in code. Equal coordinates give the same point object. So a
-// lanelet that starts at the end points of another lanelet follows it in the routing graph.
+// Builds a small lanelet map in code. Equal coordinates give the same point object, and equal
+// start and end points give the same bound object. So a lanelet that starts at the end points of
+// another lanelet follows it in the routing graph, and two lanelets side by side share a bound.
 class TestMap
 {
 public:
@@ -56,9 +60,7 @@ public:
     const std::pair<lanelet::BasicPoint2d, lanelet::BasicPoint2d> & right,
     const std::string & turn_direction = "")
   {
-    lanelet::LineString3d left_bound(next_id_++, {point(left.first), point(left.second)});
-    lanelet::LineString3d right_bound(next_id_++, {point(right.first), point(right.second)});
-    lanelet::Lanelet lanelet(id, left_bound, right_bound);
+    lanelet::Lanelet lanelet(id, bound(left), bound(right));
     lanelet.attributes()[lanelet::AttributeNamesString::Subtype] =
       lanelet::AttributeValueString::Road;
     lanelet.attributes()[lanelet::AttributeNamesString::Location] =
@@ -103,8 +105,23 @@ private:
     return new_point;
   }
 
+  lanelet::LineString3d bound(const std::pair<lanelet::BasicPoint2d, lanelet::BasicPoint2d> & ends)
+  {
+    const auto start = point(ends.first);
+    const auto end = point(ends.second);
+    const auto key = std::make_pair(start.id(), end.id());
+    const auto it = bounds_.find(key);
+    if (it != bounds_.end()) {
+      return it->second;
+    }
+    const lanelet::LineString3d new_bound(next_id_++, {start, end});
+    bounds_.emplace(key, new_bound);
+    return new_bound;
+  }
+
   lanelet::LaneletMapPtr map_{std::make_shared<lanelet::LaneletMap>()};
   std::map<std::pair<int64_t, int64_t>, lanelet::Point3d> points_;
+  std::map<std::pair<lanelet::Id, lanelet::Id>, lanelet::LineString3d> bounds_;
   lanelet::Id next_id_{1000};
 };
 
@@ -125,6 +142,26 @@ LaneletRoute make_route(const IdLists & segments)
     route.segments.push_back(segment);
   }
   return route;
+}
+
+// A sample map, not a real map: a lane shift at a branch point on a road with two lanes. All
+// lanes are 3 m wide. The left lane is lanelets 1, 3, and 6. The right lane is lanelets 5, 7,
+// and 4. Lanelets side by side share a bound. Lanelet 1 ends at a branch point. Lanelet 2
+// (route) starts there and shifts one lane to the right in 10 m, so it ends where lanelet 4
+// starts. Lanelet 2 overlaps lanelet 3 (branch) in one wedge and lanelet 7 in another wedge.
+TestMap make_lane_shift_map()
+{
+  TestMap test_map;
+  test_map.add_straight_lanelet(1, 0.0, 20.0);
+  test_map.add_lanelet(
+    2, {{20.0, k_half_width}, {30.0, -k_half_width}},
+    {{20.0, -k_half_width}, {30.0, -3.0 * k_half_width}});
+  test_map.add_straight_lanelet(3, 20.0, 30.0);
+  test_map.add_straight_lanelet(4, 30.0, 50.0, -2.0 * k_half_width);
+  test_map.add_straight_lanelet(5, 0.0, 20.0, -2.0 * k_half_width);
+  test_map.add_straight_lanelet(6, 30.0, 50.0);
+  test_map.add_straight_lanelet(7, 20.0, 30.0, -2.0 * k_half_width);
+  return test_map;
 }
 
 // Returns the lanelet ids of each list, with the lists sorted, so a test does not depend on
@@ -255,6 +292,94 @@ TEST(BuildLaneletLists, RouteLaneletNotInMapGivesErrorWithItsId)
 
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(result.error(), "route lanelet 99 is not in the map");
+}
+
+// Lanelet2 declares its 2D polygons as clockwise and open, so boost::geometry reads them as they
+// are.
+double shape_area(const road_following::LaneChain & chain)
+{
+  return boost::geometry::area(chain.shape.polygon2d().basicPolygon());
+}
+
+TEST(BuildLaneChain, OneLaneletShapeHasItsArea)
+{
+  // Lanelet 1 is 10 m long and 3 m wide.
+  TestMap test_map;
+  const lanelet::ConstLanelets lanelets{test_map.add_straight_lanelet(1, 0.0, 10.0)};
+
+  const auto result = road_following::build_lane_chain(lanelets);
+
+  ASSERT_TRUE(result.has_value()) << result.error();
+  EXPECT_NEAR(shape_area(*result), 30.0, 1e-6);
+}
+
+TEST(BuildLaneChain, TwoLaneletsGiveSumOfAreas)
+{
+  // Lanelet 2 follows lanelet 1. Each one is 10 m long and 3 m wide.
+  TestMap test_map;
+  const lanelet::ConstLanelets lanelets{
+    test_map.add_straight_lanelet(1, 0.0, 10.0), test_map.add_straight_lanelet(2, 10.0, 20.0)};
+
+  const auto result = road_following::build_lane_chain(lanelets);
+
+  ASSERT_TRUE(result.has_value()) << result.error();
+  EXPECT_EQ(to_sorted_ids({result->lanelets}), (IdLists{{1, 2}}));
+  EXPECT_NEAR(shape_area(*result), 60.0, 1e-6);
+}
+
+TEST(BuildLaneletLists, LaneShiftAtBranchPoint)
+{
+  const auto test_map = make_lane_shift_map();
+  const auto & layer = test_map.map().laneletLayer;
+  for (const auto & [left_id, right_id] :
+       {std::pair<lanelet::Id, lanelet::Id>{1, 5}, std::pair<lanelet::Id, lanelet::Id>{3, 7},
+        std::pair<lanelet::Id, lanelet::Id>{6, 4}}) {
+    ASSERT_EQ(layer.get(left_id).rightBound().id(), layer.get(right_id).leftBound().id());
+  }
+
+  const auto result = road_following::build_lanelet_lists(
+    make_route({{1}, {2}, {4}}), test_map.map(), test_map.routing_graph());
+
+  ASSERT_TRUE(result.has_value()) << result.error();
+  EXPECT_EQ(to_sorted_ids(*result), (IdLists{{1}, {1, 2, 4}}));
+}
+
+using XyPoints = std::vector<std::pair<double, double>>;
+
+XyPoints to_xy(const lanelet::ConstLineString2d & bound)
+{
+  XyPoints points;
+  for (const auto & point : bound) {
+    points.emplace_back(point.x(), point.y());
+  }
+  return points;
+}
+
+TEST(BuildLaneChain, LaneShiftChainHasNoBranch)
+{
+  // The footprint edges are tested against these bounds. Through both wedges, the bounds follow
+  // lanelet 2. They take no bound of lanelets 3, 6, or 7.
+  const auto test_map = make_lane_shift_map();
+  const auto & layer = test_map.map().laneletLayer;
+  const lanelet::ConstLanelets lanelets{layer.get(1), layer.get(2), layer.get(4)};
+
+  const auto result = road_following::build_lane_chain(lanelets);
+
+  ASSERT_TRUE(result.has_value()) << result.error();
+  constexpr double h = k_half_width;
+  EXPECT_EQ(
+    to_xy(result->shape.leftBound2d()), (XyPoints{{0.0, h}, {20.0, h}, {30.0, -h}, {50.0, -h}}));
+  EXPECT_EQ(
+    to_xy(result->shape.rightBound2d()),
+    (XyPoints{{0.0, -h}, {20.0, -h}, {30.0, -3.0 * h}, {50.0, -3.0 * h}}));
+}
+
+TEST(BuildLaneChain, EmptyListGivesError)
+{
+  const auto result = road_following::build_lane_chain(lanelet::ConstLanelets{});
+
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), "cannot combine an empty lanelet list");
 }
 }  // namespace
 }  // namespace autoware::trajectory_validator::plugin::safety

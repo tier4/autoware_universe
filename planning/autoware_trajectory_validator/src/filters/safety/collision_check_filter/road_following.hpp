@@ -20,6 +20,7 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_routing/Forward.h>
 
 #include <string>
@@ -28,6 +29,15 @@
 namespace autoware::trajectory_validator::plugin::safety::road_following
 {
 using autoware_planning_msgs::msg::LaneletRoute;
+
+/**
+ * @brief One lanelet list with its combined shape.
+ */
+struct LaneChain
+{
+  lanelet::ConstLanelets lanelets;  // joined by next only, in driving order
+  lanelet::ConstLanelet shape;      // combine_lanelets_shape(lanelets)
+};
 
 /**
  * @brief Split the route lanelets into lists that "next" joins, in driving order.
@@ -40,6 +50,13 @@ using autoware_planning_msgs::msg::LaneletRoute;
 [[nodiscard]] tl::expected<std::vector<lanelet::ConstLanelets>, std::string> build_lanelet_lists(
   const LaneletRoute & route, const lanelet::LaneletMap & lanelet_map,
   const lanelet::routing::RoutingGraphConstPtr & routing_graph);
+
+/**
+ * @brief Combine one lanelet list into one chain with its combined shape.
+ * @return The chain, or the reason when the list is empty.
+ */
+[[nodiscard]] tl::expected<LaneChain, std::string> build_lane_chain(
+  const lanelet::ConstLanelets & lanelets);
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_
