@@ -14,10 +14,18 @@
 
 #ifndef AUTOWARE__TRAJECTORY_OPTIMIZER__TRAJECTORY_OPTIMIZER_STRUCTS_HPP_
 #define AUTOWARE__TRAJECTORY_OPTIMIZER__TRAJECTORY_OPTIMIZER_STRUCTS_HPP_
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/header.hpp>
+
+#include <lanelet2_core/LaneletMap.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <memory>
+#include <optional>
 #include <vector>
 
 namespace autoware::trajectory_optimizer
@@ -109,6 +117,11 @@ struct TrajectoryOptimizerData
 {
   Odometry current_odometry;
   AccelWithCovarianceStamped current_acceleration;
+  std::optional<autoware_vehicle_msgs::msg::SteeringReport> current_steering;
+  std::shared_ptr<lanelet::LaneletMap> lanelet_map;
+  autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr route;
+  std_msgs::msg::Header candidate_header{};
+  size_t candidate_index{0U};
   SemanticSpeedTracker semantic_speed_tracker;
 };
 
@@ -124,6 +137,7 @@ struct TrajectoryOptimizerParams
   bool use_trajectory_extender{false};
   bool use_kinematic_feasibility_enforcer{false};
   bool use_mpt_optimizer{false};
+  bool use_time_sequence_raw_optimizer{false};
 };
 }  // namespace autoware::trajectory_optimizer
 #endif  // AUTOWARE__TRAJECTORY_OPTIMIZER__TRAJECTORY_OPTIMIZER_STRUCTS_HPP_
