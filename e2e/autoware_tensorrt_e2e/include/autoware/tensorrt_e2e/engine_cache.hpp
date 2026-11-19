@@ -15,99 +15,37 @@
 #ifndef AUTOWARE__TENSORRT_E2E__ENGINE_CACHE_HPP_
 #define AUTOWARE__TENSORRT_E2E__ENGINE_CACHE_HPP_
 
+#include "autoware/tensorrt_e2e/engine_identity.hpp"
 #include <rclcpp/logging.hpp>
 #include <rclcpp/node.hpp>
 
 #include <filesystem>
-#include <fstream>
-#include <stdexcept>
 #include <string>
 
 namespace autoware::tensorrt_e2e
 {
 
-/**
- * @brief Delete a cached TensorRT engine that is older than the ONNX beside it.
- *
- * TrtCommon reuses `<model>.engine` whenever it deserializes and the plan's TensorRT
- * version matches. Its two freshness checks -- validateNetworkIO() and
- * validateProfileDims() -- both return success when the caller passes nothing, and log
- * only "Network IO is empty, skipping validation. It might lead to undefined behavior".
- * This node cannot declare a static IO list the way autoware_bevfusion does, because it
- * is model-agnostic and reads its bindings out of whatever engine it is given. So a
- * re-exported ONNX dropped next to a stale engine would silently keep running the old
- * weights, and obey_graph_precision() would be silently inert as well, since the layer
- * precisions it pins are applied to a network that a cached plan never builds.
- *
- * Comparing mtimes is enough for that: the exporter writes a new ONNX, the engine beside
- * it is then older, and it is rebuilt. It intentionally does not hash the graph -- an
- * engine that is merely *newer* than its ONNX is left alone, which is the normal state
- * after a build.
- *
- * @param onnx_path Path to the ONNX the engine was built from.
- * @param engine_path Path to the cached engine (TrtCommonConfig derives it from the ONNX
- *                    by replacing the extension when it is not given explicitly).
- * @param logger Logger for the one-line notice when a stale engine is removed.
- * @return true when a stale engine was deleted.
- */
-//! How this node builds a planner engine, recorded beside it (`<engine>.build`). An engine
-//! built under other settings -- before TF32 was turned off, say -- is rebuilt once instead of
-//! being reused with the arithmetic it was built with.
+//! How this node builds a planner engine. It is part of the engine's identity (appended to
+//! the precision), so an engine built under other settings -- before TF32 was turned off,
+//! say -- is rebuilt once instead of being reused with the arithmetic it was built with.
 inline constexpr const char * kPlannerBuildSettings = "tf32-off";
 
-inline bool engine_build_settings_match(
-  const std::string & engine_path, const std::string & settings)
-{
-  std::ifstream input(engine_path + ".build");
-  std::string saved;
-  return static_cast<bool>(input >> saved) && saved == settings;
-}
-
-inline void record_engine_build_settings(
-  const std::string & engine_path, const std::string & settings)
-{
-  std::ofstream(engine_path + ".build") << settings << "\n";
-}
-
-inline bool drop_stale_engine(
-  const std::string & onnx_path, const std::string & engine_path, const rclcpp::Logger & logger,
-  const std::string & build_settings = "")
-{
+// Tie a serialized engine to BOTH graph and engine bytes, not mtimes. Copying
+// an old engine next to a new graph must never silently retain old weights.
+inline bool drop_stale_engine(const std::string &onnx_path,
+                              const std::string &engine_path,
+                              const rclcpp::Logger &logger,
+                              const std::string &precision = "default") {
   namespace fs = std::filesystem;
-  std::error_code ec;
-  if (!fs::exists(engine_path, ec) || !fs::exists(onnx_path, ec)) {
+  if (!fs::exists(engine_path))
     return false;
-  }
-  if (!build_settings.empty() && !engine_build_settings_match(engine_path, build_settings)) {
-    fs::remove(engine_path, ec);
-    if (ec) {
-      throw std::runtime_error(
-        engine_path + " was built with other settings than \"" + build_settings +
-        "\" and could not be removed: " + ec.message());
-    }
-    RCLCPP_INFO(
-      logger, "%s was built with other settings than \"%s\": removed, the engine will be rebuilt.",
-      engine_path.c_str(), build_settings.c_str());
-    return true;
-  }
-  const auto engine_time = fs::last_write_time(engine_path, ec);
-  if (ec) {
+  if (engine_identity_matches(onnx_path, engine_path, precision))
     return false;
-  }
-  const auto onnx_time = fs::last_write_time(onnx_path, ec);
-  if (ec || engine_time >= onnx_time) {
-    return false;
-  }
-  fs::remove(engine_path, ec);
-  if (ec) {
-    RCLCPP_WARN(
-      logger, "%s is older than %s but could not be removed (%s); it will be reused as is.",
-      engine_path.c_str(), onnx_path.c_str(), ec.message().c_str());
-    return false;
-  }
-  RCLCPP_INFO(
-    logger, "%s is older than %s: removed, the engine will be rebuilt.", engine_path.c_str(),
-    onnx_path.c_str());
+  // Missing identity (first upgrade) rebuilds once; subsequent starts reuse a
+  // matching engine. Failure to remove is fatal, never silent stale reuse.
+  fs::remove(engine_path);
+  RCLCPP_INFO(logger, "%s has no matching graph/engine identity; rebuilding",
+              engine_path.c_str());
   return true;
 }
 

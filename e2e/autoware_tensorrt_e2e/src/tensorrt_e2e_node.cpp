@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_e2e/tensorrt_e2e_node.hpp"
+#include <autoware_utils_geometry/geometry.hpp>
 
 #include "autoware/tensorrt_e2e/input_provider_registry.hpp"
 
@@ -22,8 +23,8 @@
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
-
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -32,6 +33,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -48,6 +50,8 @@ using diagnostic_msgs::msg::DiagnosticStatus;
 namespace
 {
 constexpr int64_t LOG_THROTTLE_INTERVAL_MS = 5000;
+//! Below this EKF speed the ego stands still: the loader's "moving" threshold.
+constexpr double STANDSTILL_SPEED_MPS = 0.2;
 }  // namespace
 
 TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
@@ -64,6 +68,11 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
 
   pub_trajectory_ = create_publisher<Trajectory>("~/output/trajectory", 1);
   pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
+  if (!turn_indicator_tensor_.empty()) {
+    pub_turn_indicators_ =
+      create_publisher<autoware_vehicle_msgs::msg::TurnIndicatorsCommand>(
+        "~/output/turn_indicators", 1);
+  }
   pub_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
   diagnostics_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
@@ -82,12 +91,130 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
     }
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), e.what() << ". Inference will be disabled.");
-    diagnostics_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
-    diagnostics_->publish(get_clock()->now());
+    latch_status(DiagnosticStatus::ERROR, std::string(e.what()) + " -- inference is disabled");
     if (params_.build_only) {
       RCLCPP_ERROR(get_logger(), "Build only mode: exiting due to initialization failure.");
       std::exit(EXIT_FAILURE);
     }
+  }
+
+  auto limit = [this](const char *name, double value) {
+    const double configured = has_parameter(name)
+                                  ? get_parameter(name).as_double()
+                                  : declare_parameter<double>(name, value);
+    if (!std::isfinite(configured) || configured <= 0.0) {
+      throw std::runtime_error(std::string(name) +
+                               " must be finite and positive");
+    }
+    return configured;
+  };
+  pose_limits_.translation_slack_m =
+      limit("localization_reset.translation_slack_m", 2.0);
+  pose_limits_.max_speed_mps = limit("localization_reset.max_speed_mps", 60.0);
+  pose_limits_.yaw_slack_rad = limit("localization_reset.yaw_slack_rad", 0.35);
+  pose_limits_.max_yaw_rate_rps =
+      limit("localization_reset.max_yaw_rate_rps", 2.0);
+  // These callbacks share the mutually-exclusive default callback group with
+  // sensor collection. Retry only a sensor tick waiting for its ego bracket.
+  sub_odometry_ = create_subscription<Odometry>(
+      "~/input/odometry", rclcpp::QoS(200),
+      [this](Odometry::ConstSharedPtr msg) {
+        if (!odometry_history_.samples.empty()) {
+          const auto &previous = odometry_history_.samples.back();
+          const double dt = (rclcpp::Time(msg->header.stamp).nanoseconds() -
+                             previous.stamp_ns) *
+                            1e-9;
+          auto pose = [](const Odometry &odom) {
+            const auto matrix = dp::utils::pose_to_matrix4d(odom.pose.pose);
+            return std::array<double, 4>{matrix(0, 3), matrix(1, 3),
+                                         matrix(0, 0), matrix(1, 0)};
+          };
+          if (dt < 0 || pose_discontinuous(pose(previous.value), pose(*msg), dt,
+                                           pose_limits_)) {
+            ++localization_generation_;
+            odometry_history_.samples.clear();
+            acceleration_history_.samples.clear();
+            steering_history_.samples.clear();
+            velocity_history_.samples.clear();
+            pipeline_latency_.clear();
+            processing_latency_.clear();
+            RCLCPP_WARN(get_logger(),
+                        "Localization discontinuity: discarded ego history");
+          }
+        }
+        if (odometry_history_.insert(
+                rclcpp::Time(msg->header.stamp).nanoseconds(), *msg,
+                ego_history_keep_ns_)) {
+          acceleration_history_.samples.clear();
+          steering_history_.samples.clear();
+          velocity_history_.samples.clear();
+        }
+        if (waiting_for_ego_)
+          run_once();
+      });
+  sub_acceleration_ = create_subscription<AccelWithCovarianceStamped>(
+      "~/input/acceleration", rclcpp::QoS(100),
+      [this](AccelWithCovarianceStamped::ConstSharedPtr msg) {
+        acceleration_history_.insert(
+            rclcpp::Time(msg->header.stamp).nanoseconds(), *msg,
+            ego_history_keep_ns_);
+        if (waiting_for_ego_)
+          run_once();
+      });
+
+  if (recorded_ego_dynamics_) {
+    sub_steering_ = create_subscription<SteeringReport>(
+        "~/input/steering", rclcpp::QoS(100),
+        [this](SteeringReport::ConstSharedPtr msg) {
+          steering_history_.insert(rclcpp::Time(msg->stamp).nanoseconds(), *msg,
+                                   ego_history_keep_ns_);
+          if (waiting_for_ego_)
+            run_once();
+        });
+    // The converter's fallback source for a zeroed EKF twist (below).
+    sub_velocity_ = create_subscription<VelocityReport>(
+        "~/input/velocity", rclcpp::QoS(100),
+        [this](VelocityReport::ConstSharedPtr msg) {
+          velocity_history_.insert(rclcpp::Time(msg->header.stamp).nanoseconds(),
+                                   *msg, ego_history_keep_ns_);
+        });
+  }
+  if (engine_) {
+    if (const auto *spec =
+            find_spec(engine_->input_specs(), "ego_agent_past")) {
+      // The context preprocessor samples at the deployed 0.1 s contract.
+      ego_history_keep_ns_ = std::max(
+          ego_history_keep_ns_, (spec->shape[1] + 10) * int64_t{100000000});
+    }
+  }
+
+  wire_pacing();
+
+  // No runtime condition throws out of this constructor any more. A component
+  // constructor that throws is never loaded: launch_ros reports "Component constructor
+  // threw an exception" and the node is simply absent, with the actual reason -- an
+  // engine that failed to build, a missing artifact -- left somewhere further up a
+  // shared container's log, which is how the pipeline failure below used to surface as
+  // the pacing check firing on an empty provider list. Those reasons are reported on
+  // `inference_status` instead, by a loaded node that keeps saying them. (A malformed
+  // deployment still throws where rclcpp throws it -- an undeclared vehicle_info or
+  // ml_package parameter -- exactly as autoware_bevfusion's read-only parameters do.)
+  //
+  // Waiting is not one of those reasons. At start-up this node is regularly composed
+  // and running before the LiDAR pipeline that paces it exists, and the correct
+  // behaviour is to wait: autoware_bevfusion, reading the same cloud, warns and skips
+  // for as long as its inputs are missing and never takes itself or the container down.
+  status_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  status_timer_ = create_wall_timer(
+    std::chrono::milliseconds(1000), [this]() { report_status(); }, status_callback_group_);
+}
+
+void TensorrtE2eNode::wire_pacing()
+{
+  if (!pipeline_ready_) {
+    // initialize_pipeline() failed and said why. There is no engine to run, so pacing a
+    // tick off the sensor would only replace that message with a vaguer one every frame.
+    return;
   }
 
   // Run when the sensor the model waits on delivers, rather than on a tick that
@@ -99,7 +226,6 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
   // The callback is serialised with itself by its callback group, so a run
   // cannot re-enter; a frame arriving during one is simply the next run's, which
   // is what planning on the newest sample means.
-  bool paced = false;
   for (const auto & provider : providers_) {
     if (provider->pace([this]() { run_once(); })) {
       RCLCPP_INFO(
@@ -108,22 +234,95 @@ TensorrtE2eNode::TensorrtE2eNode(const rclcpp::NodeOptions & options)
       if (!pacing_provider_) {
         pacing_provider_ = provider.get();
       }
-      paced = true;
     }
   }
-  if (!paced) {
+  if (!pacing_provider_) {
     // There is no second way to run. A timer here would plan on whatever the
     // last sensor sample happened to be, at a rate unrelated to it, and publish
     // a trajectory that looks exactly like a fresh one -- which is worse than
     // not running, because nothing downstream can tell the difference.
-    throw std::runtime_error(
+    const std::string message =
       "No input provider paces this model: nothing would ever trigger planning. "
-      "A model this node can run has to consume a sensor.");
+      "A model this node can run has to consume a sensor (set sensor_inputs).";
+    RCLCPP_ERROR(get_logger(), "%s", message.c_str());
+    latch_status(DiagnosticStatus::ERROR, message);
   }
+}
+
+void TensorrtE2eNode::latch_status(const int8_t level, const std::string & message)
+{
+  latched_level_ = level;
+  latched_message_ = message;
+  diagnostics_->clear();
+  diagnostics_->update_level_and_message(level, message);
+  diagnostics_->publish(get_clock()->now());
+}
+
+void TensorrtE2eNode::report_status()
+{
+  std::unique_lock<std::mutex> lock(tick_mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    // A tick holds it: the node is alive and is publishing its own status. Racing it to
+    // the same diagnostic would only interleave two messages on one status object.
+    return;
+  }
+
+  const rclcpp::Time now = get_clock()->now();
+
+  // What each sensor provider's own subscription has delivered, on every status this
+  // timer publishes. On the vehicle the node was found loaded, silent and not planning,
+  // and nothing said whether the cloud was reaching it at all. Now the answer is on the
+  // diagnostic: `bev_feature.received: 0` is a subscription problem, a count that keeps
+  // climbing under an ERROR is this node's.
+  const auto add_received_counts = [this]() {
+    for (const auto & provider : providers_) {
+      if (const auto received = provider->received_count()) {
+        diagnostics_->add_key_value(
+          provider->name() + ".received", static_cast<int64_t>(*received));
+      }
+    }
+  };
+
+  if (!latched_message_.empty()) {
+    // Republished rather than said once at construction: a status that stops arriving is
+    // reported as stale by the aggregator, which reads as "gone", not as "broken, here is
+    // why". This is the only thing a node whose pipeline failed still does. It goes to
+    // the log as well, throttled, because one ERROR line at load time is invisible in a
+    // container log that keeps scrolling for the rest of the drive.
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "%s", latched_message_.c_str());
+    diagnostics_->clear();
+    diagnostics_->update_level_and_message(latched_level_, latched_message_);
+    add_received_counts();
+    diagnostics_->publish(now);
+    return;
+  }
+
+  const double silent_seconds = last_tick_ ? (now - *last_tick_).seconds() : -1.0;
+  if (silent_seconds >= 0.0 && silent_seconds < params_.input_timeout_seconds) {
+    return;  // the sensor is delivering; each tick publishes its own status
+  }
+
+  const std::string source = pacing_provider_ ? pacing_provider_->name() : std::string("sensor");
+  const std::string message =
+    !last_tick_ ? "Waiting for the first input from '" + source + "'"
+                : "No input from '" + source + "' for " +
+                    std::to_string(static_cast<int64_t>(silent_seconds * 1e3)) + " ms";
+  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "%s", message.c_str());
+  diagnostics_->clear();
+  diagnostics_->update_level_and_message(DiagnosticStatus::WARN, message);
+  add_received_counts();
+  diagnostics_->publish(now);
 }
 
 void TensorrtE2eNode::set_up_params()
 {
+  recorded_ego_dynamics_ =
+      declare_parameter<bool>("recorded_ego_dynamics", false);
+  // Defaulted to the convention every package before it had: a planning-time graph under
+  // the default is refused by the graph check in initialize_pipeline(), never run. Parsed
+  // there too, so a misspelt value is reported on the diagnostic like any other refusal.
+  declare_parameter<std::string>("planning_time", "cloud_stamp");
   params_.model_path = declare_parameter<std::string>("model_path", "");
   params_.plugins_path = declare_parameter<std::string>("plugins_path", "");
   params_.precision = declare_parameter<std::string>("precision", "fp16");
@@ -133,9 +332,14 @@ void TensorrtE2eNode::set_up_params()
   params_.dump_dir = declare_parameter<std::string>("debug.dump_dir", "");
   params_.dump_max_frames = declare_parameter<int64_t>("debug.dump_max_frames", 300);
   params_.shift_x = declare_parameter<bool>("shift_x", false);
-  params_.sensor_inputs = declare_parameter<std::vector<std::string>>(
-    "sensor_inputs", std::vector<std::string>{});
+  params_.sensor_inputs =
+    declare_parameter<std::vector<std::string>>("sensor_inputs", std::vector<std::string>{});
   params_.enable_context_inputs = declare_parameter<bool>("enable_context_inputs", true);
+  params_.input_timeout_seconds = declare_parameter<double>("input_timeout_seconds", 1.0);
+  params_.acceleration_max_wait_ms = declare_parameter<double>("acceleration_max_wait_ms", 50.0);
+  if (!std::isfinite(params_.acceleration_max_wait_ms) || params_.acceleration_max_wait_ms < 0.0) {
+    throw std::invalid_argument("acceleration_max_wait_ms must be finite and non-negative");
+  }
 
   postprocess_params_.prediction_tensor =
     declare_parameter<std::string>("postprocess.prediction_tensor", "prediction");
@@ -150,8 +354,18 @@ void TensorrtE2eNode::set_up_params()
     declare_parameter<double>("postprocess.stopping_threshold", 0.3);
   postprocess_params_.generator_name =
     declare_parameter<std::string>("postprocess.generator_name", "TensorrtE2e");
+  // The turn-indicator output: empty tensor = the model has none and nothing is published.
+  // The thresholds are deployment behaviour, so they live in e2e_planner.param.yaml.
+  turn_indicator_tensor_ = declare_parameter<std::string>("postprocess.turn_indicator.tensor", "");
+  turn_indicator_params_.min_probability =
+    declare_parameter<double>("postprocess.turn_indicator.min_probability", 0.7);
+  turn_indicator_params_.confirm_cycles =
+    static_cast<int>(declare_parameter<int64_t>("postprocess.turn_indicator.confirm_cycles", 1));
+  turn_indicator_params_.hold_s =
+    declare_parameter<double>("postprocess.turn_indicator.hold_s", 1.0);
 
-  planning_factor_params_.enable_stop = declare_parameter<bool>("planning_factor.enable_stop", false);
+  planning_factor_params_.enable_stop =
+    declare_parameter<bool>("planning_factor.enable_stop", false);
   planning_factor_params_.enable_slowdown =
     declare_parameter<bool>("planning_factor.enable_slowdown", false);
   planning_factor_params_.detection_config.stop_velocity_threshold =
@@ -174,8 +388,9 @@ void TensorrtE2eNode::create_providers()
     context_provider_ = context_provider.get();
     providers_.push_back(std::move(context_provider));
   }
-  const bool any_tf = std::any_of(
-    providers_.begin(), providers_.end(), [](const auto & provider) { return provider->uses_tf(); });
+  const bool any_tf = std::any_of(providers_.begin(), providers_.end(), [](const auto & provider) {
+    return provider->uses_tf();
+  });
   if (any_tf) {
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(tf_buffer_);
   }
@@ -189,6 +404,10 @@ void TensorrtE2eNode::initialize_pipeline()
 {
   diagnostics_->update_level_and_message(DiagnosticStatus::WARN, "Loading model");
   diagnostics_->publish(get_clock()->now());
+
+  create_providers();
+
+  planning_time_ = parse_planning_time(get_parameter("planning_time").as_string());
 
   InferenceEngine::Config engine_config;
   engine_config.model_path = params_.model_path;
@@ -205,8 +424,12 @@ void TensorrtE2eNode::initialize_pipeline()
     }
     RCLCPP_INFO_STREAM(get_logger(), "Engine inputs:" << manifest.str());
   }
+  // Before the claims, so a disagreement says which side is wrong instead of surfacing
+  // as an unclaimed input (an old node refuses a planning-time graph exactly that way).
+  check_planning_time_inputs(
+    planning_time_, find_spec(engine_->input_specs(), SENSOR_LATENCY_TENSOR) != nullptr);
+  RCLCPP_INFO(get_logger(), "planning_time: %s", planning_time_name(planning_time_));
 
-  create_providers();
   // One stream for the whole tick. A provider's GPU work, the network, and the output copy
   // are ordered on it, so nothing in the middle of a pass has to wait for the device: the
   // single host synchronization is the one that waits for the outputs.
@@ -248,6 +471,15 @@ void TensorrtE2eNode::initialize_pipeline()
 
   postprocessor_ = std::make_unique<TrajectoryPostprocessor>(postprocess_params_);
   postprocessor_->validate_output_specs(engine_->output_specs());
+  if (!turn_indicator_tensor_.empty()) {
+    const TensorSpec * spec = find_spec(engine_->output_specs(), turn_indicator_tensor_);
+    if (!spec || spec->shape.size() != 2 || spec->shape[1] != TurnIndicatorFilter::kNumClasses) {
+      throw std::runtime_error(
+        "postprocess.turn_indicator.tensor '" + turn_indicator_tensor_ +
+        "' must be a model output of shape [B, 3] (DISABLE, ENABLE_LEFT, ENABLE_RIGHT)");
+    }
+    turn_indicator_filter_ = std::make_unique<TurnIndicatorFilter>(turn_indicator_params_);
+  }
 
   if (!params_.args_path.empty()) {
     normalization_map_ = dp::utils::load_normalization_stats(params_.args_path);
@@ -260,27 +492,140 @@ void TensorrtE2eNode::initialize_pipeline()
   diagnostics_->publish(get_clock()->now());
 }
 
-std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame()
+std::optional<Odometry> TensorrtE2eNode::interpolate_odometry(const int64_t stamp_ns) const
 {
-  const auto odometry = sub_odometry_.take_data();
-  if (!odometry) {
+  const auto bracket = odometry_history_.bracket(stamp_ns);
+  if (!bracket)
+    return std::nullopt; // Never extrapolate a LiDAR pose from a stale twist.
+  const auto &lo = odometry_history_.samples[bracket->first];
+  const auto &hi = odometry_history_.samples[bracket->second];
+  // A missing localization interval must not be bridged across a pose jump.
+  if (hi.stamp_ns - lo.stamp_ns > 200000000LL)
     return std::nullopt;
+  const double alpha = hi.stamp_ns == lo.stamp_ns
+                           ? 0.0
+                           : static_cast<double>(stamp_ns - lo.stamp_ns) /
+                                 (hi.stamp_ns - lo.stamp_ns);
+
+  Odometry odometry = lo.value;
+  odometry.header.stamp = rclcpp::Time(stamp_ns, get_clock()->get_clock_type());
+  odometry.pose.pose = autoware_utils_geometry::calc_interpolated_pose(
+      lo.value.pose.pose, hi.value.pose.pose, alpha, false);
+  auto blend = [alpha](double a, double b) { return a + alpha * (b - a); };
+  odometry.twist.twist.linear.x =
+      blend(lo.value.twist.twist.linear.x, hi.value.twist.twist.linear.x);
+  odometry.twist.twist.linear.y =
+      blend(lo.value.twist.twist.linear.y, hi.value.twist.twist.linear.y);
+  odometry.twist.twist.angular.z =
+      blend(lo.value.twist.twist.angular.z, hi.value.twist.twist.angular.z);
+  return odometry;
+}
+
+std::optional<EgoFrame> TensorrtE2eNode::create_ego_frame(bool & deferred)
+{
+  deferred = false;
+  waiting_for_ego_ = true;
+  if (odometry_history_.samples.empty())
+    return std::nullopt;
+  const auto sensor_stamp =
+      pacing_provider_ ? pacing_provider_->latest_input_stamp() : std::nullopt;
+  const int64_t sensor_ns = sensor_stamp
+                                ? sensor_stamp->nanoseconds()
+                                : odometry_history_.samples.back().stamp_ns;
+  // Where the cloud was recorded: its BEV map's source pose, in either convention.
+  const auto at_sensor = interpolate_odometry(sensor_ns);
+  if (!at_sensor)
+    return std::nullopt;
+  const auto planning_ns = planning_stamp_ns(
+      planning_time_, sensor_ns, odometry_history_.samples.back().stamp_ns);
+  if (!planning_ns)
+    return std::nullopt;
+  const int64_t target = *planning_ns;
+  // Under cloud_stamp the two are one instant, and the ego is exactly the pose above.
+  const auto at_target = target == sensor_ns ? at_sensor : interpolate_odometry(target);
+  if (!at_target)
+    return std::nullopt;
+  // The acceleration is read at or before the planning stamp. Localization publishes it
+  // beside the odometry, with the same stamp and a fraction of a millisecond after it, so
+  // a pass that started between the two used to read the previous sample: the input
+  // depended on arrival order. Until the stream reaches the planning stamp the pass is
+  // deferred, and the acceleration callback runs it again; past acceleration_max_wait_ms
+  // the latest earlier sample is used, so a late or stalled stream costs at most that much.
+  // A cap of 0 turns the wait off: the latest earlier sample, as before, and no warning.
+  if (
+    params_.acceleration_max_wait_ms > 0.0 &&
+    find_spec(engine_->input_specs(), "ego_current_state") &&
+    !acceleration_history_.covers(target)) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!acceleration_wait_since_)
+      acceleration_wait_since_ = now;
+    const double waited_ms =
+        std::chrono::duration<double, std::milli>(now - *acceleration_wait_since_).count();
+    if (waited_ms < params_.acceleration_max_wait_ms) {
+      deferred = true;
+      return std::nullopt;
+    }
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
+        "No acceleration at the planning stamp after %.0f ms; using the latest earlier sample",
+        waited_ms);
   }
-  const auto acceleration = sub_acceleration_.take_data();
 
   EgoFrame ego;
-  ego.odometry = *odometry;
-  ego.reference_odometry = *odometry;
+  ego.localization_generation = localization_generation_;
+  ego.odometry = *at_target;
+  ego.stamp = rclcpp::Time(target, get_clock()->get_clock_type());
+  ego.sensor_stamp = rclcpp::Time(sensor_ns, get_clock()->get_clock_type());
+  ego.sensor_pose = at_sensor->pose.pose;
+  if (const auto *accel =
+          acceleration_history_.at_or_before(target, 200000000LL)) {
+    ego.acceleration = *accel;
+  }
+  if (const auto *steer = steering_history_.at_or_before(target, 200000000LL)) {
+    ego.steering_angle = steer->steering_tire_angle;
+  }
+  if (recorded_ego_dynamics_) {
+    // The twist exactly as the converter (e2e-data-producer parse_t4) built
+    // the training rows: the LATEST kinematic_state at or before the
+    // reference time -- not an interpolation -- and where its twist is
+    // exactly zero (the EKF stop filter), the latest VelocityReport at or
+    // before it. That is how creep below the stop filter reached the data.
+    const auto *odom = odometry_history_.at_or_before(target, 200000000LL);
+    if (!odom)
+      return std::nullopt;
+    auto twist = odom->twist.twist;
+    const auto *report = velocity_history_.at_or_before(target, ego_history_keep_ns_);
+    if (report && std::abs(twist.linear.x) < 1e-6 && std::abs(twist.linear.y) < 1e-6) {
+      twist.linear.x = report->longitudinal_velocity;
+      twist.linear.y = report->lateral_velocity;
+    }
+    if (report && std::abs(twist.angular.z) < 1e-6)
+      twist.angular.z = report->heading_rate;
+    ego.odometry.twist.twist = twist;
+  }
+  if (find_spec(engine_->input_specs(), "ego_current_state") &&
+      (!ego.acceleration || (recorded_ego_dynamics_ && !ego.steering_angle)))
+    return std::nullopt;
+  ego.reference_odometry = ego.odometry;
   if (params_.shift_x) {
     ego.reference_odometry.pose.pose =
-      dp::utils::shift_x(odometry->pose.pose, base_link_to_center_);
+      dp::utils::shift_x(ego.odometry.pose.pose, base_link_to_center_);
   }
-  if (acceleration) {
-    ego.acceleration = *acceleration;
+  for (const auto &sample : odometry_history_.samples) {
+    auto odom = sample.value;
+  if (params_.shift_x)
+      odom.pose.pose = dp::utils::shift_x(odom.pose.pose, base_link_to_center_);
+    ego.reference_history.push_back(std::move(odom));
   }
   ego.ego_to_map = dp::utils::pose_to_matrix4d(ego.reference_odometry.pose.pose);
   ego.map_to_ego = dp::utils::inverse(ego.ego_to_map);
-  ego.stamp = rclcpp::Time(odometry->header.stamp);
+  auto sensor_reference = ego.sensor_pose;
+  if (params_.shift_x) {
+    sensor_reference = dp::utils::shift_x(sensor_reference, base_link_to_center_);
+  }
+  ego.sensor_to_map = dp::utils::pose_to_matrix4d(sensor_reference);
+  ego.map_to_sensor = dp::utils::inverse(ego.sensor_to_map);
+  waiting_for_ego_ = false;
   return ego;
 }
 
@@ -324,6 +669,10 @@ void TensorrtE2eNode::run_once()
   if (runtime_failed_) {
     return;
   }
+  // Excludes report_status(), which shares `diagnostics_`; two providers that both pace
+  // would otherwise also be able to enter this from two executor threads at once.
+  std::lock_guard<std::mutex> lock(tick_mutex_);
+  last_tick_ = get_clock()->now();
   // Everything below throws: CHECK_CUDA_ERROR raises std::runtime_error, and so do the
   // extractor, the temporal cache and the inference engine. This runs in a subscription
   // callback, so an escaping exception does not fail this node -- it terminates the
@@ -334,7 +683,9 @@ void TensorrtE2eNode::run_once()
   // usually leaves the context unusable, so retrying every 100 ms would only fill the log.
   try {
     TickTiming timing;
-    run_tick(timing);
+    if (!run_tick(timing)) {
+      return;  // deferred: the input it waits for runs the pass again
+    }
     // Whatever a provider still owes runs now, whether the pass published or gave up:
     // a detection head's decode, say. It is off the trajectory's path on purpose, so the
     // consumer of the trajectory never waits for a message it does not read. It does
@@ -347,15 +698,13 @@ void TensorrtE2eNode::run_once()
       "debug/processing_time/finish_ms", stop_watch_.toc("finish"));
   } catch (const std::exception & e) {
     runtime_failed_ = true;
-    RCLCPP_ERROR(
-      get_logger(), "Inference failed and the planner is now disabled: %s", e.what());
-    diagnostics_->update_level_and_message(
+    RCLCPP_ERROR(get_logger(), "Inference failed and the planner is now disabled: %s", e.what());
+    latch_status(
       DiagnosticStatus::ERROR, std::string("Inference failed, planner disabled: ") + e.what());
-    diagnostics_->publish(now());
   }
 }
 
-void TensorrtE2eNode::run_tick(TickTiming & timing)
+bool TensorrtE2eNode::run_tick(TickTiming & timing)
 {
   stop_watch_.tic("processing_time");
   diagnostics_->clear();
@@ -374,15 +723,25 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
       "Pipeline is not initialized. Inference is disabled (check the startup errors).");
     finish(DiagnosticStatus::ERROR, "Pipeline not initialized");
-    return;
+    return true;
   }
 
-  const auto ego = create_ego_frame();
+  bool deferred = false;
+  const auto ego = create_ego_frame(deferred);
+  if (deferred) {
+    // Not a failure and nothing to report: the acceleration at the planning stamp is
+    // about to arrive, and its callback runs the pass again.
+    return false;
+  }
+  // Any other outcome ends the wait, including a pass that returned before it got that far
+  // (no pose bracket yet, or the ego history was just reset): the next deferral waits its
+  // own acceleration_max_wait_ms, not what is left of a clock started by an earlier pass.
+  acceleration_wait_since_.reset();
   if (!ego) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "Waiting for odometry...");
-    finish(DiagnosticStatus::WARN, "No odometry received");
-    return;
+      get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS, "Waiting for timestamp-aligned ego state...");
+    finish(DiagnosticStatus::WARN, "Waiting for timestamp-aligned ego state");
+    return true;
   }
 
   // Collect all model inputs. The pacing provider goes last: its sensor callback already
@@ -411,7 +770,7 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
         get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
         "Input collection failed [" << provider->name() << "]: " << error);
       finish(DiagnosticStatus::WARN, "[" + provider->name() + "] " + error);
-      return;
+      return true;
     }
   }
 
@@ -422,7 +781,7 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
       "Input tensor '" << *invalid_tensor << "' contains invalid values");
     finish(DiagnosticStatus::WARN, "Input tensor '" + *invalid_tensor + "' has invalid values");
-    return;
+    return true;
   }
 
   // Inference.
@@ -435,20 +794,23 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
       "Inference failed: " << result.error_msg);
     finish(DiagnosticStatus::ERROR, result.error_msg);
-    return;
+    return true;
   }
+
+  // The engine already completed its output wait on the shared stream. Query
+  // CUDA event durations here without adding another synchronization.
+  for (auto &provider : providers_)
+    provider->add_diagnostics(*diagnostics_);
 
   // Postprocess and publish.
   stop_watch_.tic("postprocess");
   TrajectoryPostprocessor::Output output;
   try {
-
-    output = postprocessor_->process(
-      *result.outputs, *ego, ego->stamp, generator_uuid_);
+    output = postprocessor_->process(*result.outputs, *ego, ego->stamp, generator_uuid_);
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "Postprocessing failed: " << e.what());
     finish(DiagnosticStatus::ERROR, e.what());
-    return;
+    return true;
   }
 
   timing.postprocess_ms = stop_watch_.toc("postprocess");
@@ -459,17 +821,54 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
 
   pub_trajectory_->publish(output.trajectory);
   pub_trajectories_->publish(output.candidate_trajectories);
+  for (auto & provider : providers_) {
+    provider->on_published(*result.outputs, *ego);
+  }
+  if (turn_indicator_filter_) {
+    const auto logits = result.outputs->find(turn_indicator_tensor_);
+    if (logits == result.outputs->end() || logits->second.host_data.size() < 3) {
+      RCLCPP_ERROR_STREAM_THROTTLE(
+        get_logger(), *get_clock(), LOG_THROTTLE_INTERVAL_MS,
+        "Turn indicator output '" << turn_indicator_tensor_ << "' missing from the inference");
+    } else {
+      autoware_vehicle_msgs::msg::TurnIndicatorsCommand command;
+      command.stamp = ego->stamp;
+      command.command = turn_indicator_filter_->update(
+        std::vector<float>(logits->second.host_data.begin(), logits->second.host_data.begin() + 3),
+        ego->stamp.seconds());
+      pub_turn_indicators_->publish(command);
+    }
+  }
   publish_planning_factor(output.trajectory);
 
   // Timing: the whole tick must fit in the planning period to sustain the output rate.
   const double processing_time_ms = stop_watch_.toc("processing_time");
   timing.total_ms = processing_time_ms;
-  publish_debug_timing(now, *ego, timing);
+  const auto published_at = get_clock()->now();
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/input_age_ms", (now - ego->stamp).seconds() * 1e3);
+  // What `sensor_latency` was fed (0 under cloud_stamp): the distribution to compare with
+  // the one the model was trained on.
+  const double sensor_latency_ms = (ego->stamp - ego->sensor_stamp).seconds() * 1e3;
+  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/sensor_latency_ms", sensor_latency_ms);
+  if (planning_time_ == PlanningTime::kPlanningTime) {
+    diagnostics_->add_key_value("sensor_latency_ms", sensor_latency_ms);
+  }
+  // The acceleration the node feeds while the ego stands still. A sustained
+  // +0.2 m/s^2 there makes the kinematic models leave 91 % of the stops a human
+  // held (2026-10-02 audit 4.5), so a false start is traced by this first.
+  if (ego->acceleration && std::abs(ego->odometry.twist.twist.linear.x) < STANDSTILL_SPEED_MPS) {
+    const double standstill_accel = ego->acceleration->accel.accel.linear.x;
+    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/standstill_acceleration_mps2", standstill_accel);
+    diagnostics_->add_key_value("standstill_acceleration_mps2", standstill_accel);
+  }
+  publish_debug_timing(published_at, *ego, timing);
   // Against the interval this run actually had, not a configured one: the pace
   // is the sensor's, and it is the pace the node has to keep up with.
-  const double period_ms = previous_run_.has_value()
-                             ? (now - previous_run_.value()).seconds() * 1e3
-                             : std::numeric_limits<double>::infinity();
+  const double period_ms = previous_run_.has_value() ? (now - previous_run_.value()).seconds() * 1e3
+                                                     : std::numeric_limits<double>::infinity();
   previous_run_ = now;
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = now;
@@ -486,12 +885,19 @@ void TensorrtE2eNode::run_tick(TickTiming & timing)
       DiagnosticStatus::WARN, "Processing time exceeded the planning period");
   }
   diagnostics_->publish(now);
+  return true;
 }
 
 void TensorrtE2eNode::add_input_diagnostics(const TensorMap & inputs)
 {
   for (const auto & provider : providers_) {
     provider->add_diagnostics(*diagnostics_);
+    // On the healthy status too, so a bag of a good run shows the count climbing and a
+    // bag of a bad one shows where it stopped -- the same key report_status() carries
+    // while nothing ticks.
+    if (const auto received = provider->received_count()) {
+      diagnostics_->add_key_value(provider->name() + ".received", static_cast<int64_t>(*received));
+    }
   }
   // Same keys and the same counting as autoware_diffusion_planner: a [1, N, P, D] tensor's
   // valid elements are its non-zero rows in batch 0.
@@ -531,6 +937,7 @@ void TensorrtE2eNode::dump_tensors(
   const auto & pose = ego.odometry.pose.pose;
   const auto & twist = ego.odometry.twist.twist;
   manifest << std::setprecision(17) << "{\"frame\":" << frame << ",\"stamp\":" << ego.stamp.seconds()
+           << ",\"sensor_stamp\":" << ego.sensor_stamp.seconds()
            << ",\"ego\":{\"x\":" << pose.position.x << ",\"y\":" << pose.position.y
            << ",\"z\":" << pose.position.z << ",\"qx\":" << pose.orientation.x
            << ",\"qy\":" << pose.orientation.y << ",\"qz\":" << pose.orientation.z
@@ -605,13 +1012,26 @@ void TensorrtE2eNode::publish_debug_timing(
       break;
     }
   }
-  debug_publisher_->publish<Float64Stamped>("debug/cyclic_time_ms", stop_watch_.toc("cyclic", true));
+  debug_publisher_->publish<Float64Stamped>(
+    "debug/cyclic_time_ms", stop_watch_.toc("cyclic", true));
   debug_publisher_->publish<Float64Stamped>(
     "debug/pipeline_latency_ms", (now - input_stamp).seconds() * 1e3);
+  pipeline_latency_.add((now - input_stamp).seconds() * 1e3);
+  processing_latency_.add(timing.total_ms);
+  for (const auto &entry : std::vector<std::pair<std::string, double>>{
+           {"p95", 0.95}, {"p99", 0.99}}) {
+    debug_publisher_->publish<Float64Stamped>(
+        "debug/pipeline_latency_" + entry.first + "_ms",
+        pipeline_latency_.percentile(entry.second));
+    debug_publisher_->publish<Float64Stamped>(
+        "debug/processing_time/" + entry.first + "_ms",
+        processing_latency_.percentile(entry.second));
+  }
   debug_publisher_->publish<Float64Stamped>("debug/processing_time/total_ms", timing.total_ms);
   debug_publisher_->publish<Float64Stamped>("debug/processing_time/collect_ms", timing.collect_ms);
   for (const auto & [provider, ms] : timing.provider_collect_ms) {
-    debug_publisher_->publish<Float64Stamped>("debug/processing_time/collect/" + provider + "_ms", ms);
+    debug_publisher_->publish<Float64Stamped>(
+      "debug/processing_time/collect/" + provider + "_ms", ms);
   }
   debug_publisher_->publish<Float64Stamped>(
     "debug/processing_time/inference_ms", timing.inference_ms);

@@ -48,6 +48,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   add_compile_options(-Wno-deprecated-declarations)
 
   find_package(OpenCV REQUIRED)
+  find_package(OpenSSL REQUIRED)
 
   include_directories(
     include
@@ -73,17 +74,31 @@ if(TRT_AVAIL AND CUDA_AVAIL)
 
   cuda_add_library(${PROJECT_NAME}_cuda_lib SHARED
     src/preprocess/camera_preprocess_kernel.cu
+    src/bev_feature/bev_warp_kernel.cu
+    src/bev_feature/detection_decode_kernel.cu
   )
 
   ament_auto_add_library(${PROJECT_NAME}_component SHARED
     src/types.cpp
     src/input_provider_registry.cpp
     src/inference_engine.cpp
+    src/bev_feature/temporal_bev_cache.cpp
+    src/bev_feature/detection_decode.cpp
+    src/bev_feature/trt_bev_feature_extractor.cpp
     src/providers/camera_input_provider.cpp
     src/providers/lidar_input_provider.cpp
     src/providers/context_input_provider.cpp
+    src/providers/bev_feature_input_provider.cpp
+    src/postprocess/detection_postprocessor.cpp
     src/postprocess/trajectory_postprocessor.cpp
     src/tensorrt_e2e_node.cpp
+  )
+
+  # The BEVFusion voxelization kernels live in a separately installed CUDA library that
+  # autoware_bevfusion does not export as an ament target.
+  find_library(AUTOWARE_BEVFUSION_CUDA_LIB autoware_bevfusion_cuda_lib
+    HINTS ${autoware_bevfusion_DIR}/../../../lib
+    REQUIRED
   )
 
   target_link_libraries(${PROJECT_NAME}_component
@@ -91,8 +106,10 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${NVONNXPARSER}
     ${CUDA_LIBRARIES}
     ${CUBLAS_LIBRARIES}
+    OpenSSL::Crypto
     ${OpenCV_LIBS}
     ${PROJECT_NAME}_cuda_lib
+    ${AUTOWARE_BEVFUSION_CUDA_LIB}
   )
 
   rclcpp_components_register_node(${PROJECT_NAME}_component
@@ -109,8 +126,15 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
       test/types_test.cpp
       test/trajectory_postprocessor_test.cpp
+      test/bev_warp_test.cpp
+      test/bev_warp_golden_test.cpp
+      test/temporal_bev_cache_test.cpp
+      test/detection_postprocessor_test.cpp
+      test/detection_decode_test.cpp
     )
     target_link_libraries(test_${PROJECT_NAME} ${PROJECT_NAME}_component)
+    target_compile_definitions(test_${PROJECT_NAME} PRIVATE
+      TENSORRT_E2E_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data")
   endif()
 endif()
 
@@ -129,3 +153,23 @@ ament_auto_package(
   config
   launch
 )
+
+# Pure host checks also run when CUDA/TensorRT is unavailable.
+if(BUILD_TESTING)
+  find_package(OpenSSL REQUIRED)
+  add_executable(test_deployment_checks test/deployment_checks_standalone.cpp)
+  target_include_directories(test_deployment_checks PRIVATE include)
+  target_link_libraries(test_deployment_checks OpenSSL::Crypto)
+  target_compile_features(test_deployment_checks PRIVATE cxx_std_17)
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/deployment-checks")
+  add_test(NAME deployment_checks COMMAND test_deployment_checks
+    "${CMAKE_CURRENT_BINARY_DIR}/deployment-checks")
+  add_executable(test_timestamped_buffer test/timestamped_buffer_standalone.cpp)
+  target_include_directories(test_timestamped_buffer PRIVATE include)
+  target_compile_features(test_timestamped_buffer PRIVATE cxx_std_17)
+  add_test(NAME timestamped_buffer COMMAND test_timestamped_buffer)
+  add_executable(test_turn_indicator_filter test/turn_indicator_filter_standalone.cpp)
+  target_include_directories(test_turn_indicator_filter PRIVATE include)
+  target_compile_features(test_turn_indicator_filter PRIVATE cxx_std_17)
+  add_test(NAME turn_indicator_filter COMMAND test_turn_indicator_filter)
+endif()
