@@ -15,6 +15,7 @@
 #include "autoware/control_validator/control_validator.hpp"
 
 #include "autoware/control_validator/utils.hpp"
+#include "autoware/lanelet2_utils/conversion.hpp"
 #include "autoware/motion_utils/trajectory/interpolation.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
@@ -25,6 +26,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,7 +40,7 @@ void LatencyValidator::validate(
   ControlValidatorStatus & res, const Control & control_cmd, rclcpp::Node & node) const
 {
   res.latency = (node.now() - control_cmd.stamp).seconds();
-  res.is_valid_latency = res.latency < nominal_latency_threshold;
+  res.is_valid_latency = res.latency < params_.nominal_latency;
 }
 
 void TrajectoryValidator::validate(
@@ -47,7 +49,7 @@ void TrajectoryValidator::validate(
 {
   // First, check with the current reference_trajectory
   double max_dist_current = calc_max_lateral_distance(reference_trajectory, predicted_trajectory);
-  bool is_valid_current = max_dist_current <= max_distance_deviation_threshold;
+  bool is_valid_current = max_dist_current <= params_.max_distance_deviation;
 
   // Note: The reason for comparing with the previous reference_trajectory is that
   // the predicted_trajectory of the current cycle may not have been generated based on
@@ -59,7 +61,7 @@ void TrajectoryValidator::validate(
   if (!is_valid_current && prev_reference_trajectory_.has_value()) {
     max_dist_prev =
       calc_max_lateral_distance(prev_reference_trajectory_.value(), predicted_trajectory);
-    is_valid_prev = max_dist_prev <= max_distance_deviation_threshold;
+    is_valid_prev = max_dist_prev <= params_.max_distance_deviation;
   }
 
   // Only if both exceed the threshold, it is judged as abnormal
@@ -117,11 +119,10 @@ void LateralJerkValidator::validate(
   res.steering_rate = steering_rate;
   res.lateral_jerk = lateral_jerk;
   // Note: Assuming left-right symmetry, only considering the magnitude of jerk
-  res.is_valid_lateral_jerk = std::abs(lateral_jerk) < lateral_jerk_threshold_;
+  res.is_valid_lateral_jerk = std::abs(lateral_jerk) < params_.lateral_jerk;
   if (!res.is_valid_lateral_jerk) {
     RCLCPP_DEBUG(
-      logger_, "Lateral jerk is too high. %f > %f", std::abs(lateral_jerk),
-      lateral_jerk_threshold_);
+      logger_, "Lateral jerk is too high. %f > %f", std::abs(lateral_jerk), params_.lateral_jerk);
     RCLCPP_DEBUG(
       logger_, "steering_cmd: %f, prev_steering_cmd: %f, dt: %f", steering_cmd,
       prev_control_cmd_->lateral.steering_tire_angle, dt);
@@ -152,8 +153,8 @@ bool AccelerationValidator::is_in_error_range() const
   const double des = desired_acc_lpf.getValue().value();
   const double mes = measured_acc_lpf.getValue().value();
 
-  return mes <= des + std::abs(e_scale * des) + e_offset &&
-         mes >= des - std::abs(e_scale * des) - e_offset;
+  return mes <= des + std::abs(params_.acc_error_scale * des) + params_.acc_error_offset &&
+         mes >= des - std::abs(params_.acc_error_scale * des) - params_.acc_error_offset;
 }
 
 void VelocityValidator::validate(
@@ -165,12 +166,20 @@ void VelocityValidator::validate(
     autoware::motion_utils::calcInterpolatedPoint(reference_trajectory, kinematics.pose.pose)
       .longitudinal_velocity_mps);
 
-  const bool is_stopped = std::abs(v_vel) < 0.05;
+  const auto stopped_vel_th = 5e-2;
+  const auto is_stopped = std::abs(v_vel) < stopped_vel_th;
 
-  const bool is_rolling_back =
-    std::signbit(v_vel * t_vel) && std::abs(v_vel) > rolling_back_velocity_th;
-  if (!hold_velocity_error_until_stop || !res.is_rolling_back || is_stopped) {
-    res.is_rolling_back = is_rolling_back;
+  if (!params_.hold_velocity_error_until_stop || !res.is_rolling_back || is_stopped) {
+    res.is_rolling_back = [&]() -> bool {
+      if (is_stopped || std::abs(v_vel) < params_.rolling_back_velocity) {
+        return false;
+      }
+  
+      if (std::abs(t_vel) < stopped_vel_th) {
+        return std::signbit(v_vel);
+      }
+      return std::signbit(v_vel * t_vel);
+    }();
   }
 
   const double over_velocity_v_vel =
@@ -181,8 +190,9 @@ void VelocityValidator::validate(
 
   const bool is_over_velocity =
     std::abs(over_velocity_v_vel) >
-    std::abs(over_velocity_t_vel) * (1.0 + over_velocity_ratio_th) + over_velocity_offset_th;
-  if (!hold_velocity_error_until_stop || !res.is_over_velocity || is_stopped) {
+    std::abs(over_velocity_t_vel) * (1.0 + params_.over_velocity_ratio) +
+      params_.over_velocity_offset;
+  if (!params_.hold_velocity_error_until_stop || !res.is_over_velocity || is_stopped) {
     res.is_over_velocity = is_over_velocity;
   }
 
@@ -215,8 +225,8 @@ void OverrunValidator::validate(
   contained in the trajectory.
   */
   const double v_vel = vehicle_vel_lpf.filter(kinematics.twist.twist.linear.x);
-  res.pred_dist_to_stop =
-    res.dist_to_stop - v_vel * assumed_delay_time - v_vel * v_vel / (2.0 * assumed_limit_acc);
+  res.pred_dist_to_stop = res.dist_to_stop - v_vel * params_.assumed_delay_time -
+                          v_vel * v_vel / (2.0 * params_.assumed_limit_acc);
 
   // NOTE: the same velocity threshold as autoware::motion_utils::searchZeroVelocity
   if (v_vel < 1e-3) {
@@ -225,8 +235,8 @@ void OverrunValidator::validate(
     return;
   }
   res.has_overrun_stop_point =
-    res.dist_to_stop < -overrun_stop_point_dist_th && res.nearest_trajectory_vel < 1e-3;
-  res.will_overrun_stop_point = res.pred_dist_to_stop < -will_overrun_stop_point_dist_th;
+    res.dist_to_stop < -params_.overrun_stop_point_dist && res.nearest_trajectory_vel < 1e-3;
+  res.will_overrun_stop_point = res.pred_dist_to_stop < -params_.will_overrun_stop_point_dist;
 }
 
 void YawValidator::validate(
@@ -239,12 +249,95 @@ void YawValidator::validate(
     angles::shortest_angular_distance(
       tf2::getYaw(interpolated_trajectory_point.pose.orientation),
       tf2::getYaw(kinematics.pose.pose.orientation)));
-  res.is_valid_yaw = res.yaw_deviation <= yaw_deviation_error_th_;
-  res.is_warn_yaw = res.yaw_deviation > yaw_deviation_warn_th_;
+  res.is_valid_yaw = res.yaw_deviation <= params_.yaw_deviation_error;
+  res.is_warn_yaw = res.yaw_deviation > params_.yaw_deviation_warn;
+}
+
+void UncrossableBoundDepartureValidator::validate(
+  ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
+  const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
+  const lanelet::LaneletMapPtr & lanelet_map, const vehicle_info_utils::VehicleInfo & vehicle_info,
+  visualization_msgs::msg::MarkerArray & debug_markers, HazardWarningSources & hazard_sources)
+{
+  if (!lanelet_map || lanelet_map->lineStringLayer.empty()) {
+    RCLCPP_DEBUG(logger_, "Lanelet map is not available yet. Skipping boundary departure check.");
+    res.will_cross_uncrossable_bound = false;
+    return;
+  }
+
+  if (predicted_trajectory.points.empty()) {
+    res.will_cross_uncrossable_bound = false;
+    return;
+  }
+
+  boundary_departure_checker::EgoDynamicState ego_state;
+  ego_state.pose_with_cov = kinematics.pose;
+  ego_state.velocity = kinematics.twist.twist.linear.x;
+  ego_state.acceleration = acceleration.accel.accel.linear.x;
+  ego_state.current_time_s = rclcpp::Time(kinematics.header.stamp).seconds();
+
+  if (!enable_) {
+    res.will_cross_uncrossable_bound = false;
+  } else {
+    if (!checker_) {
+      checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
+        lanelet_map, params_, vehicle_info);
+    }
+
+    auto status =
+      checker_->update_departure_status(predicted_trajectory.points, ego_state, hysteresis_state_);
+
+    res.will_cross_uncrossable_bound =
+      status.status == boundary_departure_checker::DepartureType::CRITICAL;
+
+    if (res.will_cross_uncrossable_bound) {
+      std::move(
+        status.debug_markers.markers.begin(), status.debug_markers.markers.end(),
+        std::back_inserter(debug_markers.markers));
+    }
+  }
+
+  if (enable_warning_) {
+    if (!warning_checker_) {
+      warning_checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
+        lanelet_map, warning_params_, vehicle_info);
+    }
+    warning_checker_->update_departure_status(
+      predicted_trajectory.points, ego_state, warning_hysteresis_state_);
+
+    std::vector<HazardSource> departure;
+    warning_hysteresis_state_.critical_departure_history.for_each_side([&](const auto & side) {
+      for (const auto & projection : side) {
+        autoware_utils_geometry::Polygon2d point;
+        point.outer().push_back(projection.pt_on_bound);
+        departure.push_back(
+          HazardSource{
+            transform_polygon_to_base_link(point, kinematics.pose.pose), departure_risk_level_,
+            HazardSector::SOURCE_BOUNDARY_DEPARTURE, kinematics.header.stamp});
+      }
+    });
+    hazard_sources.departure = std::move(departure);
+  }
 }
 
 ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
-: Node("control_validator", options), vehicle_info_()
+: Node("control_validator", options),
+  param_listener_(get_node_parameters_interface()),
+  params_(param_listener_.get_params()),
+  vehicle_info_(),
+  latency_validator(params_),
+  lateral_jerk_validator(get_logger(), params_),
+  trajectory_validator(params_),
+  acceleration_validator(params_),
+  velocity_validator(params_),
+  overrun_validator(params_),
+  yaw_validator(params_),
+  uncrossable_bound_departure_validator(get_logger(), params_),
+  collision_validator(get_logger(), params_, hazard_time_keeper_),
+  hazard_warning(
+    get_logger(), params_,
+    create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/hazard/markers", 1),
+    hazard_time_keeper_)
 {
   using std::placeholders::_1;
 
@@ -265,6 +358,14 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
   sub_measured_acc_ =
     autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>::create_subscription(
       this, "~/input/measured_acceleration", 1);
+  sub_lanelet_map_ = create_subscription<LaneletMapBin>(
+    "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
+    std::bind(&ControlValidator::on_lanelet_map, this, _1));
+  sub_objects_ =
+    autoware_utils::InterProcessPollingSubscriber<PredictedObjects>::create_subscription(
+      this, "~/input/objects", 1);
+  sub_pointcloud_ = autoware_utils::InterProcessPollingSubscriber<PointCloud2>::create_subscription(
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
 
   pub_status_ = create_publisher<ControlValidatorStatus>("~/output/validation_status", 1);
 
@@ -272,6 +373,13 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
 
   pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
+
+  pub_hazard_alert_ = create_publisher<HazardAlert>("~/output/hazard_alert", 1);
+  pub_hazard_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "~/debug/hazard/processing_time_ms", 1);
+  pub_hazard_processing_time_detail_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
+    "~/debug/hazard/processing_time_detail_ms", 1);
+  hazard_time_keeper_->add_reporter(pub_hazard_processing_time_detail_);
 
   debug_pose_publisher_ = std::make_shared<ControlValidatorDebugMarkerPublisher>(this);
 
@@ -284,8 +392,8 @@ ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
 
 void ControlValidator::setup_parameters()
 {
-  diag_error_count_threshold_ = declare_parameter<int64_t>("diag_error_count_threshold");
-  display_on_terminal_ = declare_parameter<bool>("display_on_terminal");
+  diag_error_count_threshold_ = params_.diag_error_count_threshold;
+  display_on_terminal_ = params_.display_on_terminal;
 
   try {
     vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -372,6 +480,11 @@ void ControlValidator::setup_diag()
         DiagnosticStatus::WARN, "The vehicle yaw is deviating but is still under the error value.");
     }
   });
+
+  d.add(ns + "uncrossable_bound_departure", [&](auto & stat) {
+    const auto is_ok = !validation_status_.will_cross_uncrossable_bound;
+    set_status(stat, is_ok, "The control predicted trajectory departs an uncrossable boundary.");
+  });
 }
 
 bool ControlValidator::infer_autonomous_control_state(const OperationModeState::ConstSharedPtr msg)
@@ -392,16 +505,52 @@ void ControlValidator::validation_filtering(ControlValidatorStatus & res)
   res.is_valid_latency = true;
   res.is_valid_yaw = true;
   res.is_warn_yaw = false;
+  res.will_cross_uncrossable_bound = false;
+}
+
+void ControlValidator::on_lanelet_map(const LaneletMapBin::ConstSharedPtr msg)
+{
+  lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
+    autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg));
 }
 
 void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
 {
   stop_watch.tic();
 
+  // refresh parameters if they were updated at runtime
+  if (param_listener_.is_old(params_)) {
+    params_ = param_listener_.get_params();
+    diag_error_count_threshold_ = params_.diag_error_count_threshold;
+    display_on_terminal_ = params_.display_on_terminal;
+    latency_validator.update_parameters(params_);
+    lateral_jerk_validator.update_parameters(params_);
+    trajectory_validator.update_parameters(params_);
+    acceleration_validator.update_parameters(params_);
+    velocity_validator.update_parameters(params_);
+    overrun_validator.update_parameters(params_);
+    yaw_validator.update_parameters(params_);
+    uncrossable_bound_departure_validator.update_parameters(params_);
+    collision_validator.update_parameters(params_);
+    hazard_warning.update_parameters(params_);
+  }
+
   // prepare ros topics
   const auto waiting = [this](const auto topic_name) {
     RCLCPP_INFO_SKIPFIRST_THROTTLE(get_logger(), *get_clock(), 5000, "waiting for %s", topic_name);
     return;
+  };
+  const auto publish_empty_hazard_alert = [this]() {
+    if (
+      !params_.collision_validator.enable_warning &&
+      !params_.uncrossable_bound_departure_validator.enable_warning) {
+      return;
+    }
+    const auto alert =
+      hazard_warning.make_alert(HazardWarningSources::empty(), vehicle_info_, get_clock()->now());
+    if (alert) {
+      pub_hazard_alert_->publish(*alert);
+    }
   };
 
   Control::ConstSharedPtr control_cmd_msg = msg;
@@ -422,6 +571,9 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "reference_trajectory size is less than 2. Cannot validate.");
+    // TODO(TIER IV): Evaluate collision and departure (including MRM) even when the
+    // reference_trajectory has less than 2 points.
+    publish_empty_hazard_alert();
     return;
   }
   OperationModeState::ConstSharedPtr operation_mode_msg = sub_operational_state_->take_data();
@@ -436,6 +588,10 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   if (!acceleration_msg) {
     return waiting(sub_measured_acc_->subscriber()->get_topic_name());
   }
+  const auto objects_msg = sub_objects_->take_data();
+  const auto pointcloud_msg = sub_pointcloud_->take_data();
+
+  HazardWarningSources hazard_sources;
 
   // pre process
   debug_pose_publisher_->clear_markers();
@@ -447,19 +603,45 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   lateral_jerk_validator.validate(
     validation_status_, *kinematics_msg, *control_cmd_msg, vehicle_info_.wheel_base_m);
 
+  visualization_msgs::msg::MarkerArray boundary_departure_markers;
   if (predicted_trajectory_msg->points.size() < 2) {
     // TODO(takagi): This check should be moved into each of the individual validate() functions.
     // Passing the rclcpp::Logger as an argument to the validate() function is necessary.
     RCLCPP_DEBUG(get_logger(), "predicted_trajectory size is less than 2. Cannot validate.");
+    publish_empty_hazard_alert();
   } else {
     trajectory_validator.validate(
       validation_status_, *predicted_trajectory_msg, *reference_trajectory_msg);
+    autoware_utils_debug::ScopedTimeTrack st("hazard_warning", *hazard_time_keeper_);
+    hazard_stop_watch_.tic();
+    {
+      autoware_utils_debug::ScopedTimeTrack st_departure(
+        "uncrossable_bound_departure_validate", *hazard_time_keeper_);
+      uncrossable_bound_departure_validator.validate(
+        validation_status_, *predicted_trajectory_msg, *kinematics_msg, *acceleration_msg,
+        lanelet_map_ptr_, vehicle_info_, boundary_departure_markers, hazard_sources);
+    }
+    const auto now = get_clock()->now();
+    collision_validator.validate(
+      *predicted_trajectory_msg, *kinematics_msg, objects_msg, vehicle_info_, pointcloud_msg,
+      hazard_sources);
+    const auto alert = hazard_warning.make_alert(hazard_sources, vehicle_info_, now);
+    const double hazard_processing_time_ms = hazard_stop_watch_.toc();
+    if (alert) {
+      pub_hazard_alert_->publish(*alert);
+      autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
+      processing_time_msg.stamp = now;
+      processing_time_msg.data = hazard_processing_time_ms;
+      pub_hazard_processing_time_->publish(processing_time_msg);
+    }
   }
   acceleration_validator.validate(
     validation_status_, *kinematics_msg, *control_cmd_msg, *acceleration_msg);
   velocity_validator.validate(validation_status_, *reference_trajectory_msg, *kinematics_msg);
   overrun_validator.validate(validation_status_, *reference_trajectory_msg, *kinematics_msg);
   yaw_validator.validate(validation_status_, *reference_trajectory_msg, *kinematics_msg);
+
+  publish_boundary_departure_markers(std::move(boundary_departure_markers));
 
   if (!flag_autonomous_control_enabled_) {
     // if warnings or errors are being suppressed, printing simple logs
@@ -499,11 +681,28 @@ void ControlValidator::publish_debug_info(const geometry_msgs::msg::Pose & ego_p
   pub_processing_time_->publish(processing_time_msg);
 }
 
+void ControlValidator::publish_boundary_departure_markers(
+  visualization_msgs::msg::MarkerArray markers)
+{
+  visualization_msgs::msg::MarkerArray output_markers;
+  output_markers.markers.reserve(markers.markers.size() + 1);
+
+  // Clear the markers published in the previous cycle before adding the current ones.
+  visualization_msgs::msg::Marker delete_all_marker;
+  delete_all_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+  output_markers.markers.push_back(delete_all_marker);
+
+  std::move(
+    markers.markers.begin(), markers.markers.end(), std::back_inserter(output_markers.markers));
+
+  pub_markers_->publish(output_markers);
+}
+
 bool ControlValidator::is_all_valid(const ControlValidatorStatus & s)
 {
   return s.is_valid_lateral_jerk && s.is_valid_max_distance_deviation && s.is_valid_acc &&
          !s.is_rolling_back && !s.is_over_velocity && !s.has_overrun_stop_point &&
-         !s.will_overrun_stop_point && s.is_valid_yaw;
+         !s.will_overrun_stop_point && s.is_valid_yaw && !s.will_cross_uncrossable_bound;
 }
 
 std::string ControlValidator::generate_error_message(const ControlValidatorStatus & s)
@@ -538,6 +737,10 @@ std::string ControlValidator::generate_error_message(const ControlValidatorStatu
     error_messages.push_back("WILL OVERRUN STOP POINT");
   }
 
+  if (s.will_cross_uncrossable_bound) {
+    error_messages.push_back("BOUNDARY DEPARTURE");
+  }
+
   if (error_messages.empty()) {
     return "INVALID CONTROL";
   }
@@ -555,8 +758,13 @@ std::string ControlValidator::generate_error_message(const ControlValidatorStatu
 
 void ControlValidator::display_status()
 {
-  if (!display_on_terminal_) return;
   static rclcpp::Clock clock{RCL_ROS_TIME};
+
+  if (validation_status_.will_cross_uncrossable_bound) {
+    RCLCPP_WARN_THROTTLE(get_logger(), clock, 2000, "predicted trajectory cross uncrossable bound");
+  }
+
+  if (!display_on_terminal_) return;
 
   const auto warn = [this](const bool status, const std::string & msg, const double value) {
     if (!status) {
