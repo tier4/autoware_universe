@@ -94,7 +94,8 @@ inline constexpr std::array<int64_t, 3> LANE_TYPES_SHAPE = {1, NUM_SEGMENTS_IN_L
 inline constexpr std::array<int64_t, 3> LANES_HAS_SPEED_LIMIT_SHAPE = {1, NUM_SEGMENTS_IN_LANE, 1};
 inline constexpr std::array<int64_t, 3> LANES_SPEED_LIMIT_SHAPE = {1, NUM_SEGMENTS_IN_LANE, 1};
 // Route waypoints: x, y, cos, sin of the route direction at points ROUTE_WAYPOINT_SPACING_M apart
-// along the route, starting at the ego's projection on it. Points past the route end are zero.
+// along the route, starting at the start of the route segment the ego is on (the lanelet piece
+// of at most LANE_SEGMENT_MAX_LENGTH_M), not at the ego. Points past the route end are zero.
 inline constexpr int64_t NUM_ROUTE_WAYPOINTS = 25;
 inline constexpr double ROUTE_WAYPOINT_SPACING_M = 5.0;
 inline constexpr std::array<int64_t, 3> ROUTE_WAYPOINTS_SHAPE = {1, NUM_ROUTE_WAYPOINTS, POSE_DIM};

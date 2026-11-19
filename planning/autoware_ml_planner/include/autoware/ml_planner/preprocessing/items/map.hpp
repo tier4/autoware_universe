@@ -288,10 +288,11 @@ TrafficLightStatus identify_current_light_status(
   const std::vector<autoware_perception_msgs::msg::TrafficLightElement> & traffic_light_elements);
 
 /**
- * @brief Place waypoints at equal spacing along a line, starting at the origin's projection on it.
+ * @brief Place waypoints at equal spacing along a line, starting at its first point.
  *
- * The origin (the ego in the ego frame) is projected onto the nearest part of the line, and
- * waypoint k lies k * spacing_m further along the line. A join between two consecutive route
+ * Waypoint k lies k * spacing_m along the line from its first point, so the waypoints do not
+ * depend on where the ego stands on the line: with the selected route segments, the line starts
+ * at the start of the segment the ego is on. A join between two consecutive route
  * segments, such as the sideways step of a lane change, is a part of the line like any other.
  * Each waypoint holds x, y and the cos, sin of the direction of the line part it lies on.
  * Waypoints beyond the end of the line stay all zero.

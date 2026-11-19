@@ -91,7 +91,7 @@ LaneletSegment make_route_segment(const lanelet::Id id)
 }
 }  // namespace
 
-TEST(RouteWaypointsTest, StartAtEgoProjectionOnStraightLine)
+TEST(RouteWaypointsTest, StartAtLineStartOnStraightLine)
 {
   const std::vector<Eigen::Vector2d> line = {{-10.0, 2.0}, {190.0, 2.0}};
   const auto waypoints = sample_route_waypoints(line, NUM_ROUTE_WAYPOINTS, 5.0);
@@ -99,7 +99,7 @@ TEST(RouteWaypointsTest, StartAtEgoProjectionOnStraightLine)
   ASSERT_EQ(waypoints.shape(0), static_cast<size_t>(NUM_ROUTE_WAYPOINTS));
   ASSERT_EQ(waypoints.shape(1), static_cast<size_t>(POSE_DIM));
   for (int64_t k = 0; k < NUM_ROUTE_WAYPOINTS; ++k) {
-    expect_waypoint(waypoints, k, 5.0 * static_cast<double>(k), 2.0, 1.0, 0.0);
+    expect_waypoint(waypoints, k, -10.0 + 5.0 * static_cast<double>(k), 2.0, 1.0, 0.0);
   }
 }
 
@@ -108,10 +108,9 @@ TEST(RouteWaypointsTest, WaypointsBeyondRouteEndAreZero)
   const std::vector<Eigen::Vector2d> line = {{-10.0, 0.0}, {12.0, 0.0}};
   const auto waypoints = sample_route_waypoints(line, NUM_ROUTE_WAYPOINTS, 5.0);
 
-  expect_waypoint(waypoints, 0, 0.0, 0.0, 1.0, 0.0);
-  expect_waypoint(waypoints, 1, 5.0, 0.0, 1.0, 0.0);
-  expect_waypoint(waypoints, 2, 10.0, 0.0, 1.0, 0.0);
-  expect_zero_from(waypoints, 3);
+  expect_waypoint(waypoints, 0, -10.0, 0.0, 1.0, 0.0);
+  expect_waypoint(waypoints, 4, 10.0, 0.0, 1.0, 0.0);
+  expect_zero_from(waypoints, 5);
 }
 
 TEST(RouteWaypointsTest, LaneChangeStepIsPartOfLine)
@@ -121,31 +120,33 @@ TEST(RouteWaypointsTest, LaneChangeStepIsPartOfLine)
   const std::vector<Eigen::Vector2d> line = {{-10.0, 0.0}, {10.0, 0.0}, {10.0, 3.5}, {30.0, 3.5}};
   const auto waypoints = sample_route_waypoints(line, NUM_ROUTE_WAYPOINTS, 5.0);
 
-  expect_waypoint(waypoints, 0, 0.0, 0.0, 1.0, 0.0);
-  expect_waypoint(waypoints, 1, 5.0, 0.0, 1.0, 0.0);
+  expect_waypoint(waypoints, 0, -10.0, 0.0, 1.0, 0.0);
+  expect_waypoint(waypoints, 3, 5.0, 0.0, 1.0, 0.0);
   // At the start of the step, the point takes the direction of the step
-  expect_waypoint(waypoints, 2, 10.0, 0.0, 0.0, 1.0);
-  expect_waypoint(waypoints, 3, 11.5, 3.5, 1.0, 0.0);
-  expect_waypoint(waypoints, 6, 26.5, 3.5, 1.0, 0.0);
-  expect_zero_from(waypoints, 7);
+  expect_waypoint(waypoints, 4, 10.0, 0.0, 0.0, 1.0);
+  expect_waypoint(waypoints, 5, 11.5, 3.5, 1.0, 0.0);
+  expect_waypoint(waypoints, 8, 26.5, 3.5, 1.0, 0.0);
+  expect_zero_from(waypoints, 9);
 }
 
-TEST(RouteWaypointsTest, EgoBesideLineProjectsOntoIt)
+TEST(RouteWaypointsTest, IndependentOfEgoBesideLine)
 {
   const std::vector<Eigen::Vector2d> line = {{-20.0, -3.0}, {80.0, -3.0}};
   const auto waypoints = sample_route_waypoints(line, NUM_ROUTE_WAYPOINTS, 5.0);
 
-  expect_waypoint(waypoints, 0, 0.0, -3.0, 1.0, 0.0);
-  expect_waypoint(waypoints, 15, 75.0, -3.0, 1.0, 0.0);
-  expect_zero_from(waypoints, 16);
+  expect_waypoint(waypoints, 0, -20.0, -3.0, 1.0, 0.0);
+  expect_waypoint(waypoints, 19, 75.0, -3.0, 1.0, 0.0);
+  expect_zero_from(waypoints, 20);
 }
 
-TEST(RouteWaypointsTest, EgoPastRouteEndGivesZeros)
+TEST(RouteWaypointsTest, LineBehindEgoIsStillSampled)
 {
   const std::vector<Eigen::Vector2d> line = {{-50.0, 0.0}, {-10.0, 0.0}};
   const auto waypoints = sample_route_waypoints(line, NUM_ROUTE_WAYPOINTS, 5.0);
 
-  expect_zero_from(waypoints, 0);
+  expect_waypoint(waypoints, 0, -50.0, 0.0, 1.0, 0.0);
+  expect_waypoint(waypoints, 7, -15.0, 0.0, 1.0, 0.0);
+  expect_zero_from(waypoints, 8);
 }
 
 TEST(RouteWaypointsTest, LineWithoutPartGivesZeros)
@@ -160,7 +161,8 @@ TEST(RouteWaypointsTest, LineWithoutPartGivesZeros)
 
 TEST(RouteWaypointsTest, FollowsRouteSegmentCenterlinesInEgoFrame)
 {
-  // Two consecutive lanelets on y = 0; the ego stands at (30, 0.5), heading east
+  // Two consecutive 100 m lanelets on y = 0, each split into three 33.3 m lane segments; the ego
+  // stands at (50, 0.5), heading east, on the second segment of the first lanelet
   const lanelet::Lanelet first = make_straight_lanelet(0.0, 0.0, 100.0, 0.0);
   const lanelet::Lanelet second = make_straight_lanelet(100.0, 0.0, 200.0, 0.0);
   auto lanelet_map = std::make_shared<lanelet::LaneletMap>();
@@ -171,19 +173,21 @@ TEST(RouteWaypointsTest, FollowsRouteSegmentCenterlinesInEgoFrame)
   LaneletRoute route;
   route.segments = {make_route_segment(first.id()), make_route_segment(second.id())};
   Eigen::Matrix4d map_to_ego = Eigen::Matrix4d::Identity();
-  map_to_ego(0, 3) = -30.0;
+  map_to_ego(0, 3) = -50.0;
   map_to_ego(1, 3) = -0.5;
   const auto segment_indices = context.select_route_segment_indices(
-    route, map_to_ego, 30.0, 0.5, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
-  ASSERT_EQ(segment_indices.size(), 2U);
+    route, map_to_ego, 50.0, 0.5, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
+  ASSERT_EQ(segment_indices.size(), 5U);
 
   const auto waypoints = context.create_route_waypoint_tensor(
     map_to_ego, segment_indices, NUM_ROUTE_WAYPOINTS, ROUTE_WAYPOINT_SPACING_M);
 
-  // Waypoint 14 lies where the two lanelets meet
+  // The waypoints start at the start of the ego's lane segment (x = 100 / 3 in the map), not at
+  // the ego, and keep their 5 m spacing across the segment joins
+  const double start_x = 100.0 / 3.0 - 50.0;
   for (int64_t k = 0; k < NUM_ROUTE_WAYPOINTS; ++k) {
     expect_waypoint(
-      waypoints, k, ROUTE_WAYPOINT_SPACING_M * static_cast<double>(k), -0.5, 1.0, 0.0);
+      waypoints, k, start_x + ROUTE_WAYPOINT_SPACING_M * static_cast<double>(k), -0.5, 1.0, 0.0);
   }
 }
 
