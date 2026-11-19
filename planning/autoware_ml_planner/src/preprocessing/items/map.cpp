@@ -839,23 +839,10 @@ xt::xarray<float> sample_route_waypoints(
     arc[i + 1] = arc[i] + (line[i + 1] - line[i]).norm();
   }
 
-  // The ego stands where the origin projects onto the nearest line part (the first one on a tie)
-  double nearest_distance = std::numeric_limits<double>::infinity();
-  double ego_arc = 0.0;
-  for (size_t i = 0; i < num_parts; ++i) {
-    const Eigen::Vector2d step = line[i + 1] - line[i];
-    const double t =
-      std::clamp(-line[i].dot(step) / std::max(step.squaredNorm(), epsilon), 0.0, 1.0);
-    const double distance = (line[i] + t * step).norm();
-    if (distance < nearest_distance) {
-      nearest_distance = distance;
-      ego_arc = arc[i] + t * (arc[i + 1] - arc[i]);
-    }
-  }
-
+  // Waypoint k lies k * spacing_m along the line from its start, independent of the ego position
   size_t part = 0;
   for (int64_t k = 0; k < num_waypoints; ++k) {
-    const double target = ego_arc + static_cast<double>(k) * spacing_m;
+    const double target = static_cast<double>(k) * spacing_m;
     if (target >= arc.back()) {
       break;  // The route ends before this waypoint: it and the ones after it stay zero
     }
