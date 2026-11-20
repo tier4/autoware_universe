@@ -17,6 +17,8 @@
 #include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/lanelet2_utils/intersection.hpp>
 #include <autoware/lanelet2_utils/topology.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <rclcpp/duration.hpp>
 
 #include <algorithm>
 #include <string>
@@ -98,8 +100,19 @@ tl::expected<LaneChain, std::string> build_lane_chain(const lanelet::ConstLanele
 }
 
 size_t find_window_end(
-  const std::vector<TrajectoryPoint> & /*points*/, const RoadFollowingParams & /*params*/)
+  const std::vector<TrajectoryPoint> & points, const RoadFollowingParams & params)
 {
-  return 0U;  // red stub
+  if (points.empty()) {
+    return 0U;
+  }
+  const double start_time = rclcpp::Duration(points.front().time_from_start).seconds();
+  for (size_t i = 0; i < points.size(); ++i) {
+    const double arc_length = autoware::motion_utils::calcSignedArcLength(points, 0, i);
+    const double time = rclcpp::Duration(points.at(i).time_from_start).seconds() - start_time;
+    if (arc_length > params.window_distance && time > params.window_time) {
+      return i;
+    }
+  }
+  return points.size();
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following
