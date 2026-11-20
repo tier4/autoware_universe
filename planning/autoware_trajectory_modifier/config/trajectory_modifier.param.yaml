@@ -203,6 +203,8 @@
       max_yaw_deviation_deg: 90.0 # [deg]
       check_timeout_after_stop_line: true
       min_hold_trajectory_length: 5.0 # [m]
+      allow_if_cannot_stop_distance: 0.0 # [m]
+      overshoot_tolerance: 0.5 # [m]
       hold_position_when_stopped: true
       hold_position_distance_threshold: 2.0 # [m]
 

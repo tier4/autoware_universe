@@ -95,6 +95,10 @@ private:
     double max_yaw_deviation_rad{1.5707963267948966};
     bool check_timeout_after_stop_line{true};
     double min_hold_trajectory_length{5.0};
+    //! [m] pass a stop line ego cannot stop for when its front is closer than this; 0 disables
+    double allow_if_cannot_stop_distance{0.0};
+    //! [m] stopping distance margin for the cannot-stop check
+    double overshoot_tolerance{0.5};
     bool hold_position_when_stopped{true};
     //! [m] hold in place when stopped and the stop-line stop is within this distance
     double hold_position_distance_threshold{2.0};
@@ -146,6 +150,7 @@ private:
     std::optional<double> stop_line_route_arc_m;
     std::optional<double> end_line_route_arc_m;
     bool end_hold_active{false};
+    bool stop_line_passed_unstoppable{false};
     std::optional<tier4_v2x_msgs::msg::InfrastructureCommand> infrastructure_command;
     DebugData debug_data;
   };
@@ -196,6 +201,7 @@ private:
     const std::optional<double> & line_route_arc_m) const;
   std::optional<double> calc_state_age_sec(const Module & module) const;
   bool is_state_timeout(const Module & module) const;
+  bool cannot_stop_before(const std::optional<double> & front_to_line_m) const;
   bool has_right_of_way(const Module & module) const;
 
   void publish_debug_string(const std::string & ns) const;
