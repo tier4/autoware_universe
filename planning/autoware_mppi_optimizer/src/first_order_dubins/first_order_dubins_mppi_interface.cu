@@ -32,6 +32,7 @@
 #include <mppi/sampling_distributions/smooth-MPPI/smooth-MPPI.cuh>
 #include <mppi/utils/gpu_err_chk.cuh>
 #include <mppi/utils/nvtx.cuh>
+#include <rclcpp/clock.hpp>
 #include <rclcpp/logging.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -67,10 +68,18 @@ constexpr int kSampledDebugRollouts = 128;
 constexpr int kMaxVizRollouts = 256;
 constexpr int kMaxWorstVizRollouts = 128;
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
+// Hot-path status repeats at the planner rate. Keep the first report, then at most once per period.
+constexpr int64_t kHotPathLogPeriodMs = 5000;
 
 rclcpp::Logger mppiLogger()
 {
   return rclcpp::get_logger(kLoggerName);
+}
+
+rclcpp::Clock & mppiLogClock()
+{
+  static rclcpp::Clock clock{RCL_STEADY_TIME};
+  return clock;
 }
 
 bool isValidSignedInterval(const std::optional<float> & lower, const std::optional<float> & upper)
@@ -3072,8 +3081,8 @@ try {
       steering_status.has_value() && std::isfinite(steering_status->steering_tire_angle);
     impl_->updateSteeringHoldState(initial_state, short_reference, steering_measurement_available);
     impl_->invalidateNominalWarmStart(FirstOrderDubinsMppiNominalResetReason::skipped);
-    RCLCPP_WARN(
-      mppiLogger(), "MPPI skipped: %s",
+    RCLCPP_WARN_THROTTLE(
+      mppiLogger(), mppiLogClock(), kHotPathLogPeriodMs, "MPPI skipped: %s",
       not_enough_input_points
         ? "trajectory has fewer than 2 points"
         : (degenerate_reference ? "trajectory has no planar extent"
@@ -3140,7 +3149,7 @@ try {
     // The controller replayed its preserved seed for diagnostics. It is not an optimized result:
     // always return the existing limited-reference fallback and leave execution history untouched.
     no_eligible_rollouts = true;
-    RCLCPP_WARN(mppiLogger(), "%s", error.what());
+    RCLCPP_WARN_THROTTLE(mppiLogger(), mppiLogClock(), kHotPathLogPeriodMs, "%s", error.what());
   }
 
   FirstOrderDubinsMppiAppliedPlantState & applied_plant = result.debug.applied_plant;
@@ -3320,8 +3329,8 @@ try {
   if (result.debug.failed_rollout_iteration >= 0) {
     const auto & failure = result.debug.rollout_iteration_diagnostics.at(
       static_cast<size_t>(result.debug.failed_rollout_iteration));
-    RCLCPP_WARN(
-      mppiLogger(),
+    RCLCPP_WARN_THROTTLE(
+      mppiLogger(), mppiLogClock(), kHotPathLogPeriodMs,
       "MPPI failed iteration=%d (zero-based): eligible=%d unsafe=%d nonfinite=%d "
       "lateral=%d obstacle=%d road_border=%d weight_sum=%.3g; "
       "first_geometric_violation=%s step=%d time=%.3f s geometry_index=%d object_id=%s",
@@ -3419,13 +3428,12 @@ try {
       result.debug.failed_rollout_iteration);
   }
 
-  const auto validation_reasons = to_string(result.debug.validation.reasons);
-  const auto cost_breakdown = formatCostBreakdown(result.debug.cost_breakdown);
   result.debug.timing.total_ms =
     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_time)
       .count();
-  RCLCPP_INFO(
-    mppiLogger(),
+  // Format arguments are evaluated only when this throttled INFO line is emitted.
+  RCLCPP_INFO_THROTTLE(
+    mppiLogger(), mppiLogClock(), kHotPathLogPeriodMs,
     "MPPI tracked diffusion ref in %.1f ms (seed_nominal=%.1f): start_idx=%zu steps=%d "
     "output points size=%zu points=%zu rollouts=%zu "
     "obstacles=%zu road_borders=%zu drivable_segments=%zu u_accel=%.3f u_steer=%.3f "
@@ -3434,8 +3442,9 @@ try {
     result.debug.timing.total_ms, result.debug.timing.seed_nominal_ms, impl_->tracking_start_idx,
     impl_->step_count, output.points.size(), num_points, result.debug.rollouts.size(),
     tracked_objects.objects.size(), road_borders.size(), drivable_area.size(), control.accel_cmd,
-    control.steer_cmd, result.debug.baseline_cost, cost_breakdown.c_str(),
-    validation_reasons.c_str(), max_pos_delta, max_vel_delta);
+    control.steer_cmd, result.debug.baseline_cost,
+    formatCostBreakdown(result.debug.cost_breakdown).c_str(),
+    to_string(result.debug.validation.reasons).c_str(), max_pos_delta, max_vel_delta);
 
   if (no_eligible_rollouts || (impl_->skip_if_invalid && !validation.isValid())) {
     result.trajectory = input;
@@ -3445,8 +3454,8 @@ try {
     result.debug.optimized_trajectory = result.trajectory;
     // Keep nominal_trajectory: still shows the warm-start open-loop path.
     result.debug.was_rejected = true;
-    RCLCPP_WARN(
-      mppiLogger(),
+    RCLCPP_WARN_THROTTLE(
+      mppiLogger(), mppiLogClock(), kHotPathLogPeriodMs,
       "MPPI output rejected with invalidity_mask=%u at point=%s; returning the input trajectory "
       "unchanged",
       static_cast<unsigned int>(validation.reasons),

@@ -64,7 +64,9 @@ ScoredCandidateTrajectories TrajectoryRankerWrapper::rank_trajectories(
 
   auto result = ranker_ptr_->process(input_trajectories, context);
   if (!result) {
-    RCLCPP_ERROR(logger_, "Failed to rank trajectories: %s", result.error().c_str());
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *node_ptr_->get_clock(), 5000, "Failed to rank trajectories: %s",
+      result.error().c_str());
     return ScoredCandidateTrajectories();
   }
 
