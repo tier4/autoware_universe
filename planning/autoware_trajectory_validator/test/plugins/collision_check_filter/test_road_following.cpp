@@ -16,6 +16,7 @@
 #include "../../../src/filters/safety/collision_check_filter/road_following.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
+#include <rclcpp/duration.hpp>
 
 #include <autoware_planning_msgs/msg/lanelet_primitive.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
@@ -28,7 +29,6 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/Lanelet.h>
-#include <rclcpp/duration.hpp>
 
 #include <algorithm>
 #include <cmath>
