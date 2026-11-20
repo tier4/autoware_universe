@@ -562,7 +562,7 @@ protected:
   {
     const auto distance = autoware::motion_utils::calculate_stop_distance(
       velocity, acceleration, params_.stopping_constraints.maximum_deceleration,
-      params_.stopping_constraints.jerk_limit, params_.stopping_constraints.delay_response_time);
+      params_.stopping_constraints.jerk_limit, 0.0);
     EXPECT_TRUE(distance.has_value());
     return distance.value_or(0.0);
   }
@@ -1726,7 +1726,8 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, BrakingDistanceIsRelativeToEgoFor
   }
 }
 
-TEST_F(VirtualTrafficLightStopIntegrationTest, SharedDelayAccelerationAndLimitsControlBraking)
+TEST_F(
+  VirtualTrafficLightStopIntegrationTest, SharedAccelerationAndLimitsControlBrakingWithoutDelay)
 {
   const auto map = make_vtl_map(12345, 5.0, 20.0, 60.0);
   const auto run = [&](const double delay, const double acceleration) {
@@ -1744,7 +1745,7 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, SharedDelayAccelerationAndLimitsC
   const auto without_delay = run(0.0, 0.0);
   const auto delayed = run(0.8, 0.0);
   const auto accelerating = run(0.8, 1.0);
-  EXPECT_GT(delayed, without_delay + 3.0);
+  EXPECT_NEAR(delayed, without_delay, 1e-6);
   EXPECT_GT(accelerating, delayed);
   params_.stopping_constraints.maximum_deceleration = 2.0;
   params_.stopping_constraints.jerk_limit = 1.0;

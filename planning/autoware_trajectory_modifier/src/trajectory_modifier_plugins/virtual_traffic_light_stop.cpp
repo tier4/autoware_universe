@@ -883,8 +883,7 @@ bool VirtualTrafficLightStop::insert_stop_velocity(
     const auto stopping_distance = utils::clamp_stop_point_arc_length(
       stop_s - ego_s, std::numeric_limits<double>::infinity(),
       cycle_odometry_->twist.twist.linear.x, cycle_acceleration_->accel.accel.linear.x,
-      stopping_params_.maximum_deceleration, stopping_params_.jerk_limit,
-      stopping_params_.delay_response_time);
+      stopping_params_.maximum_deceleration, stopping_params_.jerk_limit);
     stop_s = ego_s + std::min(stopping_distance, std::max(0.0, path.length() - ego_s));
   }
   stop_s = std::clamp(stop_s, 0.0, path.length());
