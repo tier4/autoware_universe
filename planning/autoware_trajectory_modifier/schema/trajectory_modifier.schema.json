@@ -37,6 +37,7 @@
             "autoware::trajectory_modifier::plugin::ObstacleStop",
             "autoware::trajectory_modifier::plugin::TrafficLightStop",
             "autoware::trajectory_modifier::plugin::DetectionAreaStop",
+            "autoware::trajectory_modifier::plugin::VirtualTrafficLightStop",
             "autoware::trajectory_modifier::plugin::VelocityModifier",
             "autoware::trajectory_modifier::plugin::TrajectoryTemporalMPTOptimizer",
             "autoware::trajectory_modifier::plugin::TrajectoryPointFixer",
@@ -1937,6 +1938,80 @@
             "enable_detected_obstacle_logging": {
               "type": "boolean",
               "default": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "use_virtual_traffic_light_stop": {
+          "type": "boolean",
+          "description": "Enable the virtual traffic light stop modifier plugin",
+          "default": false
+        },
+        "virtual_traffic_light_stop": {
+          "type": "object",
+          "properties": {
+            "max_delay_sec": {
+              "type": "number",
+              "description": "Maximum accepted delay of a virtual traffic light state [s]",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "near_line_distance": {
+              "type": "number",
+              "description": "Distance to an end line considered near [m]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "dead_line_margin": {
+              "type": "number",
+              "description": "Margin used to determine whether a line has been crossed [m]",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "max_yaw_deviation_deg": {
+              "type": "number",
+              "description": "Maximum yaw deviation used for ego nearest point matching [deg]",
+              "default": 90.0,
+              "minimum": 0.0,
+              "maximum": 180.0
+            },
+            "check_timeout_after_stop_line": {
+              "type": "boolean",
+              "description": "Check virtual traffic light state timeout after crossing the stop line",
+              "default": true
+            },
+            "min_hold_trajectory_length": {
+              "type": "number",
+              "description": "Minimum output trajectory length while holding at an end line [m]",
+              "default": 5.0,
+              "minimum": 0.0
+            },
+            "allow_if_cannot_stop_distance": {
+              "type": "number",
+              "description": "Pass a stop line that ego cannot stop for when its front is closer than this; 0 disables [m]",
+              "default": 0.0,
+              "minimum": 0.0,
+              "maximum": 100.0
+            },
+            "overshoot_tolerance": {
+              "type": "number",
+              "description": "Stopping distance margin used by the cannot-stop check [m]",
+              "default": 0.5,
+              "minimum": 0.0,
+              "maximum": 100.0
+            },
+            "hold_position_when_stopped": {
+              "type": "boolean",
+              "description": "Hold in place when ego is stopped close to the stop-line stop",
+              "default": true
+            },
+            "hold_position_distance_threshold": {
+              "type": "number",
+              "description": "Hold only if the stop-line stop is within this distance from ego [m]",
+              "default": 2.0,
+              "minimum": 0.0,
+              "maximum": 100.0
             }
           },
           "required": [],
