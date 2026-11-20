@@ -16,11 +16,11 @@
 #define FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_
 
 #include "parameter.hpp"
+#include "trajectory_utils.hpp"
 
-#include <rcpputils/tl_expected/expected.hpp>
+#include <tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
-#include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -33,7 +33,6 @@
 namespace autoware::trajectory_validator::plugin::safety::road_following
 {
 using autoware_planning_msgs::msg::LaneletRoute;
-using autoware_planning_msgs::msg::TrajectoryPoint;
 
 /**
  * @brief One lanelet list with its combined shape.
@@ -65,13 +64,27 @@ struct LaneChain
 
 /**
  * @brief Find the end of the window that the road following tests check.
- * @details The arc length and the time of each point count from the first point. The window ends
- * at the first point with an arc length over `window_distance` and a time over `window_time`.
- * That point is not in the window.
- * @return The index of that point, or `points.size()` when no point is over both limits.
+ * @details The arc length and the time of each sample count from the first sample. The window
+ * ends at the first sample with an arc length over `window_distance` and a time over
+ * `window_time`. That sample is not in the window.
+ * @return The index of that sample, or `trajectory.size()` when no sample is over both limits.
  */
 [[nodiscard]] size_t find_window_end(
-  const std::vector<TrajectoryPoint> & points, const RoadFollowingParams & params);
+  const TrajectoryData & trajectory, const RoadFollowingParams & params);
+
+/**
+ * @brief Test if the window samples follow one chain.
+ * @details The window is the samples `[0, window_end)` of `trajectory`. Each window sample must
+ * pass three tests. Its footprint crosses no left or right bound of the chain lanelets from
+ * `start_lanelet` to the end of the chain. Its lateral distance from the chain centerline is
+ * `max_lateral_deviation` or less. Its heading differs from the centerline angle by
+ * `max_heading_deviation` or less.
+ * @return False when `start_lanelet` is not in the chain. Otherwise, true when every window sample
+ * passes the three tests. An empty window gives true.
+ */
+[[nodiscard]] bool follows_chain(
+  const LaneChain & chain, const lanelet::ConstLanelet & start_lanelet,
+  const TrajectoryData & trajectory, size_t window_end, const RoadFollowingParams & params);
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_
