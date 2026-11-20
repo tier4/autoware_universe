@@ -1,0 +1,20 @@
+<launch>
+  <arg name="predicted_trajectory_validator_param_path" default="$(find-pkg-share autoware_predicted_trajectory_validator)/config/predicted_trajectory_validator.param.yaml"/>
+  <arg name="input_predicted_trajectory" default="/control/trajectory_follower/lateral/predicted_trajectory"/>
+  <arg name="input_operational_mode_state" default="/api/operation_mode/state"/>
+
+  <node name="predicted_trajectory_validator" exec="autoware_predicted_trajectory_validator_node" pkg="autoware_predicted_trajectory_validator" output="screen">
+    <!-- load config a file -->
+    <param from="$(var predicted_trajectory_validator_param_path)"/>
+
+    <!-- remap topic name -->
+    <remap from="~/input/kinematics" to="/localization/kinematic_state"/>
+    <remap from="~/input/operational_mode_state" to="$(var input_operational_mode_state)"/>
+    <remap from="~/input/measured_acceleration" to="/localization/acceleration"/>
+    <remap from="~/input/lanelet2_map" to="/map/vector_map"/>
+    <remap from="~/input/predicted_trajectory" to="$(var input_predicted_trajectory)"/>
+    <remap from="~/input/objects" to="/perception/object_recognition/objects"/>
+    <remap from="~/input/pointcloud" to="/perception/obstacle_segmentation/pointcloud"/>
+    <remap from="~/output/validation_status" to="~/validation_status"/>
+  </node>
+</launch>
