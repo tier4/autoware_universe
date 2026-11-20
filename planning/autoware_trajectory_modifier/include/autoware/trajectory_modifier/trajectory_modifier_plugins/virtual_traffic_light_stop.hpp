@@ -95,6 +95,9 @@ private:
     double max_yaw_deviation_rad{1.5707963267948966};
     bool check_timeout_after_stop_line{true};
     double min_hold_trajectory_length{5.0};
+    bool hold_position_when_stopped{true};
+    //! [m] hold in place when stopped and the stop-line stop is within this distance
+    double hold_position_distance_threshold{2.0};
   };
 
   struct DebugData

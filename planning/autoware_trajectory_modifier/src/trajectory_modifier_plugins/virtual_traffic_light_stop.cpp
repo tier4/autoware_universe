@@ -223,6 +223,10 @@ void VirtualTrafficLightStop::update_params(const TrajectoryModifierParams & par
     params.virtual_traffic_light_stop.check_timeout_after_stop_line;
   planner_param_.min_hold_trajectory_length =
     params.virtual_traffic_light_stop.min_hold_trajectory_length;
+  planner_param_.hold_position_when_stopped =
+    params.virtual_traffic_light_stop.hold_position_when_stopped;
+  planner_param_.hold_position_distance_threshold =
+    params.virtual_traffic_light_stop.hold_position_distance_threshold;
   stopping_params_ = params.stopping_constraints;
   trajectory_time_step_ = params.trajectory_time_step;
 }
@@ -899,8 +903,12 @@ bool VirtualTrafficLightStop::insert_stop_velocity(
   }
 
   const auto remaining = stop_s - ego_s;
+  // The end line keeps its stop so that a short stop still moves up into FINALIZING.
+  const bool hold_in_place = planner_param_.hold_position_when_stopped && stopped &&
+                             target == StopTarget::STOP_LINE &&
+                             remaining <= planner_param_.hold_position_distance_threshold;
   if (
-    (stopped && remaining < stopping_params_.arrived_distance_threshold) ||
+    hold_in_place || (stopped && remaining < stopping_params_.arrived_distance_threshold) ||
     !utils::insert_stop_point(traj_points, stop_s, trajectory_time_step_)) {
     utils::replace_trajectory_with_stop_point(traj_points, ego_pose, trajectory_time_step_);
     stop_pose = ego_pose;

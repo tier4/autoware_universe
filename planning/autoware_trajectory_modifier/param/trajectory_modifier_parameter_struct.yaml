@@ -1645,6 +1645,18 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.0, 100.0]
       read_only: false
+    hold_position_when_stopped:
+      type: bool
+      default_value: true
+      description: Hold in place when ego is stopped close to the stop-line stop
+      read_only: false
+    hold_position_distance_threshold:
+      type: double
+      default_value: 2.0
+      description: Hold only if the stop-line stop is within this distance from ego [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
 
   use_detection_area_stop:
     type: bool
