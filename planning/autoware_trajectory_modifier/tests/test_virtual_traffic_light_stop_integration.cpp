@@ -685,6 +685,29 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, DenseCandidateFacingAwayOrFarFrom
   run(make_standstill_start_trajectory(ego_x + 6.0, 0.0), 0.0);
 }
 
+TEST_F(VirtualTrafficLightStopIntegrationTest, StoppedEgoHoldsOnlyWithinHoldThreshold)
+{
+  constexpr lanelet::Id instrument_id = 12345;
+  constexpr double stop_x = 20.0;
+  const auto map = make_vtl_map(instrument_id, 5.0, stop_x, 40.0);
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  const auto run = [&](const double ego_x) {
+    auto input = make_vtl_input(
+      make_odometry(ego_x, 0.0, node_->now()), map, route,
+      make_vtl_states(instrument_id, false, false, node_->now()));
+    auto trajectory = make_straight_trajectory(ego_x, 40.0);
+    input.candidate_index = 0U;
+    EXPECT_TRUE(process_candidate(trajectory, input));
+    return trajectory;
+  };
+
+  const double near_x = geometric_stop_x(stop_x) - 1.5;
+  expect_three_point_stop_at_ego(run(near_x), near_x, params_.trajectory_time_step);
+
+  const double far_x = geometric_stop_x(stop_x) - 3.0;
+  expect_truncated_stop_at_x(run(far_x), geometric_stop_x(stop_x));
+}
+
 TEST_F(VirtualTrafficLightStopIntegrationTest, DeniedFinalizedStateStillStopsAtStopLine)
 {
   constexpr lanelet::Id instrument_id = 12345;

@@ -1841,6 +1841,18 @@
               "description": "Minimum output trajectory length while holding at an end line [m]",
               "default": 5.0,
               "minimum": 0.0
+            },
+            "hold_position_when_stopped": {
+              "type": "boolean",
+              "description": "Hold in place when ego is stopped close to the stop-line stop",
+              "default": true
+            },
+            "hold_position_distance_threshold": {
+              "type": "number",
+              "description": "Hold only if the stop-line stop is within this distance from ego [m]",
+              "default": 2.0,
+              "minimum": 0.0,
+              "maximum": 100.0
             }
           },
           "required": [],
