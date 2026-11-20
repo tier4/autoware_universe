@@ -26,11 +26,8 @@
 #include <autoware_planning_msgs/msg/lanelet_segment.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
-#include <boost/geometry/algorithms/area.hpp>
-
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
-#include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 
 #include <algorithm>
@@ -302,39 +299,6 @@ TEST(BuildLaneletLists, RouteLaneletNotInMapGivesErrorWithItsId)
   EXPECT_EQ(result.error(), "route lanelet 99 is not in the map");
 }
 
-// Lanelet2 declares its 2D polygons as clockwise and open, so boost::geometry reads them as they
-// are.
-double shape_area(const road_following::LaneChain & chain)
-{
-  return boost::geometry::area(chain.shape.polygon2d().basicPolygon());
-}
-
-TEST(BuildLaneChain, OneLaneletShapeHasItsArea)
-{
-  // Lanelet 1 is 10 m long and 3 m wide.
-  TestMap test_map;
-  const lanelet::ConstLanelets lanelets{test_map.add_straight_lanelet(1, 0.0, 10.0)};
-
-  const auto result = road_following::build_lane_chain(lanelets);
-
-  ASSERT_TRUE(result.has_value()) << result.error();
-  EXPECT_NEAR(shape_area(*result), 30.0, 1e-6);
-}
-
-TEST(BuildLaneChain, TwoLaneletsGiveSumOfAreas)
-{
-  // Lanelet 2 follows lanelet 1. Each one is 10 m long and 3 m wide.
-  TestMap test_map;
-  const lanelet::ConstLanelets lanelets{
-    test_map.add_straight_lanelet(1, 0.0, 10.0), test_map.add_straight_lanelet(2, 10.0, 20.0)};
-
-  const auto result = road_following::build_lane_chain(lanelets);
-
-  ASSERT_TRUE(result.has_value()) << result.error();
-  EXPECT_EQ(to_sorted_ids({result->lanelets}), (IdLists{{1, 2}}));
-  EXPECT_NEAR(shape_area(*result), 60.0, 1e-6);
-}
-
 TEST(BuildLaneletLists, LaneShiftAtBranchPoint)
 {
   const auto test_map = make_lane_shift_map();
@@ -354,19 +318,20 @@ TEST(BuildLaneletLists, LaneShiftAtBranchPoint)
 
 using XyPoints = std::vector<std::pair<double, double>>;
 
-XyPoints to_xy(const lanelet::ConstLineString2d & bound)
+XyPoints to_xy(const lanelet::ConstLineString2d & line)
 {
   XyPoints points;
-  for (const auto & point : bound) {
+  for (const auto & point : line) {
     points.emplace_back(point.x(), point.y());
   }
   return points;
 }
 
-TEST(BuildLaneChain, LaneShiftChainHasNoBranch)
+TEST(BuildLaneChain, LaneShiftCenterlineFollowsLane2)
 {
-  // The footprint edges are tested against these bounds. Through both wedges, the bounds follow
-  // lanelet 2. They take no bound of lanelets 3, 6, or 7.
+  // follows_chain reads only the centerline of the chain shape, for the lateral and heading
+  // tests. Through both wedges, the centerline follows lanelet 2, not lanelet 3 or 7. Lanelet2
+  // gives each lanelet centerline a midpoint, so the chain centerline has 7 points.
   const auto test_map = make_lane_shift_map();
   const auto & layer = test_map.map().laneletLayer;
   const lanelet::ConstLanelets lanelets{layer.get(1), layer.get(2), layer.get(4)};
@@ -374,12 +339,12 @@ TEST(BuildLaneChain, LaneShiftChainHasNoBranch)
   const auto result = road_following::build_lane_chain(lanelets);
 
   ASSERT_TRUE(result.has_value()) << result.error();
-  constexpr double h = k_half_width;
+  EXPECT_EQ(to_sorted_ids({result->lanelets}), (IdLists{{1, 2, 4}}));
+  constexpr double y4 = -2.0 * k_half_width;
   EXPECT_EQ(
-    to_xy(result->shape.leftBound2d()), (XyPoints{{0.0, h}, {20.0, h}, {30.0, -h}, {50.0, -h}}));
-  EXPECT_EQ(
-    to_xy(result->shape.rightBound2d()),
-    (XyPoints{{0.0, -h}, {20.0, -h}, {30.0, -3.0 * h}, {50.0, -3.0 * h}}));
+    to_xy(result->shape.centerline2d()),
+    (XyPoints{
+      {0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}, {25.0, y4 / 2.0}, {30.0, y4}, {40.0, y4}, {50.0, y4}}));
 }
 
 TEST(BuildLaneChain, EmptyListGivesError)
