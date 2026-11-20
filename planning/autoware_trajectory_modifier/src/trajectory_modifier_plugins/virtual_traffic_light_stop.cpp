@@ -166,6 +166,29 @@ std::optional<double> calc_route_arc_length(
   pose.position = calc_line_center(line);
   return autoware::experimental::lanelet2_utils::get_arc_coordinates(route_lanelets, pose).length;
 }
+
+std::optional<double> find_ego_arc_length(
+  const Trajectory & path, const geometry_msgs::msg::Pose & ego_pose, const double max_yaw_rad)
+{
+  constexpr double MAX_EGO_DISTANCE_M = 5.0;
+  if (
+    const auto ego_s = autoware::experimental::trajectory::find_first_nearest_index(
+      path, ego_pose, MAX_EGO_DISTANCE_M, max_yaw_rad)) {
+    return ego_s;
+  }
+  // find_first_nearest_index returns nullopt when the points around ego are closer than
+  // k_epsilon_distance (5 mm), as in a standstill ML trajectory sampled every 0.1 s.
+  // TODO(Rin-Li): drop this fallback if autoware_core fixes find_precise_index for that case.
+  const auto ego_s =
+    autoware::experimental::trajectory::find_nearest_index(path, ego_pose.position);
+  const auto nearest_pose = path.compute(ego_s).pose;
+  if (
+    autoware_utils::calc_distance2d(nearest_pose, ego_pose) > MAX_EGO_DISTANCE_M ||
+    std::abs(autoware_utils::calc_yaw_deviation(nearest_pose, ego_pose)) > max_yaw_rad) {
+    return std::nullopt;
+  }
+  return ego_s;
+}
 }  // namespace
 
 void VirtualTrafficLightStop::on_initialize(const TrajectoryModifierParams & params)
@@ -385,6 +408,7 @@ void VirtualTrafficLightStop::publish_debug_string(const std::string & ns) const
   ss << "  CANDIDATE: " << ns << "\n";
   ss << "  ENABLED: " << enabled_ << "\n";
   ss << "  MODULES: " << modules_.size() << "\n";
+  ss << "  SKIP: " << (skip_reason_.empty() ? "-" : skip_reason_) << "\n";
   for (const auto & module : modules_) {
     const auto & debug = module.debug_data;
     ss << "  VTL[" << module.instrument_id << "]:\n";
@@ -426,7 +450,17 @@ bool VirtualTrafficLightStop::modify_trajectory(TrajectoryPoints & traj_points)
   for (auto & module : modules_) {
     module.debug_data = DebugData{};
   }
-  if (!enabled_ || traj_points.size() < 2 || modules_.empty()) {
+  skip_reason_.clear();
+  if (!enabled_) {
+    skip_reason_ = "disabled";
+    return false;
+  }
+  if (modules_.empty()) {
+    skip_reason_ = "no module on the route";
+    return false;
+  }
+  if (traj_points.size() < 2) {
+    skip_reason_ = "trajectory has " + std::to_string(traj_points.size()) + " points";
     return false;
   }
 
@@ -670,11 +704,13 @@ bool VirtualTrafficLightStop::process_trajectory(TrajectoryPoints & traj_points)
     "VirtualTrafficLightStop::process_trajectory", *get_time_keeper());
   const auto path = Trajectory::Builder{}.build(traj_points);
   if (!path) {
+    skip_reason_ = "trajectory build failed (" + std::to_string(traj_points.size()) + " points)";
     return false;
   }
-  const auto ego_s = autoware::experimental::trajectory::find_first_nearest_index(
-    *path, cycle_odometry_->pose.pose, 5.0, planner_param_.max_yaw_deviation_rad);
+  const auto ego_s =
+    find_ego_arc_length(*path, cycle_odometry_->pose.pose, planner_param_.max_yaw_deviation_rad);
   if (!ego_s) {
+    skip_reason_ = "ego not near the trajectory";
     return false;
   }
 

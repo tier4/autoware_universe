@@ -141,6 +141,26 @@ TrajectoryPoints make_straight_trajectory(const double start_x, const double end
   return trajectory;
 }
 
+// Gentle start from standstill sampled every 0.1 s along `yaw`: the first points are < 5 mm apart.
+TrajectoryPoints make_standstill_start_trajectory(const double start_x, const double yaw)
+{
+  constexpr double time_step_s = 0.1;
+  constexpr double start_accel_mps2 = 0.5;
+  TrajectoryPoints trajectory;
+  for (int i = 0; i < 80; ++i) {
+    const double t = time_step_s * static_cast<double>(i);
+    const double distance_m = 0.5 * start_accel_mps2 * t * t;
+    TrajectoryPoint point;
+    point.pose.position.x = start_x + distance_m * std::cos(yaw);
+    point.pose.position.y = distance_m * std::sin(yaw);
+    point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+    point.longitudinal_velocity_mps = static_cast<float>(start_accel_mps2 * t);
+    trajectory.push_back(point);
+  }
+  assign_time_from_start(trajectory);
+  return trajectory;
+}
+
 Odometry::ConstSharedPtr make_odometry(
   const double x, const double velocity, const rclcpp::Time & stamp)
 {
@@ -625,6 +645,44 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, DeniedStateStopsWhenTrajectoryDoe
   ASSERT_TRUE(modified);
   expect_single_stop_factor("VTL 12345: NO_RIGHT_OF_WAY -> STOP_LINE");
   expect_truncated_stop_at_x(trajectory, moving_stop_x(stop_x, 10.0, 5.0));
+}
+
+TEST_F(VirtualTrafficLightStopIntegrationTest, DeniedStateStopsWhenStandstillPointsAreDense)
+{
+  constexpr lanelet::Id instrument_id = 12345;
+  constexpr double stop_x = 20.0;
+  constexpr double ego_x = 10.0;
+  const auto map = make_vtl_map(instrument_id, 5.0, stop_x, 40.0);
+  auto input = make_vtl_input(
+    make_odometry(ego_x, 0.0, node_->now()), map, make_route(map->laneletLayer.begin()->id()),
+    make_vtl_states(instrument_id, false, false, node_->now()));
+  auto trajectory = make_standstill_start_trajectory(ego_x, 0.0);
+
+  input.candidate_index = 0U;
+  ASSERT_TRUE(process_candidate(trajectory, input));
+  expect_single_stop_factor("VTL 12345: NO_RIGHT_OF_WAY -> STOP_LINE");
+  expect_truncated_stop_at_x(trajectory, geometric_stop_x(stop_x));
+}
+
+TEST_F(VirtualTrafficLightStopIntegrationTest, DenseCandidateFacingAwayOrFarFromEgoIsLeftUnchanged)
+{
+  constexpr lanelet::Id instrument_id = 12345;
+  constexpr double ego_x = 10.0;
+  const auto map = make_vtl_map(instrument_id, 5.0, 20.0, 40.0);
+  const auto run = [&](TrajectoryPoints trajectory, const double ego_yaw) {
+    auto input = make_vtl_input(
+      make_odometry(ego_x, 0.0, ego_yaw, 0.0, node_->now()), map,
+      make_route(map->laneletLayer.begin()->id()),
+      make_vtl_states(instrument_id, false, false, node_->now()));
+    const auto original = trajectory;
+    input.candidate_index = 0U;
+    EXPECT_FALSE(process_candidate(trajectory, input));
+    expect_same_trajectory(trajectory, original);
+  };
+
+  // Both candidates cross the stop line, so accepting either association would insert a stop.
+  run(make_standstill_start_trajectory(ego_x, 0.0), M_PI);
+  run(make_standstill_start_trajectory(ego_x + 6.0, 0.0), 0.0);
 }
 
 TEST_F(VirtualTrafficLightStopIntegrationTest, DeniedFinalizedStateStillStopsAtStopLine)

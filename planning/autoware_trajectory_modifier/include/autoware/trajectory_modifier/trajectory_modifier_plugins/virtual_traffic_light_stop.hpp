@@ -158,6 +158,8 @@ private:
   std::shared_ptr<lanelet::LaneletMap> last_lanelet_map_;
   std::vector<Module> modules_;
   bool cycle_initialized_{false};
+  //! Why the last candidate was not processed (empty when it was).
+  std::string skip_reason_;
   rclcpp::Time cycle_time_;
   nav_msgs::msg::Odometry::ConstSharedPtr cycle_odometry_;
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr cycle_acceleration_;
