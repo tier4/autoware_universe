@@ -1842,6 +1842,20 @@
               "default": 5.0,
               "minimum": 0.0
             },
+            "allow_if_cannot_stop_distance": {
+              "type": "number",
+              "description": "Pass a stop line that ego cannot stop for when its front is closer than this; 0 disables [m]",
+              "default": 0.0,
+              "minimum": 0.0,
+              "maximum": 100.0
+            },
+            "overshoot_tolerance": {
+              "type": "number",
+              "description": "Stopping distance margin used by the cannot-stop check [m]",
+              "default": 0.5,
+              "minimum": 0.0,
+              "maximum": 100.0
+            },
             "hold_position_when_stopped": {
               "type": "boolean",
               "description": "Hold in place when ego is stopped close to the stop-line stop",

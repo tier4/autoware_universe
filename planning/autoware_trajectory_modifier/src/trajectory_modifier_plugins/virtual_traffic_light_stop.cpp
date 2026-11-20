@@ -18,6 +18,7 @@
 
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/lanelet2_utils/geometry.hpp>
+#include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/crossed.hpp>
 #include <autoware/trajectory/utils/find_nearest.hpp>
@@ -223,6 +224,9 @@ void VirtualTrafficLightStop::update_params(const TrajectoryModifierParams & par
     params.virtual_traffic_light_stop.check_timeout_after_stop_line;
   planner_param_.min_hold_trajectory_length =
     params.virtual_traffic_light_stop.min_hold_trajectory_length;
+  planner_param_.allow_if_cannot_stop_distance =
+    params.virtual_traffic_light_stop.allow_if_cannot_stop_distance;
+  planner_param_.overshoot_tolerance = params.virtual_traffic_light_stop.overshoot_tolerance;
   planner_param_.hold_position_when_stopped =
     params.virtual_traffic_light_stop.hold_position_when_stopped;
   planner_param_.hold_position_distance_threshold =
@@ -438,7 +442,8 @@ void VirtualTrafficLightStop::publish_debug_string(const std::string & ns) const
     ss << "    STOP_DISTANCE_M: " << format_optional(debug.stop_distance) << "\n";
     ss << "    FLAGS: ego_in_lane=" << debug.ego_is_in_module_lane
        << " stop_line_relevant=" << debug.stop_line_relevant
-       << " end_hold_active=" << module.end_hold_active << "\n";
+       << " end_hold_active=" << module.end_hold_active
+       << " stop_line_passed_unstoppable=" << module.stop_line_passed_unstoppable << "\n";
   }
 
   autoware_internal_debug_msgs::msg::StringStamped msg;
@@ -581,6 +586,7 @@ void VirtualTrafficLightStop::rebuild_modules(const TrajectoryModifierData & inp
         if (same_active_end_line) {
           module.state = previous->second.state;
           module.end_hold_active = previous->second.end_hold_active;
+          module.stop_line_passed_unstoppable = previous->second.stop_line_passed_unstoppable;
         }
       }
       if (!module.active_end_line) {
@@ -652,6 +658,7 @@ void VirtualTrafficLightStop::update_module_lifecycle()
 
     if (start_arc && *start_arc > 0.0) {
       module.end_hold_active = false;
+      module.stop_line_passed_unstoppable = false;
       set_state(module, ModuleState::NONE);
       update_command(module);
       continue;
@@ -804,6 +811,21 @@ bool VirtualTrafficLightStop::process_module(
 
   const auto stop_at_stop_line = [&](const StopReason reason) {
     if (!stop_line_relevant) {
+      return false;
+    }
+    // An unstoppable stop line is only passed, not the zone: once the front is past the line,
+    // stop at ego and wait for the right of way.
+    const auto front_to_stop_line = stop_arc ? stop_arc : stop_route_arc;
+    const bool front_before_stop_line = front_to_stop_line && *front_to_stop_line > 0.0;
+    if (front_before_stop_line && module.stop_line_passed_unstoppable) {
+      return false;
+    }
+    if (cannot_stop_before(front_to_stop_line)) {
+      module.stop_line_passed_unstoppable = true;
+      RCLCPP_WARN(
+        get_node_ptr()->get_logger(),
+        "[TM VirtualTrafficLightStop] VTL %s: cannot stop before the stop line (%.2f m), pass",
+        module.instrument_id.c_str(), front_to_stop_line.value_or(-1.0));
       return false;
     }
     RCLCPP_INFO_THROTTLE(
@@ -986,6 +1008,22 @@ bool VirtualTrafficLightStop::is_state_timeout(const Module & module) const
 {
   const auto age_sec = calc_state_age_sec(module);
   return age_sec && *age_sec > planner_param_.max_delay_sec;
+}
+
+bool VirtualTrafficLightStop::cannot_stop_before(
+  const std::optional<double> & front_to_line_m) const
+{
+  if (
+    !front_to_line_m || *front_to_line_m < 0.0 ||
+    *front_to_line_m >= planner_param_.allow_if_cannot_stop_distance) {
+    return false;
+  }
+  const auto stopping_distance = autoware::motion_utils::calculate_stop_distance(
+    cycle_odometry_->twist.twist.linear.x, cycle_acceleration_->accel.accel.linear.x,
+    stopping_params_.nominal_deceleration, stopping_params_.jerk_limit,
+    stopping_params_.delay_response_time);
+  return stopping_distance &&
+         *front_to_line_m < *stopping_distance - planner_param_.overshoot_tolerance;
 }
 
 bool VirtualTrafficLightStop::has_right_of_way(const Module & module) const

@@ -685,6 +685,61 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, DenseCandidateFacingAwayOrFarFrom
   run(make_standstill_start_trajectory(ego_x + 6.0, 0.0), 0.0);
 }
 
+TEST_F(VirtualTrafficLightStopIntegrationTest, UnstoppableStopLineIsPassedThenEgoStopsPastIt)
+{
+  params_.virtual_traffic_light_stop.allow_if_cannot_stop_distance = 1.0;
+  plugin_->update_params(params_);
+  constexpr lanelet::Id instrument_id = 12345;
+  constexpr double stop_x = 20.0;
+  constexpr double velocity_mps = 2.0;
+  const auto map = make_vtl_map(instrument_id, 5.0, stop_x, 40.0);
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  const auto states = make_vtl_states(instrument_id, false, false, node_->now());
+
+  // Front 0.5 m before the line at 2 m/s: cannot stop, so the line is passed.
+  const double before_x = geometric_stop_x(stop_x) - 0.5;
+  auto before_input =
+    make_vtl_input(make_odometry(before_x, velocity_mps, node_->now()), map, route, states);
+  auto before = make_straight_trajectory(before_x, 40.0);
+  const auto original = before;
+  before_input.candidate_index = 0U;
+  EXPECT_FALSE(process_candidate(before, before_input));
+  expect_same_trajectory(before, original);
+
+  // Front past the line without the right of way: stop as soon as possible.
+  const double past_x = geometric_stop_x(stop_x) + 0.5;
+  auto past_input =
+    make_vtl_input(make_odometry(past_x, velocity_mps, node_->now()), map, route, states);
+  auto past = make_straight_trajectory(past_x, 40.0);
+  past_input.candidate_index = 0U;
+  ASSERT_TRUE(process_candidate(past, past_input));
+  expect_truncated_stop_at_x(past, past_x + braking_distance(velocity_mps));
+}
+
+TEST_F(VirtualTrafficLightStopIntegrationTest, PassLatchIsClearedWhenEgoLeavesTheModule)
+{
+  params_.virtual_traffic_light_stop.allow_if_cannot_stop_distance = 1.0;
+  plugin_->update_params(params_);
+  constexpr lanelet::Id instrument_id = 12345;
+  constexpr double stop_x = 20.0;
+  const auto map = make_vtl_map(instrument_id, 5.0, stop_x, 40.0);
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  const auto run_cycle = [&](const double ego_x, const double velocity) {
+    auto input = make_vtl_input(
+      make_odometry(ego_x, velocity, node_->now()), map, route,
+      make_vtl_states(instrument_id, false, false, node_->now()));
+    auto trajectory = make_straight_trajectory(ego_x, 40.0);
+    input.candidate_index = 0U;
+    return process_candidate(trajectory, input);
+  };
+  const double near_line_x = geometric_stop_x(stop_x) - 0.5;
+
+  EXPECT_FALSE(run_cycle(near_line_x, 2.0));
+  EXPECT_FALSE(run_cycle(0.0, 2.0));
+  // Slow enough to stop before the line: a stale pass latch would leave this unchanged.
+  EXPECT_TRUE(run_cycle(near_line_x, 0.5));
+}
+
 TEST_F(VirtualTrafficLightStopIntegrationTest, StoppedEgoHoldsOnlyWithinHoldThreshold)
 {
   constexpr lanelet::Id instrument_id = 12345;

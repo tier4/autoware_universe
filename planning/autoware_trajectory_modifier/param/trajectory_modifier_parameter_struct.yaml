@@ -1645,6 +1645,20 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.0, 100.0]
       read_only: false
+    allow_if_cannot_stop_distance:
+      type: double
+      default_value: 0.0
+      description: Pass a stop line that ego cannot stop for when its front is closer than this; 0 disables [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
+    overshoot_tolerance:
+      type: double
+      default_value: 0.5
+      description: Stopping distance margin used by the cannot-stop check [m]
+      validation:
+        bounds<>: [0.0, 100.0]
+      read_only: false
     hold_position_when_stopped:
       type: bool
       default_value: true
