@@ -15,20 +15,25 @@
 #ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_
 #define FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_
 
+#include "parameter.hpp"
+
 #include <rcpputils/tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_routing/Forward.h>
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety::road_following
 {
 using autoware_planning_msgs::msg::LaneletRoute;
+using autoware_planning_msgs::msg::TrajectoryPoint;
 
 /**
  * @brief One lanelet list with its combined shape.
@@ -57,6 +62,16 @@ struct LaneChain
  */
 [[nodiscard]] tl::expected<LaneChain, std::string> build_lane_chain(
   const lanelet::ConstLanelets & lanelets);
+
+/**
+ * @brief Find the end of the window that the road following tests check.
+ * @details The arc length and the time of each point count from the first point. The window ends
+ * at the first point with an arc length over `window_distance` and a time over `window_time`.
+ * That point is not in the window.
+ * @return The index of that point, or `points.size()` when no point is over both limits.
+ */
+[[nodiscard]] size_t find_window_end(
+  const std::vector<TrajectoryPoint> & points, const RoadFollowingParams & params);
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_

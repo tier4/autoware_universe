@@ -96,4 +96,10 @@ tl::expected<LaneChain, std::string> build_lane_chain(const lanelet::ConstLanele
   }
   return LaneChain{lanelets, *shape};
 }
+
+size_t find_window_end(
+  const std::vector<TrajectoryPoint> & /*points*/, const RoadFollowingParams & /*params*/)
+{
+  return 0U;  // red stub
+}
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following

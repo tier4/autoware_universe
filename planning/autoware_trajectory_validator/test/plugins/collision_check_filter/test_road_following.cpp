@@ -20,6 +20,7 @@
 #include <autoware_planning_msgs/msg/lanelet_primitive.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/lanelet_segment.hpp>
+#include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <boost/geometry/algorithms/area.hpp>
 
@@ -27,9 +28,11 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/Lanelet.h>
+#include <rclcpp/duration.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -44,6 +47,7 @@ namespace
 using autoware_planning_msgs::msg::LaneletPrimitive;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::LaneletSegment;
+using autoware_planning_msgs::msg::TrajectoryPoint;
 using IdLists = std::vector<std::vector<lanelet::Id>>;
 
 constexpr double k_half_width = 1.5;
@@ -380,6 +384,59 @@ TEST(BuildLaneChain, EmptyListGivesError)
 
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(result.error(), "cannot combine an empty lanelet list");
+}
+
+// Returns `count` points on the x axis at a constant `speed`, one point every `time_step` seconds.
+// The first point is at x = 0 and has the time `start_time`.
+std::vector<TrajectoryPoint> make_straight_points(
+  const double speed, const double time_step, const size_t count, const double start_time = 0.0)
+{
+  std::vector<TrajectoryPoint> points;
+  points.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    const double time = static_cast<double>(i) * time_step;
+    TrajectoryPoint point;
+    point.pose.position.x = speed * time;
+    point.pose.orientation.w = 1.0;
+    point.time_from_start = rclcpp::Duration::from_seconds(start_time + time);
+    points.push_back(point);
+  }
+  return points;
+}
+
+TEST(FindWindowEnd, LowSpeedGivesFirstPointOver30m)
+{
+  // 4 m/s, one point per second. Point 4 is the first over 3 s (16 m). Point 8 is the first
+  // over 30 m (32 m, 8 s), so the 30 m limit sets the end.
+  const auto points = make_straight_points(4.0, 1.0, 12);
+
+  EXPECT_EQ(road_following::find_window_end(points, RoadFollowingParams{}), 8U);
+}
+
+TEST(FindWindowEnd, HighSpeedGivesFirstPointOver3s)
+{
+  // 20 m/s, one point per 0.7 s. Point 3 is the first over 30 m (42 m). Point 5 is the first
+  // over 3 s (3.5 s, 70 m), so the 3 s limit sets the end.
+  const auto points = make_straight_points(20.0, 0.7, 8);
+
+  EXPECT_EQ(road_following::find_window_end(points, RoadFollowingParams{}), 5U);
+}
+
+TEST(FindWindowEnd, NoPointOverBothGivesSize)
+{
+  // 20 m/s, one point per 0.5 s. The last point is at 40 m and 2 s, so no point is over 3 s.
+  const auto points = make_straight_points(20.0, 0.5, 5);
+
+  EXPECT_EQ(road_following::find_window_end(points, RoadFollowingParams{}), points.size());
+}
+
+TEST(FindWindowEnd, UsesTimeFromFirstPoint)
+{
+  // The high speed case with the first point at 10 s. Each time_from_start is over 3 s, so a
+  // function that does not subtract the first time returns 3, the first point over 30 m.
+  const auto points = make_straight_points(20.0, 0.7, 8, 10.0);
+
+  EXPECT_EQ(road_following::find_window_end(points, RoadFollowingParams{}), 5U);
 }
 }  // namespace
 }  // namespace autoware::trajectory_validator::plugin::safety
