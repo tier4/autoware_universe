@@ -763,6 +763,38 @@ TEST_F(VirtualTrafficLightStopIntegrationTest, StoppedEgoHoldsOnlyWithinHoldThre
   expect_truncated_stop_at_x(run(far_x), geometric_stop_x(stop_x));
 }
 
+TEST_F(VirtualTrafficLightStopIntegrationTest, StoppedShortOfEndLineMovesUpIntoFinalizing)
+{
+  constexpr lanelet::Id instrument_id = 12345;
+  constexpr double end_x = 40.0;
+  const auto map = make_vtl_map(instrument_id, 5.0, 20.0, end_x);
+  const auto route = make_route(map->laneletLayer.begin()->id());
+  const auto run_cycle = [&](const double ego_x, TrajectoryPoints & trajectory) {
+    auto input = make_vtl_input(
+      make_odometry(ego_x, 0.0, node_->now()), map, route,
+      make_vtl_states(instrument_id, true, false, node_->now()));
+    trajectory = make_straight_trajectory(ego_x, 45.0);
+    const auto previous_command_count = command_messages_.size();
+    input.candidate_index = 0U;
+    EXPECT_TRUE(process_candidate(trajectory, input));
+    spin_until([&]() { return command_messages_.size() > previous_command_count; });
+    EXPECT_GT(command_messages_.size(), previous_command_count);
+    return command_messages_.back().commands.front().state;
+  };
+
+  // Stopped 1.5 m short: not held in place, so the stop stays on the end line.
+  TrajectoryPoints short_stop;
+  EXPECT_EQ(
+    run_cycle(geometric_stop_x(end_x) - 1.5, short_stop),
+    static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::PASSING));
+  expect_truncated_stop_at_x(short_stop, geometric_stop_x(end_x));
+
+  TrajectoryPoints near_stop;
+  EXPECT_EQ(
+    run_cycle(geometric_stop_x(end_x) - 0.5, near_stop),
+    static_cast<uint8_t>(VirtualTrafficLightStop::ModuleState::FINALIZING));
+}
+
 TEST_F(VirtualTrafficLightStopIntegrationTest, DeniedFinalizedStateStillStopsAtStopLine)
 {
   constexpr lanelet::Id instrument_id = 12345;
