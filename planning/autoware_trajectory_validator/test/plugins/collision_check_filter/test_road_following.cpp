@@ -20,7 +20,6 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 
-#include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_planning_msgs/msg/lanelet_primitive.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/lanelet_segment.hpp>
@@ -31,7 +30,6 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -39,7 +37,6 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -355,39 +352,53 @@ TEST(BuildLaneChain, EmptyListGivesError)
   EXPECT_EQ(result.error(), "cannot combine an empty lanelet list");
 }
 
-autoware_perception_msgs::msg::Shape make_box_shape(const double length, const double width)
+// The footprint of the J6 Gen2 vehicle (j6_gen2_description, vehicle_info.param.yaml) with the
+// default road following margin, built as generate_ego_trajectory in trajectory_utils.cpp does.
+// The base link is at the rear axle center. The footprint is 2.23 m wide, so 0.39 m of a 3 m lane
+// is free on each side.
+trajectory::footprint::EgoDimensions make_ego_dimensions()
 {
-  autoware_perception_msgs::msg::Shape shape;
-  shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
-  shape.dimensions.x = length;
-  shape.dimensions.y = width;
-  return shape;
+  constexpr double wheel_base = 4.76012;
+  constexpr double front_overhang = 0.95099;
+  constexpr double rear_overhang = 1.52579;
+  constexpr double vehicle_width = 1.754 + 0.32358 + 0.34983;  // wheel tread and both overhangs
+  const auto margin = RoadFollowingParams{}.ego_footprint_margin;
+  return {
+    wheel_base + front_overhang + margin.front, rear_overhang + margin.rear,
+    vehicle_width + 2.0 * margin.lateral};
+}
+
+// Returns a TrajectoryData with one sample for each pose and the ego footprint on each sample.
+// The test helper `create_trajectory_data` in test_trajectory_utilities.cpp builds its data the
+// same way.
+TrajectoryData make_ego_trajectory(const PoseTrajectory & poses, const TimeTrajectory & times)
+{
+  TravelDistanceTrajectory distances;
+  for (size_t i = 0; i < poses.size(); ++i) {
+    distances.push_back(autoware::motion_utils::calcSignedArcLength(poses, 0, i));
+  }
+  auto footprints =
+    trajectory::footprint::compute_footprint_trajectory(poses, make_ego_dimensions());
+  return TrajectoryData{
+    TrajectoryIdentification{"test"}, times, std::move(distances), poses, std::move(footprints)};
 }
 
 // Returns `count` samples on the x axis at a constant `speed`, one sample every `time_step`
-// seconds, with 1 m by 1 m footprints. The first sample is at x = 0 and has the time `start_time`.
-// The test helper `create_trajectory_data` in test_trajectory_utilities.cpp builds its data the
-// same way.
+// seconds. The first sample is at x = 0 and has the time `start_time`.
 TrajectoryData make_straight_trajectory(
   const double speed, const double time_step, const size_t count, const double start_time = 0.0)
 {
   TimeTrajectory times;
-  TravelDistanceTrajectory distances;
   PoseTrajectory poses;
   for (size_t i = 0; i < count; ++i) {
     const double time = static_cast<double>(i) * time_step;
     times.push_back(start_time + time);
-    distances.push_back(speed * time);
     geometry_msgs::msg::Pose pose;
     pose.position.x = speed * time;
     pose.orientation.w = 1.0;
     poses.push_back(pose);
   }
-  auto footprints =
-    trajectory::footprint::compute_footprint_trajectory(poses, make_box_shape(1.0, 1.0));
-  return TrajectoryData{
-    TrajectoryIdentification{"test"}, std::move(times), std::move(distances), std::move(poses),
-    std::move(footprints)};
+  return make_ego_trajectory(poses, times);
 }
 
 TEST(FindWindowEnd, LowSpeedGivesFirstSampleOver30m)
@@ -434,38 +445,14 @@ geometry_msgs::msg::Pose make_pose(const double x, const double y, const double 
   return pose;
 }
 
-// Returns the corners of a `length` by `width` box centered on `pose`, made by the CCF footprint
-// helper.
-std::array<Point2d, 4> make_box_corners(
-  const geometry_msgs::msg::Pose & pose, const double length, const double width)
-{
-  const auto footprints = trajectory::footprint::compute_footprint_trajectory(
-    PoseTrajectory{pose}, make_box_shape(length, width));
-  return std::get<QuadTrajectory>(footprints).front();
-}
-
-// Returns a TrajectoryData with one sample for each pose, 0.1 s apart, and the given footprints.
-TrajectoryData make_trajectory(const PoseTrajectory & poses, const QuadTrajectory & footprints)
+// Returns a TrajectoryData with one sample for each pose, 0.1 s apart as the CCF time resolution.
+TrajectoryData make_ego_trajectory(const PoseTrajectory & poses)
 {
   TimeTrajectory times;
-  TravelDistanceTrajectory distances;
   for (size_t i = 0; i < poses.size(); ++i) {
     times.push_back(0.1 * static_cast<double>(i));
-    distances.push_back(autoware::motion_utils::calcSignedArcLength(poses, 0, i));
   }
-  return TrajectoryData{TrajectoryIdentification{"test"}, times, distances, poses, footprints};
-}
-
-// Returns a TrajectoryData with a 1 m by 1 m footprint on each pose. The corners of a footprint
-// are at most 0.71 m from its pose, so a pose 0.79 m or more from both bounds of the 3 m lane
-// gives a footprint that crosses no bound.
-TrajectoryData make_small_footprint_trajectory(const PoseTrajectory & poses)
-{
-  QuadTrajectory footprints;
-  for (const auto & pose : poses) {
-    footprints.push_back(make_box_corners(pose, 1.0, 1.0));
-  }
-  return make_trajectory(poses, footprints);
+  return make_ego_trajectory(poses, times);
 }
 
 // The chain {1, 2, 4} of the lane shift map. Lanelet 1 runs on the x axis from x = 0 to 20 m.
@@ -481,7 +468,7 @@ TEST(FollowsChain, SamplesInsideAllLimitsGiveTrue)
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
   const double shift_yaw = std::atan2(-3.0, 10.0);
-  const auto trajectory = make_small_footprint_trajectory(
+  const auto trajectory = make_ego_trajectory(
     {make_pose(5.0, 0.0, 0.0), make_pose(15.0, 0.0, 0.0), make_pose(25.0, -1.5, shift_yaw),
      make_pose(40.0, -3.0, 0.0)});
 
@@ -493,16 +480,13 @@ TEST(FollowsChain, SamplesInsideAllLimitsGiveTrue)
 
 TEST(FollowsChain, FootprintCrossingBoundGivesFalse)
 {
-  // The sample is on the centerline of lanelet 1, so only the bound test can fail. Each box is
-  // 1.2 m wide and reaches 0.2 m past one bound of lanelet 1 (y = 1.5 m or y = -1.5 m).
+  // An offset of 0.45 m puts one side of the footprint 0.06 m past a bound of lanelet 1. The
+  // lateral distance stays under 0.5 m and the heading is 0, so only the bound test fails.
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
   const auto & start_lanelet = test_map.map().laneletLayer.get(1);
-  const PoseTrajectory poses{make_pose(10.0, 0.0, 0.0)};
-  const auto over_left =
-    make_trajectory(poses, {make_box_corners(make_pose(10.0, 1.1, 0.0), 2.0, 1.2)});
-  const auto over_right =
-    make_trajectory(poses, {make_box_corners(make_pose(10.0, -1.1, 0.0), 2.0, 1.2)});
+  const auto over_left = make_ego_trajectory({make_pose(10.0, 0.45, 0.0)});
+  const auto over_right = make_ego_trajectory({make_pose(10.0, -0.45, 0.0)});
 
   EXPECT_FALSE(
     road_following::follows_chain(chain, start_lanelet, over_left, 1U, RoadFollowingParams{}));
@@ -510,47 +494,16 @@ TEST(FollowsChain, FootprintCrossingBoundGivesFalse)
     road_following::follows_chain(chain, start_lanelet, over_right, 1U, RoadFollowingParams{}));
 }
 
-TEST(FollowsChain, LateralOverLimitGivesFalse)
-{
-  // Small boxes cross no bound, so only the lateral test (limit 0.5 m) can fail.
-  const auto test_map = make_lane_shift_map();
-  const auto chain = make_lane_shift_chain(test_map);
-  const auto & start_lanelet = test_map.map().laneletLayer.get(1);
-  const auto within_limit = make_small_footprint_trajectory({make_pose(10.0, 0.4, 0.0)});
-  const auto over_limit = make_small_footprint_trajectory({make_pose(10.0, 0.6, 0.0)});
-
-  EXPECT_TRUE(
-    road_following::follows_chain(chain, start_lanelet, within_limit, 1U, RoadFollowingParams{}));
-  EXPECT_FALSE(
-    road_following::follows_chain(chain, start_lanelet, over_limit, 1U, RoadFollowingParams{}));
-}
-
-TEST(FollowsChain, HeadingOverLimitGivesFalse)
-{
-  // Small boxes cross no bound, so only the heading test (limit 0.1 rad) can fail.
-  const auto test_map = make_lane_shift_map();
-  const auto chain = make_lane_shift_chain(test_map);
-  const auto & start_lanelet = test_map.map().laneletLayer.get(1);
-  const auto within_limit = make_small_footprint_trajectory({make_pose(10.0, 0.0, 0.05)});
-  const auto over_limit = make_small_footprint_trajectory({make_pose(10.0, 0.0, 0.15)});
-
-  EXPECT_TRUE(
-    road_following::follows_chain(chain, start_lanelet, within_limit, 1U, RoadFollowingParams{}));
-  EXPECT_FALSE(
-    road_following::follows_chain(chain, start_lanelet, over_limit, 1U, RoadFollowingParams{}));
-}
-
 TEST(FollowsChain, SkipsBoundsBeforeStartLanelet)
 {
-  // The sample is on the centerline of lanelet 2. The 0.4 m box lies on the left bound of
-  // lanelet 1 (y = 1.5 m, x up to 20 m) and touches no bound of lanelets 2 and 4. A walk from
-  // lanelet 2 skips that bound. A walk from lanelet 1 tests it.
+  // The base link is in lanelet 2, 0.25 m left of its centerline, with its heading. The rear left
+  // corner of the footprint is behind x = 20 m, 0.06 m above the left bound of lanelet 1. The
+  // footprint is 0.07 m inside the bounds of lanelet 2. A walk from lanelet 2 skips the bound of
+  // lanelet 1. A walk from lanelet 1 tests it.
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
   const auto & layer = test_map.map().laneletLayer;
-  const auto trajectory = make_trajectory(
-    {make_pose(25.0, -1.5, std::atan2(-3.0, 10.0))},
-    {make_box_corners(make_pose(19.0, 1.5, 0.0), 0.4, 0.4)});
+  const auto trajectory = make_ego_trajectory({make_pose(20.7, 0.05, std::atan2(-3.0, 10.0))});
 
   EXPECT_TRUE(
     road_following::follows_chain(chain, layer.get(2), trajectory, 1U, RoadFollowingParams{}));
@@ -565,7 +518,7 @@ TEST(FollowsChain, StartOutsideChainGivesFalse)
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
   const auto & layer = test_map.map().laneletLayer;
-  const auto trajectory = make_small_footprint_trajectory({make_pose(10.0, 0.0, 0.0)});
+  const auto trajectory = make_ego_trajectory({make_pose(10.0, 0.0, 0.0)});
 
   EXPECT_TRUE(
     road_following::follows_chain(chain, layer.get(1), trajectory, 1U, RoadFollowingParams{}));
@@ -575,13 +528,12 @@ TEST(FollowsChain, StartOutsideChainGivesFalse)
 
 TEST(FollowsChain, EmptyWindowGivesTrue)
 {
-  // The only sample has a footprint that crosses the left bound of lanelet 1. A window of one
-  // sample tests it. An empty window tests nothing.
+  // The footprint of the only sample crosses the left bound of lanelet 1. A window of one sample
+  // tests it. An empty window tests nothing.
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
   const auto & start_lanelet = test_map.map().laneletLayer.get(1);
-  const auto trajectory = make_trajectory(
-    {make_pose(10.0, 0.0, 0.0)}, {make_box_corners(make_pose(10.0, 1.1, 0.0), 2.0, 1.2)});
+  const auto trajectory = make_ego_trajectory({make_pose(10.0, 0.45, 0.0)});
 
   EXPECT_FALSE(
     road_following::follows_chain(chain, start_lanelet, trajectory, 1U, RoadFollowingParams{}));
@@ -591,15 +543,13 @@ TEST(FollowsChain, EmptyWindowGivesTrue)
 
 TEST(FollowsChain, SkipsSamplesFromWindowEnd)
 {
-  // Sample 0 is inside the lane. Sample 1 has a footprint that crosses the left bound of
-  // lanelet 1. A window that ends at sample 1 does not test it.
+  // Sample 0 is on the centerline of lanelet 1. The footprint of sample 1 crosses the left bound
+  // of lanelet 1. A window that ends at sample 1 does not test it.
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
   const auto & start_lanelet = test_map.map().laneletLayer.get(1);
-  const PoseTrajectory poses{make_pose(5.0, 0.0, 0.0), make_pose(10.0, 0.0, 0.0)};
-  const auto trajectory = make_trajectory(
-    poses, {make_box_corners(poses.at(0), 1.0, 1.0),
-            make_box_corners(make_pose(10.0, 1.1, 0.0), 2.0, 1.2)});
+  const auto trajectory =
+    make_ego_trajectory({make_pose(3.0, 0.0, 0.0), make_pose(10.0, 0.45, 0.0)});
 
   EXPECT_TRUE(
     road_following::follows_chain(chain, start_lanelet, trajectory, 1U, RoadFollowingParams{}));
