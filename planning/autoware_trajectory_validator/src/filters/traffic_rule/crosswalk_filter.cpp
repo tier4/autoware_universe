@@ -207,20 +207,6 @@ std::vector<CrosswalkOnTrajectory> filter_crosswalks_intersecting_trajectory(
   return crosswalks_on_trajectory;
 }
 
-lanelet::BasicPoint2d closest_point_on_segment(
-  const lanelet::BasicPoint2d & point, const lanelet::BasicSegment2d & segment)
-{
-  const auto & p1 = segment.first;
-  const auto & p2 = segment.second;
-  const auto dir = p2 - p1;
-  const double length_sq = dir.squaredNorm();
-  if (length_sq < 1e-12) {
-    return p1;
-  }
-  const double t = std::clamp((point - p1).dot(dir) / length_sq, 0.0, 1.0);
-  return p1 + t * dir;
-}
-
 /// @brief Sidewalk-side entry edges of the crosswalk (left↔right at each end of the lanelet).
 std::array<lanelet::BasicSegment2d, 2> get_crosswalk_entry_edges(
   const lanelet::CrosswalkConstPtr & crosswalk)
@@ -233,34 +219,51 @@ std::array<lanelet::BasicSegment2d, 2> get_crosswalk_entry_edges(
     lanelet::BasicSegment2d{left.back().basicPoint2d(), right.back().basicPoint2d()}};
 }
 
-/// @brief Closest point on either stored crosswalk entry edge to @p point.
-lanelet::BasicPoint2d closest_point_on_crosswalk_entries(
-  const lanelet::BasicPoint2d & point, const std::array<lanelet::BasicSegment2d, 2> & entry_edges)
+/// @brief Unit axis from the nearer entry edge toward the farther one.
+/// The nearer edge is chosen by midpoint distance, not by detection-area index: a skipped end cap
+/// drops a detection polygon without dropping the matching entry edge.
+std::optional<Eigen::Vector2d> inward_crossing_axis(
+  const lanelet::BasicPoint2d & obj_pos, const std::array<lanelet::BasicSegment2d, 2> & entry_edges)
 {
-  auto closest = closest_point_on_segment(point, entry_edges.front());
-  double min_dist_sq = (closest - point).squaredNorm();
-  for (size_t i = 1; i < entry_edges.size(); ++i) {
-    const auto candidate = closest_point_on_segment(point, entry_edges[i]);
-    const double dist_sq = (candidate - point).squaredNorm();
-    if (dist_sq < min_dist_sq) {
-      min_dist_sq = dist_sq;
-      closest = candidate;
-    }
+  const auto midpoint = [](const lanelet::BasicSegment2d & segment) -> lanelet::BasicPoint2d {
+    return (segment.first + segment.second) * 0.5;
+  };
+  const auto mid_0 = midpoint(entry_edges[0]);
+  const auto mid_1 = midpoint(entry_edges[1]);
+  const bool first_is_near = (mid_0 - obj_pos).squaredNorm() <= (mid_1 - obj_pos).squaredNorm();
+  const auto & near_mid = first_is_near ? mid_0 : mid_1;
+  const auto & far_mid = first_is_near ? mid_1 : mid_0;
+  const Eigen::Vector2d axis(far_mid.x() - near_mid.x(), far_mid.y() - near_mid.y());
+  if (axis.squaredNorm() <= 1e-12) {
+    return std::nullopt;
   }
-  return closest;
+  return axis.normalized();
 }
 
-bool is_target_object(const PredictedObject & obj, const TargetCrosswalk & cw)
+Eigen::Vector2d map_frame_velocity(const PredictedObject & obj)
+{
+  const auto & pose = obj.kinematics.initial_pose_with_covariance.pose;
+  const auto & twist = obj.kinematics.initial_twist_with_covariance.twist.linear;
+  const Eigen::Rotation2Dd obj_rot(tf2::getYaw(pose.orientation));
+  return obj_rot * Eigen::Vector2d(twist.x, twist.y);
+}
+
+bool is_target_object(
+  const PredictedObject & obj, const TargetCrosswalk & cw, const double max_approach_angle)
 {
   // check if the object is inside the detection areas
-  auto is_inside_detection_areas = [&]() {
-    const auto & obj_position = obj.kinematics.initial_pose_with_covariance.pose.position;
-    lanelet::BasicPoint2d obj_point(obj_position.x, obj_position.y);
-    return std::any_of(
-      cw.detection_areas.begin(), cw.detection_areas.end(),
-      [&](const auto & area) { return lanelet::geometry::distance2d(area, obj_point) < 1e-3; });
-  }();
+  const auto & pose = obj.kinematics.initial_pose_with_covariance.pose;
+  const lanelet::BasicPoint2d obj_pos(pose.position.x, pose.position.y);
+  const bool is_inside_detection_areas = std::any_of(
+    cw.detection_areas.begin(), cw.detection_areas.end(),
+    [&](const auto & area) { return lanelet::geometry::distance2d(area, obj_pos) < 1e-3; });
   if (!is_inside_detection_areas) return false;
+
+  // waiting objects are targets even when their most likely path stays outside the crosswalk
+  static constexpr double stopped_speed_threshold = 0.1;
+  const auto obj_vel_vector = map_frame_velocity(obj);
+  const double speed = obj_vel_vector.norm();
+  if (speed < stopped_speed_threshold) return true;
 
   // check if the object has a high confidence path through the crosswalk
   static constexpr double confidence_threshold = 0.5;
@@ -281,21 +284,11 @@ bool is_target_object(const PredictedObject & obj, const TargetCrosswalk & cw)
     return false;
   }
 
-  // static objects are always target objects
-  const auto obj_speed = obj.kinematics.initial_twist_with_covariance.twist.linear.x;
-  if (std::abs(obj_speed) < 0.1) return true;
-
-  // check if the object is moving toward the crosswalk
-  const auto & pose = obj.kinematics.initial_pose_with_covariance.pose;
-  const auto & twist = obj.kinematics.initial_twist_with_covariance.twist.linear;
-  const lanelet::BasicPoint2d obj_pos(pose.position.x, pose.position.y);
-
-  const Eigen::Rotation2Dd obj_rot(tf2::getYaw(pose.orientation));
-  const auto obj_vel_vector = obj_rot * Eigen::Vector2d(twist.x, twist.y);
-
-  const auto closest_entry_point = closest_point_on_crosswalk_entries(obj_pos, cw.entry_edges);
-  const auto to_entry = closest_entry_point - obj_pos;
-  return obj_vel_vector.dot(to_entry) > 0.0;
+  // moving toward the crosswalk along its crossing axis, not merely toward an entry-edge corner
+  const auto inward = inward_crossing_axis(obj_pos, cw.entry_edges);
+  if (!inward) return false;
+  const double cos_theta = obj_vel_vector.dot(*inward) / speed;
+  return cos_theta > std::cos(max_approach_angle);
 }
 
 }  // namespace
@@ -580,7 +573,7 @@ void CrosswalkFilter::update_target_objects(
   for (const auto & cw : target_crosswalks) {
     bool is_ego_stopped_at_cw = is_stopped_at_crosswalk(cw);
     for (const auto & object : objects) {
-      if (!is_target_object(object, cw)) continue;
+      if (!is_target_object(object, cw, params_.max_approach_angle)) continue;
       update_object(object, cw.crosswalk_info.crosswalk->id(), is_ego_stopped_at_cw);
     }
     clear_old_objects(cw.crosswalk_info.crosswalk->id());

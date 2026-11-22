@@ -132,6 +132,7 @@
       stop_duration: 3.0 # [s] minimum duration of the stop to consider the trajectory feasible
       arrived_distance_threshold: 5.0 # [m] threshold to check if the ego vehicle has arrived at crosswalk stop line
       use_trajectory_time: false # [bool] whether to use the embedded trajectory time to evaluate the stop duration
+      max_approach_angle: 1.047 # [rad] maximum angle from the crossing axis for a moving object to count as approaching
       stopping_params:
         nominal_decel: 1.0 # [m/s^2] nominal deceleration to calculate the stop distance used as trajectory length limit
         nominal_jerk: 1.0 # [m/s^3] nominal jerk to calculate the stop distance used as trajectory length limit

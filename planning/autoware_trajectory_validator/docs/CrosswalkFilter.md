@@ -85,6 +85,12 @@ For each target crosswalk:
 5. Clear objects not seen for longer than `object_clear_time_th`.
 6. Drop object history for crosswalks that are no longer in the target set.
 
+An object inside a detection area is a target when any of the following holds:
+
+1. Its map-frame speed is below 0.1 m/s (waiting), including when its predicted path stays outside the crosswalk.
+2. It has a predicted path with confidence of at least 0.5 that enters the crosswalk polygon. If every such path misses the polygon, the object is not a target.
+3. Otherwise, its velocity lies within `max_approach_angle` of the crossing axis from the nearer entry-edge midpoint to the farther one. Motion along the sidewalk, parallel to the road, is not a target.
+
 ### Obstruction check
 
 For each target crosswalk with `is_crossing == true`:
@@ -124,6 +130,7 @@ The filter utilizes the following data from the `FilterContext`:
 | `crosswalk.nominal_jerk`               | double       | 1.0                     | [m/s³] Nominal jerk used for stop-distance / lookahead calculation.                                    |
 | `crosswalk.stop_duration`              | double       | 3.0                     | [s] Minimum wait duration required at the stop line when target objects are present.                   |
 | `crosswalk.arrived_distance_threshold` | double       | 5.0                     | [m] Distance threshold (front bumper to stop line) used to decide if ego has arrived at the crosswalk. |
+| `crosswalk.max_approach_angle`         | double       | 1.047                   | [rad] Maximum angle between object velocity and the crossing axis for a moving object to count as approaching. |
 
 ## Logging and Visualization
 

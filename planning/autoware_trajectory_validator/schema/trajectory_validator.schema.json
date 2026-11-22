@@ -590,6 +590,13 @@
               "description": "Whether to use the embedded trajectory time to evaluate the stop duration.",
               "default": false
             },
+            "max_approach_angle": {
+              "type": "number",
+              "description": "Maximum angle between object velocity and the crosswalk crossing axis for a moving object to be treated as approaching [rad].",
+              "default": 1.047,
+              "minimum": 0.0,
+              "maximum": 1.5707963267948966
+            },
             "stopping_params": {
               "type": "object",
               "properties": {

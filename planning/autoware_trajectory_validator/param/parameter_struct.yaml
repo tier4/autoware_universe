@@ -455,6 +455,13 @@ validator:
       default_value: false
       description: whether to use the embedded trajectory time to evaluate the stop duration
       read_only: false
+    max_approach_angle:
+      type: double
+      default_value: 1.047
+      description: maximum angle between object velocity and the crosswalk crossing axis for a moving object to be treated as approaching (rad)
+      validation:
+        bounds<>: [0.0, 1.5707963267948966]
+      read_only: false
     stopping_params:
       nominal_decel:
         type: double

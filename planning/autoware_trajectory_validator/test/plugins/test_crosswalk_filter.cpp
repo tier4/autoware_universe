@@ -118,6 +118,7 @@ protected:
     params.crosswalk.stopping_params.decel_limit = k_decel_limit;
     params.crosswalk.stopping_params.jerk_limit = k_jerk_limit;
     params.crosswalk.stopping_params.delay_response_time = k_delay_response_time;
+    params.crosswalk.max_approach_angle = M_PI / 3.0;
     filter_->update_parameters(params);
 
     context_.route = std::make_shared<autoware_planning_msgs::msg::LaneletRoute>();
@@ -534,6 +535,77 @@ TEST_F(CrosswalkFilterTest, StoppedObjectInDetectionAreaIsTarget)
   expect_feasibility(
     create_trajectory(0.0, 80.0, 5.0f), false,
     "stopped object in the detection area should remain a target");
+}
+
+TEST_F(CrosswalkFilterTest, ParallelMotionInDetectionAreaIsIgnored)
+{
+  create_and_set_map_with_crosswalk(k_stop_line_x);
+  set_odometry(5.0f, node_->now());
+
+  // South cap center, heading +X (along the road). Crossing axis is +Y.
+  set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, 0.0, k_object_speed)});
+
+  expect_feasibility(
+    create_trajectory(0.0, 80.0, 5.0f), true,
+    "object moving parallel to the road inside the detection area should not be a target");
+}
+
+TEST_F(CrosswalkFilterTest, ParallelMotionInLateralMarginIsIgnored)
+{
+  create_and_set_map_with_crosswalk(k_stop_line_x);
+  set_odometry(5.0f, node_->now());
+
+  // 0.5 m outside the crosswalk's west edge, still inside the lateral margin, heading toward
+  // that edge along the sidewalk. The nearest entry point is the corner, but the crossing axis
+  // is +Y, so parallel motion is not an approach.
+  const double lateral_strip_x = k_stop_line_x - 2.5;
+  set_pedestrians({make_pedestrian(lateral_strip_x, k_south_detection_y, 0.0, k_object_speed)});
+
+  expect_feasibility(
+    create_trajectory(0.0, 80.0, 5.0f), true,
+    "object riding along the sidewalk in the lateral margin should not be a target");
+}
+
+TEST_F(CrosswalkFilterTest, DiagonalApproachWithinAngleIsTarget)
+{
+  create_and_set_map_with_crosswalk(k_stop_line_x);
+  set_odometry(5.0f, node_->now());
+
+  // 45 deg from +Y, inside the 60 deg approach cone.
+  set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, M_PI_4, k_object_speed)});
+
+  expect_feasibility(
+    create_trajectory(0.0, 80.0, 5.0f), false,
+    "object approaching within max_approach_angle should be a target");
+}
+
+TEST_F(CrosswalkFilterTest, DiagonalMotionOutsideApproachAngleIsIgnored)
+{
+  create_and_set_map_with_crosswalk(k_stop_line_x);
+  set_odometry(5.0f, node_->now());
+
+  // 20 deg from +X is 70 deg from the +Y crossing axis, outside the 60 deg cone.
+  const double yaw = 20.0 * M_PI / 180.0;
+  set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, yaw, k_object_speed)});
+
+  expect_feasibility(
+    create_trajectory(0.0, 80.0, 5.0f), true,
+    "object moving mostly parallel to the road should not be a target");
+}
+
+TEST_F(CrosswalkFilterTest, StoppedObjectWithPathOutsideCrosswalkIsTarget)
+{
+  create_and_set_map_with_crosswalk(k_stop_line_x);
+  set_odometry(5.0f, node_->now());
+
+  auto obj = make_pedestrian(k_stop_line_x, k_south_detection_y, 0.0, 0.0f);
+  obj.kinematics.predicted_paths.push_back(make_predicted_path(
+    {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, -9.0}, {k_stop_line_x, -12.0}}, 0.9f));
+  set_pedestrians({obj});
+
+  expect_feasibility(
+    create_trajectory(0.0, 80.0, 5.0f), false,
+    "stopped object should stay a target even when its high-confidence path misses the crosswalk");
 }
 
 TEST_F(CrosswalkFilterTest, RiskLevelSafeWhenNoTargetObjects)
