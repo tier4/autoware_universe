@@ -265,30 +265,37 @@ bool is_target_object(
   const double speed = obj_vel_vector.norm();
   if (speed < stopped_speed_threshold) return true;
 
-  // check if the object has a high confidence path through the crosswalk
-  static constexpr double confidence_threshold = 0.5;
-  auto has_high_confidence_path = std::any_of(
-    obj.kinematics.predicted_paths.begin(), obj.kinematics.predicted_paths.end(),
-    [&](const auto & path) { return path.confidence >= confidence_threshold; });
-
-  if (has_high_confidence_path) {
-    for (const auto & path : obj.kinematics.predicted_paths) {
-      if (path.confidence < confidence_threshold) continue;
-      for (const auto & p : path.path) {
-        const auto p_point = lanelet::BasicPoint2d(p.position.x, p.position.y);
-        if (!boost::geometry::disjoint(cw.crosswalk_polygon, p_point)) {
-          return true;
-        }
+  auto enters_crosswalk = [&](const auto & path) {
+    for (const auto & p : path.path) {
+      const auto p_point = lanelet::BasicPoint2d(p.position.x, p.position.y);
+      if (!boost::geometry::disjoint(cw.crosswalk_polygon, p_point)) {
+        return true;
       }
     }
     return false;
-  }
+  };
 
-  // moving toward the crosswalk along its crossing axis, not merely toward an entry-edge corner
-  const auto inward = inward_crossing_axis(obj_pos, cw.entry_edges);
-  if (!inward) return false;
-  const double cos_theta = obj_vel_vector.dot(*inward) / speed;
-  return cos_theta > std::cos(max_approach_angle);
+  // check if the object is moving toward the crosswalk along its crossing axis
+  auto moving_toward_crosswalk = [&]() {
+    const auto inward = inward_crossing_axis(obj_pos, cw.entry_edges);
+    if (!inward) return false;
+    const double cos_theta = obj_vel_vector.dot(*inward) / speed;
+    return cos_theta > std::cos(max_approach_angle);
+  }();
+
+  // check if the object's predicted paths pass through the crosswalk
+  auto crossing_sum = 0.0;
+  auto total = 0.0;
+  constexpr double crossing_threshold = 0.3;
+  for (const auto & path : obj.kinematics.predicted_paths) {
+    total += path.confidence;
+    if (enters_crosswalk(path)) crossing_sum += path.confidence;
+  }
+  if (total > 1e-3) {
+    const auto predicted_paths_cross = crossing_sum / total >= crossing_threshold;
+    return predicted_paths_cross && moving_toward_crosswalk;
+  }
+  return moving_toward_crosswalk;
 }
 
 }  // namespace
@@ -554,7 +561,10 @@ void CrosswalkFilter::update_target_objects(
     it->object = obj;
     it->last_seen_time = current_time;
     if (it->ignore) return;
-    it->first_seen_time = stopped_at_cw ? it->first_seen_time : current_time;
+    it->is_confirmed |=
+      (it->last_seen_time - it->first_seen_time).seconds() >= params_.object_confirm_time_th;
+    if (!it->is_confirmed) return;
+    if (!stopped_at_cw) it->first_seen_time = current_time;
     it->ignore = (it->last_seen_time - it->first_seen_time).seconds() > params_.stop_duration;
   };
 
@@ -605,7 +615,7 @@ bool CrosswalkFilter::is_obstructing_crosswalk(
   const auto required_waiting_time = [&]() {
     auto min_object_duration = params_.stop_duration;
     for (const auto & obj : cw_objects) {
-      if (obj.ignore) continue;
+      if (!obj.is_confirmed || obj.ignore) continue;
       const auto duration = rclcpp::Duration(obj.last_seen_time - obj.first_seen_time).seconds();
       if (duration >= min_object_duration) continue;
       min_object_duration = duration;
@@ -719,11 +729,11 @@ void CrosswalkFilter::update_debug_data(
       auto min_obj_duration = params_.stop_duration;
       for (const auto & cw_object : crosswalk_objects_map_[cw.crosswalk_info.crosswalk->id()]) {
         const auto obj_duration = (cw_object.last_seen_time - cw_object.first_seen_time).seconds();
-        const auto color = cw_object.ignore ? green : red;
+        const auto color = cw_object.ignore ? green : (cw_object.is_confirmed ? red : yellow);
         auto obj_polygon = autoware_utils_geometry::to_polygon2d(
           cw_object.object.kinematics.initial_pose_with_covariance.pose, cw_object.object.shape);
         add_polygon_marker(obj_polygon.outer(), "target_objects", obj_id, color);
-        if (!cw_object.ignore) {
+        if (cw_object.is_confirmed && !cw_object.ignore) {
           add_text_marker(
             std::to_string(obj_duration),
             cw_object.object.kinematics.initial_pose_with_covariance.pose,

@@ -81,6 +81,7 @@ struct TargetObject
   rclcpp::Time first_seen_time;
   rclcpp::Time last_seen_time;
   ObjectClassification::_label_type type;
+  bool is_confirmed{false};
   bool ignore{false};
 
   TargetObject(

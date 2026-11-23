@@ -561,6 +561,13 @@
               "default": 0.3,
               "minimum": 0.0
             },
+            "object_confirm_time_th": {
+              "type": "number",
+              "description": "Duration a target object must be seen before it can obstruct [s].",
+              "default": 0.3,
+              "minimum": 0.0,
+              "maximum": 10.0
+            },
             "distance_hysteresis_th": {
               "type": "number",
               "description": "Hysteresis threshold to consider the object as the same object [m].",

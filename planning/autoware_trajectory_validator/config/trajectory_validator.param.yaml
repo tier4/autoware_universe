@@ -128,11 +128,12 @@
       lon_detection_margin: 2.5 # [m] longitudinal extrusion length from crosswalk edge
       lat_detection_margin: 1.0 # [m] lateral extrusion length from crosswalk edge
       object_clear_time_th: 0.3 # [s] duration threshold to clear target object when no longer seen
+      object_confirm_time_th: 0.2 # [s] duration a target object must be seen before it can trigger a failure
       overshoot_tolerance: 0.1  # [m] maximum overshoot distance allowed to consider the trajectory feasible
       stop_duration: 3.0 # [s] minimum duration of the stop to consider the trajectory feasible
       arrived_distance_threshold: 5.0 # [m] threshold to check if the ego vehicle has arrived at crosswalk stop line
       use_trajectory_time: false # [bool] whether to use the embedded trajectory time to evaluate the stop duration
-      max_approach_angle: 1.047 # [rad] maximum angle from the crossing axis for a moving object to count as approaching
+      max_approach_angle: 1.309 # [rad] (75 degrees) maximum angle from the crossing axis for a moving object to count as approaching
       stopping_params:
         nominal_decel: 1.0 # [m/s^2] nominal deceleration to calculate the stop distance used as trajectory length limit
         nominal_jerk: 1.0 # [m/s^3] nominal jerk to calculate the stop distance used as trajectory length limit

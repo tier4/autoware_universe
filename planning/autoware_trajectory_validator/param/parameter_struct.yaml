@@ -430,6 +430,13 @@ validator:
       default_value: 0.3
       description: duration threshold to clear target object when no longer seen
       read_only: false
+    object_confirm_time_th:
+      type: double
+      default_value: 0.3
+      description: duration a target object must be seen before it can obstruct (s)
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
     distance_hysteresis_th:
       type: double
       default_value: 0.3
