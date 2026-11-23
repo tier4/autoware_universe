@@ -69,6 +69,10 @@ constexpr double k_delay_response_time = 0.5;
 constexpr double k_south_detection_y = -7.0;
 // Object-frame forward speed used for toward/away gates.
 constexpr float k_object_speed = 1.0f;
+constexpr double k_confirmation_time = 0.3;
+// Share of predicted-path confidence that must enter the crosswalk.
+constexpr float k_crossing_confidence = 0.4f;
+constexpr float k_non_crossing_confidence = 0.6f;
 
 struct StopDistances
 {
@@ -109,6 +113,7 @@ protected:
     params.crosswalk.lon_detection_margin = 2.0;
     params.crosswalk.lat_detection_margin = 1.0;
     params.crosswalk.object_clear_time_th = 0.3;
+    params.crosswalk.object_confirm_time_th = k_confirmation_time;
     params.crosswalk.distance_hysteresis_th = 0.3;
     params.crosswalk.overshoot_tolerance = 0.0;
     params.crosswalk.stop_duration = k_stop_duration;
@@ -292,6 +297,22 @@ protected:
     return points;
   }
 
+  /// First observation only records the object. Advance past the confirmation interval so the next
+  /// is_feasible call confirms a persistent target. The extra 10 ms keeps the check off the exact
+  /// object_confirm_time_th boundary.
+  void observe_until_confirmed(const std::vector<TrajectoryPoint> & points)
+  {
+    autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_trajectory;
+    candidate_trajectory.points = points;
+    const auto first = filter_->is_feasible(candidate_trajectory, context_);
+    ASSERT_TRUE(first.has_value()) << first.error();
+    const auto stamp = rclcpp::Time(context_.odometry->header.stamp);
+    const auto velocity = static_cast<float>(context_.odometry->twist.twist.linear.x);
+    constexpr double k_margin_s = 0.01;
+    set_odometry(
+      velocity, stamp + rclcpp::Duration::from_seconds(k_confirmation_time + k_margin_s));
+  }
+
   void expect_feasibility(
     const std::vector<TrajectoryPoint> & points, const bool expected_feasible,
     const std::string & message = "")
@@ -383,9 +404,11 @@ TEST_F(CrosswalkFilterTest, IntersectingCrosswalkWithTargetObjectEgoMoving)
   // Pedestrian in the sidewalk-side detection end-cap (south of the crosswalk)
   set_pedestrian_at(k_stop_line_x, -7.0);
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), false,
-    "crossing while a target object is waiting and ego is moving should be rejected");
+    traj, false,
+    "crossing while a confirmed target object is waiting and ego is moving should be rejected");
 }
 
 TEST_F(CrosswalkFilterTest, StopDurationGateWhileEgoStoppedAtCrosswalk)
@@ -398,8 +421,12 @@ TEST_F(CrosswalkFilterTest, StopDurationGateWhileEgoStoppedAtCrosswalk)
   set_odometry(0.0f, stamp0);
   const auto traj = create_trajectory(8.0, 80.0, 5.0f);
 
+  expect_feasibility(traj, true, "a single observation is not confirmed and should be accepted");
+
+  set_odometry(0.0f, stamp0 + rclcpp::Duration::from_seconds(k_confirmation_time));
   expect_feasibility(
-    traj, false, "should be rejected before the required stop duration has elapsed");
+    traj, false,
+    "should be rejected once the object is confirmed and stop_duration has not elapsed");
 
   set_odometry(0.0f, stamp0 + rclcpp::Duration::from_seconds(k_stop_duration + 0.2));
   expect_feasibility(
@@ -419,7 +446,7 @@ TEST_F(CrosswalkFilterTest, NewTargetObjectExtendsStopDuration)
   set_odometry(0.0f, stamp0);
   const auto traj = create_trajectory(8.0, 80.0, 5.0f);
 
-  expect_feasibility(traj, false, "initially infeasible while waiting for the first object");
+  expect_feasibility(traj, true, "first observation of the object is not confirmed yet");
 
   // Just before the first object's wait completes, a second target object appears.
   set_odometry(0.0f, stamp0 + rclcpp::Duration::from_seconds(k_stop_duration - 0.2));
@@ -449,8 +476,10 @@ TEST_F(CrosswalkFilterTest, MovingAwayWithoutPredictedPathIsIgnored)
   // South detection area: facing -Y (away from the crosswalk entry).
   set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, -M_PI_2, k_object_speed)});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), true,
+    traj, true,
     "object moving away from the crosswalk with no predicted path should not be a target");
 }
 
@@ -462,25 +491,45 @@ TEST_F(CrosswalkFilterTest, MovingTowardWithoutPredictedPathIsTarget)
   // South detection area: facing +Y (toward the crosswalk entry).
   set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, M_PI_2, k_object_speed)});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  expect_feasibility(traj, true, "a single frame of approach motion should not obstruct yet");
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), false,
-    "object moving toward the crosswalk with no predicted path should be a target");
+    traj, false,
+    "object moving toward the crosswalk with no predicted path should be a target once confirmed");
 }
 
-TEST_F(CrosswalkFilterTest, HighConfidencePathThroughCrosswalkIsTarget)
+TEST_F(CrosswalkFilterTest, PredictedPathWithoutApproachMotionIsIgnored)
 {
   create_and_set_map_with_crosswalk(k_stop_line_x);
   set_odometry(5.0f, node_->now());
 
-  // Velocity points away, but a high-confidence path crosses the crosswalk polygon.
+  // Path enters the crosswalk, but velocity points away, so the two signals disagree.
   auto obj = make_pedestrian(k_stop_line_x, k_south_detection_y, -M_PI_2, k_object_speed);
   obj.kinematics.predicted_paths.push_back(make_predicted_path(
     {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, 0.0}, {k_stop_line_x, 3.0}}, 0.9f));
   set_pedestrians({obj});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), false,
-    "high-confidence predicted path through the crosswalk should keep the object as a target");
+    traj, true, "a crossing predicted path without approach motion should not be a target");
+}
+
+TEST_F(CrosswalkFilterTest, ApproachMotionAndPredictedPathIsTarget)
+{
+  create_and_set_map_with_crosswalk(k_stop_line_x);
+  set_odometry(5.0f, node_->now());
+
+  auto obj = make_pedestrian(k_stop_line_x, k_south_detection_y, M_PI_2, k_object_speed);
+  obj.kinematics.predicted_paths.push_back(make_predicted_path(
+    {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, 0.0}, {k_stop_line_x, 3.0}}, 0.9f));
+  set_pedestrians({obj});
+
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
+  expect_feasibility(
+    traj, false, "approach motion and a crossing predicted path should be a target once confirmed");
 }
 
 TEST_F(CrosswalkFilterTest, HighConfidencePathAwayFromCrosswalkIsIgnored)
@@ -488,40 +537,64 @@ TEST_F(CrosswalkFilterTest, HighConfidencePathAwayFromCrosswalkIsIgnored)
   create_and_set_map_with_crosswalk(k_stop_line_x);
   set_odometry(5.0f, node_->now());
 
-  // Still inside the detection area, but the predicted path never enters the crosswalk.
+  // Velocity points toward the crosswalk, but the predicted path never enters it.
   auto obj = make_pedestrian(k_stop_line_x, k_south_detection_y, M_PI_2, k_object_speed);
   obj.kinematics.predicted_paths.push_back(make_predicted_path(
     {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, -9.0}, {k_stop_line_x, -12.0}}, 0.9f));
   set_pedestrians({obj});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), true,
-    "high-confidence predicted path that misses the crosswalk should not be a target");
+    traj, true,
+    "approach motion vetoed by a predicted path that misses the crosswalk should not be a target");
 }
 
-TEST_F(CrosswalkFilterTest, LowConfidencePathsFallBackToVelocityGate)
+TEST_F(CrosswalkFilterTest, PredictedPathConfidenceFractionGatesCrossing)
 {
   create_and_set_map_with_crosswalk(k_stop_line_x);
   set_odometry(5.0f, node_->now());
 
-  // Path would go through the crosswalk, but confidence is below the gate threshold.
-  auto away_obj = make_pedestrian(k_stop_line_x, k_south_detection_y, -M_PI_2, k_object_speed);
-  away_obj.kinematics.predicted_paths.push_back(
+  // 0.2 of the confidence enters the crosswalk, below the 0.3 share, so motion is vetoed.
+  auto below_threshold =
+    make_pedestrian(k_stop_line_x, k_south_detection_y, M_PI_2, k_object_speed);
+  below_threshold.kinematics.predicted_paths.push_back(
     make_predicted_path({{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, 0.0}}, 0.2f));
-  set_pedestrians({away_obj});
+  below_threshold.kinematics.predicted_paths.push_back(
+    make_predicted_path({{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, -12.0}}, 0.8f));
+  set_pedestrians({below_threshold});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), true,
-    "low-confidence paths should fall back to velocity; moving away is ignored");
+    traj, true,
+    "approach motion with a crossing-confidence share below 0.3 should not be a target");
 
-  auto toward_obj = make_pedestrian(k_stop_line_x, k_south_detection_y, M_PI_2, k_object_speed);
-  toward_obj.kinematics.predicted_paths.push_back(
-    make_predicted_path({{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, 0.0}}, 0.2f));
-  set_pedestrians({toward_obj});
+  // Share is 0.4, but velocity points away.
+  auto motion_disagrees =
+    make_pedestrian(k_stop_line_x, k_south_detection_y, -M_PI_2, k_object_speed);
+  motion_disagrees.kinematics.predicted_paths.push_back(make_predicted_path(
+    {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, 0.0}}, k_crossing_confidence));
+  motion_disagrees.kinematics.predicted_paths.push_back(make_predicted_path(
+    {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, -12.0}}, k_non_crossing_confidence));
+  set_pedestrians({motion_disagrees});
 
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), false,
-    "low-confidence paths should fall back to velocity; moving toward is a target");
+    traj, true,
+    "a sufficient crossing-confidence share without approach motion should not be a target");
+
+  auto agrees = make_pedestrian(k_stop_line_x, k_south_detection_y, M_PI_2, k_object_speed);
+  agrees.kinematics.predicted_paths.push_back(make_predicted_path(
+    {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, 0.0}}, k_crossing_confidence));
+  agrees.kinematics.predicted_paths.push_back(make_predicted_path(
+    {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, -12.0}}, k_non_crossing_confidence));
+  set_pedestrians({agrees});
+  observe_until_confirmed(traj);
+  expect_feasibility(
+    traj, false,
+    "approach motion and a crossing-confidence share of at least 0.3 should be a target once "
+    "confirmed");
 }
 
 TEST_F(CrosswalkFilterTest, StoppedObjectInDetectionAreaIsTarget)
@@ -532,9 +605,9 @@ TEST_F(CrosswalkFilterTest, StoppedObjectInDetectionAreaIsTarget)
   // Explicitly stopped; no predicted paths.
   set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, 0.0, 0.0f)});
 
-  expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), false,
-    "stopped object in the detection area should remain a target");
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
+  expect_feasibility(traj, false, "stopped object in the detection area should remain a target");
 }
 
 TEST_F(CrosswalkFilterTest, ParallelMotionInDetectionAreaIsIgnored)
@@ -545,8 +618,10 @@ TEST_F(CrosswalkFilterTest, ParallelMotionInDetectionAreaIsIgnored)
   // South cap center, heading +X (along the road). Crossing axis is +Y.
   set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, 0.0, k_object_speed)});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), true,
+    traj, true,
     "object moving parallel to the road inside the detection area should not be a target");
 }
 
@@ -561,9 +636,10 @@ TEST_F(CrosswalkFilterTest, ParallelMotionInLateralMarginIsIgnored)
   const double lateral_strip_x = k_stop_line_x - 2.5;
   set_pedestrians({make_pedestrian(lateral_strip_x, k_south_detection_y, 0.0, k_object_speed)});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), true,
-    "object riding along the sidewalk in the lateral margin should not be a target");
+    traj, true, "object riding along the sidewalk in the lateral margin should not be a target");
 }
 
 TEST_F(CrosswalkFilterTest, DiagonalApproachWithinAngleIsTarget)
@@ -574,9 +650,10 @@ TEST_F(CrosswalkFilterTest, DiagonalApproachWithinAngleIsTarget)
   // 45 deg from +Y, inside the 60 deg approach cone.
   set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, M_PI_4, k_object_speed)});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), false,
-    "object approaching within max_approach_angle should be a target");
+    traj, false, "object approaching within max_approach_angle should be a target");
 }
 
 TEST_F(CrosswalkFilterTest, DiagonalMotionOutsideApproachAngleIsIgnored)
@@ -588,9 +665,10 @@ TEST_F(CrosswalkFilterTest, DiagonalMotionOutsideApproachAngleIsIgnored)
   const double yaw = 20.0 * M_PI / 180.0;
   set_pedestrians({make_pedestrian(k_stop_line_x, k_south_detection_y, yaw, k_object_speed)});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), true,
-    "object moving mostly parallel to the road should not be a target");
+    traj, true, "object moving mostly parallel to the road should not be a target");
 }
 
 TEST_F(CrosswalkFilterTest, StoppedObjectWithPathOutsideCrosswalkIsTarget)
@@ -603,8 +681,10 @@ TEST_F(CrosswalkFilterTest, StoppedObjectWithPathOutsideCrosswalkIsTarget)
     {{k_stop_line_x, k_south_detection_y}, {k_stop_line_x, -9.0}, {k_stop_line_x, -12.0}}, 0.9f));
   set_pedestrians({obj});
 
+  const auto traj = create_trajectory(0.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_feasibility(
-    create_trajectory(0.0, 80.0, 5.0f), false,
+    traj, false,
     "stopped object should stay a target even when its high-confidence path misses the crosswalk");
 }
 
@@ -627,9 +707,10 @@ TEST_F(CrosswalkFilterTest, RiskLevelDangerWhenWithinArrivedDistance)
   set_pedestrian_at(k_stop_line_x, -7.0);
 
   const double ego_x = k_stop_line_x - k_arrived_distance_threshold;
+  const auto traj = create_trajectory(ego_x, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_obstruction_risk(
-    create_trajectory(ego_x, 80.0, 5.0f), RiskLevel::DANGER, false,
-    "obstruction inside arrived distance should report DANGER");
+    traj, RiskLevel::DANGER, false, "obstruction inside arrived distance should report DANGER");
 }
 
 TEST_F(CrosswalkFilterTest, RiskLevelDangerWhenEgoStoppedNearCrosswalk)
@@ -638,8 +719,10 @@ TEST_F(CrosswalkFilterTest, RiskLevelDangerWhenEgoStoppedNearCrosswalk)
   set_pedestrian_at(k_stop_line_x, -7.0);
   set_odometry(0.0f, node_->now());
 
+  const auto traj = create_trajectory(8.0, 80.0, 5.0f);
+  observe_until_confirmed(traj);
   expect_obstruction_risk(
-    create_trajectory(8.0, 80.0, 5.0f), RiskLevel::DANGER, false,
+    traj, RiskLevel::DANGER, false,
     "stopped near the stop line with a waiting VRU should report DANGER");
 }
 
@@ -656,8 +739,10 @@ TEST_F(CrosswalkFilterTest, RiskLevelDangerWhenCannotStopWithMinimumBraking)
   set_odometry(ego_velocity, node_->now());
   set_pedestrian_at(stop_line_x, -7.0);
 
+  const auto traj = create_trajectory(0.0, 80.0, ego_velocity);
+  observe_until_confirmed(traj);
   expect_obstruction_risk(
-    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::DANGER, false,
+    traj, RiskLevel::DANGER, false,
     "obstruction closer than minimum stop distance should report DANGER");
 }
 
@@ -674,8 +759,10 @@ TEST_F(CrosswalkFilterTest, RiskLevelHighCautionWhenOnlyHardBrakingCanStop)
   set_odometry(ego_velocity, node_->now());
   set_pedestrian_at(stop_line_x, -7.0);
 
+  const auto traj = create_trajectory(0.0, 80.0, ego_velocity);
+  observe_until_confirmed(traj);
   expect_obstruction_risk(
-    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::HIGH_CAUTION, true,
+    traj, RiskLevel::HIGH_CAUTION, true,
     "obstruction beyond minimum but within nominal stop distance should report HIGH_CAUTION and "
     "stay usable");
 }
@@ -693,8 +780,10 @@ TEST_F(CrosswalkFilterTest, RiskLevelLowCautionWhenNominalBrakingCanStop)
   set_odometry(ego_velocity, node_->now());
   set_pedestrian_at(stop_line_x, -7.0);
 
+  const auto traj = create_trajectory(0.0, 80.0, ego_velocity);
+  observe_until_confirmed(traj);
   expect_obstruction_risk(
-    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::LOW_CAUTION, true,
+    traj, RiskLevel::LOW_CAUTION, true,
     "obstruction beyond nominal stop distance should report LOW_CAUTION and stay usable");
 }
 
@@ -718,7 +807,9 @@ TEST_F(CrosswalkFilterTest, RiskLevelAccountsForVehicleFrontOffset)
   set_odometry(ego_velocity, node_->now());
   set_pedestrian_at(stop_line_x, -7.0);
 
+  const auto traj = create_trajectory(0.0, 80.0, ego_velocity);
+  observe_until_confirmed(traj);
   expect_obstruction_risk(
-    create_trajectory(0.0, 80.0, ego_velocity), RiskLevel::HIGH_CAUTION, true,
+    traj, RiskLevel::HIGH_CAUTION, true,
     "risk should use ego-front-to-stop-line distance, not raw arc length");
 }

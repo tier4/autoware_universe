@@ -79,17 +79,17 @@ For each target crosswalk:
 3. Associate objects across frames by UUID, or by type + proximity within `distance_hysteresis_th`.
 4. Maintain per-object timers:
    - `first_seen_time` / `last_seen_time`
-   - While ego is **not** stopped near the stop line, `first_seen_time` is refreshed every cycle (wait timer does not accumulate).
-   - While ego **is** stopped near the stop line, `first_seen_time` is held so the wait duration grows.
+   - An object is confirmed after it has been a target for at least `object_confirm_time_th`. A single frame does not obstruct.
+   - After confirmation, while ego is **not** stopped near the stop line, `first_seen_time` is refreshed every cycle (wait timer does not accumulate).
+   - While ego **is** stopped near the stop line, `first_seen_time` is held so the wait duration grows. Time spent reaching confirmation counts toward that wait.
    - When wait duration exceeds `stop_duration`, the object is marked `ignore` (wait considered complete).
 5. Clear objects not seen for longer than `object_clear_time_th`.
 6. Drop object history for crosswalks that are no longer in the target set.
 
-An object inside a detection area is a target when any of the following holds:
+An object inside a detection area is a target when either of the following holds:
 
 1. Its map-frame speed is below 0.1 m/s (waiting), including when its predicted path stays outside the crosswalk.
-2. It has a predicted path with confidence of at least 0.5 that enters the crosswalk polygon. If every such path misses the polygon, the object is not a target.
-3. Otherwise, its velocity lies within `max_approach_angle` of the crossing axis from the nearer entry-edge midpoint to the farther one. Motion along the sidewalk, parallel to the road, is not a target.
+2. It is moving, and its velocity lies within `max_approach_angle` of the crossing axis from the nearer entry-edge midpoint to the farther one. Motion along the sidewalk, parallel to the road, is not an approach. When predicted paths have usable confidence, those paths must also agree: the share of confidence that enters the crosswalk polygon has to be at least 0.3. Approach motion alone is used only when there is no usable predicted path.
 
 ### Obstruction check
 
@@ -118,18 +118,19 @@ The filter utilizes the following data from the `FilterContext`:
 
 ### Parameters
 
-| Parameter name                         | Type         | Default                 | Description                                                                                            |
-| -------------------------------------- | ------------ | ----------------------- | ------------------------------------------------------------------------------------------------------ |
-| `crosswalk.object_types`               | string array | `[pedestrian, bicycle]` | Object classification labels treated as target VRUs.                                                   |
-| `crosswalk.lon_detection_margin`       | double       | 2.0                     | [m] Longitudinal extrusion of sidewalk detection end caps beyond the crosswalk.                        |
-| `crosswalk.lat_detection_margin`       | double       | 1.0                     | [m] Lateral widening of each detection end cap along the crosswalk end edge.                           |
-| `crosswalk.object_clear_time_th`       | double       | 0.3                     | [s] Time after which an unseen target object is removed from tracking.                                 |
-| `crosswalk.distance_hysteresis_th`     | double       | 0.3                     | [m] Position hysteresis used to match the same object across frames when UUID matching is not enough.  |
-| `crosswalk.overshoot_tolerance`        | double       | 0.1                     | [m] Tolerance subtracted from the vehicle front overhang when extending the checked trajectory.        |
-| `crosswalk.nominal_deceleration`       | double       | 1.0                     | [m/s²] Nominal deceleration used for stop-distance / lookahead calculation.                            |
-| `crosswalk.nominal_jerk`               | double       | 1.0                     | [m/s³] Nominal jerk used for stop-distance / lookahead calculation.                                    |
-| `crosswalk.stop_duration`              | double       | 3.0                     | [s] Minimum wait duration required at the stop line when target objects are present.                   |
-| `crosswalk.arrived_distance_threshold` | double       | 5.0                     | [m] Distance threshold (front bumper to stop line) used to decide if ego has arrived at the crosswalk. |
+| Parameter name                         | Type         | Default                 | Description                                                                                                    |
+| -------------------------------------- | ------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `crosswalk.object_types`               | string array | `[pedestrian, bicycle]` | Object classification labels treated as target VRUs.                                                           |
+| `crosswalk.lon_detection_margin`       | double       | 2.0                     | [m] Longitudinal extrusion of sidewalk detection end caps beyond the crosswalk.                                |
+| `crosswalk.lat_detection_margin`       | double       | 1.0                     | [m] Lateral widening of each detection end cap along the crosswalk end edge.                                   |
+| `crosswalk.object_clear_time_th`       | double       | 0.3                     | [s] Time after which an unseen target object is removed from tracking.                                         |
+| `crosswalk.object_confirm_time_th`     | double       | 0.3                     | [s] Time a target object must be seen before it can obstruct.                                                  |
+| `crosswalk.distance_hysteresis_th`     | double       | 0.3                     | [m] Position hysteresis used to match the same object across frames when UUID matching is not enough.          |
+| `crosswalk.overshoot_tolerance`        | double       | 0.1                     | [m] Tolerance subtracted from the vehicle front overhang when extending the checked trajectory.                |
+| `crosswalk.nominal_deceleration`       | double       | 1.0                     | [m/s²] Nominal deceleration used for stop-distance / lookahead calculation.                                    |
+| `crosswalk.nominal_jerk`               | double       | 1.0                     | [m/s³] Nominal jerk used for stop-distance / lookahead calculation.                                            |
+| `crosswalk.stop_duration`              | double       | 3.0                     | [s] Minimum wait duration required at the stop line when target objects are present.                           |
+| `crosswalk.arrived_distance_threshold` | double       | 5.0                     | [m] Distance threshold (front bumper to stop line) used to decide if ego has arrived at the crosswalk.         |
 | `crosswalk.max_approach_angle`         | double       | 1.047                   | [rad] Maximum angle between object velocity and the crossing axis for a moving object to count as approaching. |
 
 ## Logging and Visualization
@@ -138,10 +139,10 @@ The `CrosswalkFilter` publishes debug markers under `~/debug/markers/crosswalk_f
 
 ### Debug Markers
 
-| Namespace                 | Type               | Color     | Description                                                                  |
-| ------------------------- | ------------------ | --------- | ---------------------------------------------------------------------------- |
-| `target_crosswalks`       | `LINE_STRIP`       | Magenta   | Crosswalk lanelet polygon for each target crosswalk.                         |
-| `detection_areas`         | `LINE_LIST`        | Yellow    | Sidewalk-side waiting end caps used for object association.                  |
-| `target_stop_lines`       | `LINE_STRIP`       | Magenta   | Stop line associated with each target crosswalk.                             |
-| `target_objects`          | `LINE_STRIP`       | Red/Green | Tracked target object footprints (`red` = still waiting, `green` = ignored). |
-| `target_objects_duration` | `TEXT_VIEW_FACING` | White     | Current wait duration [s] for non-ignored target objects.                    |
+| Namespace                 | Type               | Color            | Description                                                                                   |
+| ------------------------- | ------------------ | ---------------- | --------------------------------------------------------------------------------------------- |
+| `target_crosswalks`       | `LINE_STRIP`       | Magenta          | Crosswalk lanelet polygon for each target crosswalk.                                          |
+| `detection_areas`         | `LINE_LIST`        | Yellow           | Sidewalk-side waiting end caps used for object association.                                   |
+| `target_stop_lines`       | `LINE_STRIP`       | Magenta          | Stop line associated with each target crosswalk.                                              |
+| `target_objects`          | `LINE_STRIP`       | Yellow/Red/Green | Tracked object footprints (`yellow` = not yet confirmed, `red` = waiting, `green` = ignored). |
+| `target_objects_duration` | `TEXT_VIEW_FACING` | White            | Current wait duration [s] for confirmed, non-ignored target objects.                          |
