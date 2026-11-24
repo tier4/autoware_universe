@@ -28,6 +28,15 @@ struct FirstOrderDubinsMppiRuntimeOptions
   std::string debug_trajectory_log_directory;
   /** Open the zero-copy CUDA-OpenGL distance-map texture debug window. */
   bool enable_distance_map_texture_debug{false};
+  /**
+   * Copy one slice of the obstacle distance texture (already built for the rollouts) to the host
+   * and return it in the optimization result. The copy is queued on the rollout stream and read
+   * back with the result, so it adds no synchronization point, and is skipped while the texture
+   * is unchanged.
+   */
+  bool enable_obstacle_costmap_debug{false};
+  /** Texture time slice (post-step index, 0 = first step) shown by the obstacle costmap. */
+  int obstacle_costmap_time_step{0};
   /** Capture sampled rollouts after every MPPI iteration and publish them as debug markers. */
   bool enable_iteration_rollout_debug{false};
   bool ignore_obstacles{false};

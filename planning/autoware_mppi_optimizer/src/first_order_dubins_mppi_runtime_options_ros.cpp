@@ -40,6 +40,10 @@ void declare_first_order_dubins_mppi_runtime_options(
     param_name(prefix, "enable_distance_map_texture_debug"),
     defaults.enable_distance_map_texture_debug);
   node.declare_parameter(
+    param_name(prefix, "enable_obstacle_costmap_debug"), defaults.enable_obstacle_costmap_debug);
+  node.declare_parameter(
+    param_name(prefix, "obstacle_costmap_time_step"), defaults.obstacle_costmap_time_step);
+  node.declare_parameter(
     param_name(prefix, "enable_iteration_rollout_debug"), defaults.enable_iteration_rollout_debug);
   node.declare_parameter(param_name(prefix, "ignore_obstacles"), defaults.ignore_obstacles);
   node.declare_parameter(
@@ -108,6 +112,10 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
     node.get_parameter(param_name(prefix, "debug_trajectory_log_directory")).as_string();
   options.enable_distance_map_texture_debug =
     node.get_parameter(param_name(prefix, "enable_distance_map_texture_debug")).as_bool();
+  options.enable_obstacle_costmap_debug =
+    node.get_parameter(param_name(prefix, "enable_obstacle_costmap_debug")).as_bool();
+  options.obstacle_costmap_time_step =
+    static_cast<int>(node.get_parameter(param_name(prefix, "obstacle_costmap_time_step")).as_int());
   options.enable_iteration_rollout_debug =
     node.get_parameter(param_name(prefix, "enable_iteration_rollout_debug")).as_bool();
   options.ignore_obstacles = node.get_parameter(param_name(prefix, "ignore_obstacles")).as_bool();

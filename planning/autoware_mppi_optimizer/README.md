@@ -95,6 +95,30 @@ timestep. Red is at or inside the boundary, green is at or beyond the configured
 gray means that texture channel is not valid yet. The viewer requires a graphical display; it is
 disabled by default and closing its window stops its updates.
 
+## Obstacle costmap heatmap in RViz
+
+Set `enable_obstacle_costmap_debug: true` under `mppi_optimizer` to publish the obstacle cost field
+that the rollouts see as a `nav_msgs/OccupancyGrid` on `~/debug/mppi/obstacle_costmap`. In RViz add
+a **Map** display on that topic and set its color scheme to `costmap`.
+
+- **Frame.** The grid is a direct copy of the obstacle distance texture the rollouts sample
+  (512 x 512 at 0.30 m, about 153 m square), so no cost is recomputed. It is axis-aligned in the
+  odometry (map) frame and centered on the reference path, not on `base_link`; the origin comes
+  from the texture grid and is converted from the persistent local frame. The ego pose is in
+  `FirstOrderDubinsMppiCostmapSnapshot::ego_x/ego_y/ego_yaw`.
+- **Value.** The stored signed clearance is turned into
+  `100 * min(1, sqrt(cost / contact_cost))` on the host when publishing: the fraction of the
+  safety margin that an ego footprint circle centered on the cell would intrude into (0 at the edge
+  of influence, 100 at exact contact or inside an obstacle). The square root only makes the
+  quadratic barrier's outer halo visible.
+- **Time slice.** `obstacle_costmap_time_step` selects the texture slice (post-step index, 0 is
+  `dt` ahead; moving objects advance with it).
+- **Cost.** One slice (about 1 MB) is copied asynchronously into pinned host memory on the rollout
+  stream before `computeControl()`, whose own synchronization completes it, so no extra stream sync
+  is added. The copy is skipped while the texture is not rebuilt. The raw clearance is returned in
+  `FirstOrderDubinsMppiDebug::obstacle_costmap` together with the optimized trajectory and the
+  rest of the result. Disabled (the default) it costs nothing.
+
 ## Offline debug logging + retune
 
 Enable CSV logging from the MPPI plugin parameters:

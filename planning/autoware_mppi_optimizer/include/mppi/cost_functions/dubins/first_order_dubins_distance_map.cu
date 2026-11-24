@@ -759,6 +759,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   if (!this->GPUMemStatus_) {
     return;
   }
+  ++obstacle_texture_build_count_;
   this->texture_state_.obstacle_texture_has_obstacles_ = this->runtimeData().num_obstacles_ > 0;
   if (!this->texture_state_.obstacle_texture_has_obstacles_) {
     this->texture_state_.obstacle_texture_valid_ = true;
@@ -779,6 +780,122 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     this->texture_state_.obstacle_distance_map_grid_);
   HANDLE_ERROR(cudaGetLastError());
   this->texture_state_.obstacle_texture_valid_ = true;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::ensureObstacleCostmapResources()
+{
+  const std::size_t cell_count =
+    static_cast<std::size_t>(this->texture_state_.kObstacleDistanceMapWidth) *
+    static_cast<std::size_t>(this->texture_state_.kObstacleDistanceMapHeight);
+  if (obstacle_costmap_host_.size() != cell_count) {
+    obstacle_costmap_host_.resize(cell_count);
+    obstacle_costmap_cached_ = false;
+  }
+  if (obstacle_costmap_done_ == nullptr) {
+    HANDLE_ERROR(cudaEventCreateWithFlags(&obstacle_costmap_done_, cudaEventDisableTiming));
+  }
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ bool FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::enqueueObstacleCostmap(const int time_step)
+{
+  obstacle_costmap_pending_ = false;
+  if (!this->GPUMemStatus_ || !this->texture_state_.obstacle_texture_valid_) {
+    return false;
+  }
+  const auto & texture_grid = this->texture_state_.obstacle_distance_map_grid_;
+  const bool has_obstacles = this->texture_state_.obstacle_texture_has_obstacles_;
+  if (
+    has_obstacles && (this->texture_state_.obstacle_distance_array_ == nullptr ||
+                      texture_grid.width <= 0 || texture_grid.height <= 0)) {
+    return false;
+  }
+  const int step = std::clamp(time_step, 0, NUM_TIMESTEPS - 1);
+  obstacle_costmap_empty_ = !has_obstacles;
+  obstacle_costmap_time_step_ = step;
+  obstacle_costmap_grid_ = texture_grid;
+  obstacle_costmap_pending_ = true;
+  if (!has_obstacles) {
+    // The texture is not rebuilt without obstacles and holds stale data; nothing to copy.
+    return true;
+  }
+
+  ensureObstacleCostmapResources();
+  // The texture is the optimizer's own distance field and is only rebuilt when the obstacles or
+  // its grid change. Re-copy it only then; otherwise the previous pinned copy is still exact.
+  if (
+    obstacle_costmap_cached_ && obstacle_costmap_cached_build_ == obstacle_texture_build_count_ &&
+    obstacle_costmap_cached_step_ == step) {
+    return true;
+  }
+  mppi::instrumentation::ScopedNvtxRange range(
+    "MPPI/obstacle_costmap_copy", mppi::instrumentation::NvtxColor::DEBUG);
+  cudaMemcpy3DParms copy{};
+  copy.srcArray = this->texture_state_.obstacle_distance_array_;
+  copy.srcPos = make_cudaPos(0, 0, static_cast<std::size_t>(step));
+  copy.dstPtr = make_cudaPitchedPtr(
+    obstacle_costmap_host_.data(), static_cast<std::size_t>(texture_grid.width) * sizeof(float),
+    static_cast<std::size_t>(texture_grid.width), static_cast<std::size_t>(texture_grid.height));
+  copy.extent = make_cudaExtent(
+    static_cast<std::size_t>(texture_grid.width), static_cast<std::size_t>(texture_grid.height), 1);
+  copy.kind = cudaMemcpyDeviceToHost;
+  // Pinned destination on the rollout stream: ordered after the texture build, asynchronous, and
+  // completed by the synchronization the controller performs anyway.
+  HANDLE_ERROR(cudaMemcpy3DAsync(&copy, this->stream_));
+  HANDLE_ERROR(cudaEventRecord(obstacle_costmap_done_, this->stream_));
+  obstacle_costmap_cached_ = true;
+  obstacle_costmap_cached_build_ = obstacle_texture_build_count_;
+  obstacle_costmap_cached_step_ = step;
+  ++obstacle_costmap_copy_count_;
+  return true;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ bool FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::collectObstacleCostmap(
+  autoware::mppi_optimizer::FirstOrderDubinsMppiCostmapSnapshot & out)
+{
+  if (!obstacle_costmap_pending_) {
+    out.valid = false;
+    return false;
+  }
+  obstacle_costmap_pending_ = false;
+  const auto & grid = obstacle_costmap_grid_;
+  out.width = grid.width;
+  out.height = grid.height;
+  out.resolution_m = grid.resolution;
+  out.origin_x = grid.origin_x;
+  out.origin_y = grid.origin_y;
+  out.time_step_index = obstacle_costmap_time_step_;
+  out.empty = obstacle_costmap_empty_;
+
+  // Same footprint model as distanceToClosestObstacle(): the circle union's radius is removed
+  // from the field, then the barrier is applied to the remaining clearance.
+  float circle_x[kEgoSpineCircleCount];
+  float circle_y[kEgoSpineCircleCount];
+  float circle_radius = 0.0F;
+  computeEgoSpineCircles(
+    0.0F, 0.0F, 1.0F, 0.0F, this->params_.ego_length * 0.5F, this->params_.ego_width * 0.5F,
+    circle_x, circle_y, circle_radius);
+  out.footprint_circle_radius_m = circle_radius;
+  out.safety_margin_m = this->params_.obstacle_collision_margin + this->params_.obstacle_safe_margin;
+  out.barrier_weight = this->params_.obstacle_barrier_weight;
+
+  const std::size_t cell_count =
+    static_cast<std::size_t>(grid.width) * static_cast<std::size_t>(grid.height);
+  if (out.empty) {
+    out.clearance_m.assign(cell_count, kDistanceMapEmptyDistance);
+  } else {
+    // Wait for the copy (normally already complete). A cached copy has nothing new to wait for.
+    HANDLE_ERROR(cudaEventSynchronize(obstacle_costmap_done_));
+    const float * clearance = obstacle_costmap_host_.data();
+    out.clearance_m.assign(clearance, clearance + cell_count);
+  }
+  out.valid = true;
+  return true;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -918,8 +1035,7 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
     this->texture_state_.nearest_segment_surface_ == 0 &&
     this->texture_state_.static_distance_array_ == nullptr &&
     vegetation_distance_device_ == nullptr && vegetation_collision_device_ == nullptr &&
-    vegetation_collision_upload_done_ == nullptr &&
-    this->texture_state_.obstacle_distance_array_ == nullptr &&
+    vegetation_collision_upload_done_ == nullptr && obstacle_costmap_done_ == nullptr && this->texture_state_.obstacle_distance_array_ == nullptr &&
     this->texture_state_.preferred_lane_center_array_ == nullptr &&
     this->texture_state_.nearest_segment_array_ == nullptr) {
     return;
@@ -994,6 +1110,13 @@ __host__ void FirstOrderDubinsBicycleCostImpl<
   }
   vegetation_collision_capacity_ = 0U;
   vegetation_collision_upload_.resetNoThrow();
+  if (obstacle_costmap_done_ != nullptr) {
+    gpuAssert(cudaEventDestroy(obstacle_costmap_done_), __FILE__, __LINE__, false);
+    obstacle_costmap_done_ = nullptr;
+  }
+  obstacle_costmap_host_.resetNoThrow();
+  obstacle_costmap_pending_ = false;
+  obstacle_costmap_cached_ = false;
   this->runtimeData().vegetation_collision_points_ = nullptr;
   this->runtimeData().num_vegetation_collision_points_ = 0;
   if (this->texture_state_.obstacle_distance_array_ != nullptr) {

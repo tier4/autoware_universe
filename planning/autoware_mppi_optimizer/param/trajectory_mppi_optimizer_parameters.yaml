@@ -574,6 +574,21 @@ trajectory_mppi_optimizer:
     default_value: false
     description: Open a CUDA-OpenGL window visualizing the static and dynamic distance textures
     read_only: false
+  enable_obstacle_costmap_debug:
+    type: bool
+    default_value: false
+    description: >-
+      Copy one slice of the obstacle distance texture to the host and publish it as a heatmap
+      (nav_msgs/OccupancyGrid, axis-aligned, centered on the reference path). The copy is queued
+      on the rollout stream, adds no synchronization point, and is skipped while the texture is
+      unchanged.
+    read_only: false
+  obstacle_costmap_time_step:
+    type: int
+    default_value: 0
+    description: Obstacle texture time slice (post-step index, 0 = first step) shown by the costmap
+    validation: { gt_eq<>: [0] }
+    read_only: false
   enable_iteration_rollout_debug:
     type: bool
     default_value: false

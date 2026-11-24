@@ -51,6 +51,11 @@ if(BUILD_TESTING)
   set_target_properties(test_predicted_objects_obstacles PROPERTIES CXX_STANDARD 17)
   set_tests_properties(test_predicted_objects_obstacles PROPERTIES LABELS "cpu;unit" TIMEOUT 30)
 
+  ament_add_gtest(test_mppi_costmap_grid test/test_mppi_costmap_grid.cpp)
+  target_link_libraries(test_mppi_costmap_grid mppi_trajectory_utils)
+  set_target_properties(test_mppi_costmap_grid PROPERTIES CXX_STANDARD 17)
+  set_tests_properties(test_mppi_costmap_grid PROPERTIES LABELS "cpu;unit" TIMEOUT 30)
+
   ament_add_gtest(test_mppi_application_status
     test/test_mppi_application_status.cpp
   )

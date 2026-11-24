@@ -18,6 +18,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_kinematic_limits_conversion.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 #include "autoware/mppi_optimizer/input_collision_gate.hpp"
+#include "autoware/mppi_optimizer/mppi_costmap_grid.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 #include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
 
@@ -240,6 +241,8 @@ FirstOrderDubinsMppiRuntimeOptions make_runtime_options(
   output.enable_debug_trajectory_log = params.enable_debug_trajectory_log;
   output.debug_trajectory_log_directory = params.debug_trajectory_log_directory;
   output.enable_distance_map_texture_debug = params.enable_distance_map_texture_debug;
+  output.enable_obstacle_costmap_debug = params.enable_obstacle_costmap_debug;
+  output.obstacle_costmap_time_step = static_cast<int>(params.obstacle_costmap_time_step);
   output.enable_iteration_rollout_debug = params.enable_iteration_rollout_debug;
   output.ignore_obstacles = params.ignore_obstacles;
   output.dynamic_obstacle_horizon_s = static_cast<float>(params.dynamic_obstacle_horizon_s);
@@ -504,6 +507,8 @@ void TrajectoryMppiOptimizer::on_initialize(
     node->create_publisher<Trajectory>("~/debug/mppi/velocity_limit_trajectory", 1);
   markers_pub_ = node->create_publisher<MarkerArray>("~/debug/mppi/markers", 1);
   rollouts_pub_ = node->create_publisher<MarkerArray>("~/debug/mppi/rollouts", 1);
+  obstacle_costmap_pub_ =
+    node->create_publisher<nav_msgs::msg::OccupancyGrid>("~/debug/mppi/obstacle_costmap", 1);
   enabled_pub_ = node->create_publisher<std_msgs::msg::Bool>(
     "~/debug/mppi/enabled", rclcpp::QoS{1}.transient_local());
   debug_publisher_ = std::make_unique<autoware_utils_debug::DebugPublisher>(node, "~/debug");
@@ -547,6 +552,7 @@ ProcessingResult TrajectoryMppiOptimizer::process(
   }
   pending_debug_.reset();
   pending_markers_.markers.clear();
+  pending_costmap_ = {};
   debug_pending_ = false;
 
   if (!params_.enabled) {
@@ -864,6 +870,9 @@ ProcessingResult TrajectoryMppiOptimizer::process(
         result.debug.standstill_steering_hold_command_rad);
     }
 
+    // Hand the costmap pixels over without copying them into the debug snapshot.
+    pending_costmap_ = std::move(result.debug.obstacle_costmap);
+    pending_costmap_z_ = data.current_odometry->pose.pose.position.z;
     pending_debug_ = result.debug;
     pending_debug_header_ = input.header;
     pending_markers_ = createMppiDebugMarkers(
@@ -1116,6 +1125,10 @@ void TrajectoryMppiOptimizer::publish_debug_data(const std::string &) const
   velocity_limit_trajectory_pub_->publish(velocity_limits);
   markers_pub_->publish(pending_markers_);
   rollouts_pub_->publish(pending_rollouts_);
+  if (pending_costmap_.valid) {
+    obstacle_costmap_pub_->publish(makeObstacleCostmapGrid(pending_costmap_, pending_costmap_z_));
+    pending_costmap_ = {};
+  }
   debug_pending_ = false;
 }
 
@@ -1443,6 +1456,17 @@ void TrajectoryMppiOptimizer::clear_markers(const std_msgs::msg::Header & header
   markers.markers.push_back(marker);
   markers_pub_->publish(markers);
   rollouts_pub_->publish(markers);
+  if (params_.enable_obstacle_costmap_debug) {
+    // A 1x1 unknown cell replaces the last heatmap, which RViz would otherwise keep showing.
+    nav_msgs::msg::OccupancyGrid cleared;
+    cleared.header = header;
+    cleared.info.resolution = 1.0F;
+    cleared.info.width = 1;
+    cleared.info.height = 1;
+    cleared.info.origin.orientation.w = 1.0;
+    cleared.data.assign(1, static_cast<std::int8_t>(-1));
+    obstacle_costmap_pub_->publish(cleared);
+  }
 }
 
 }  // namespace autoware::mppi_optimizer::plugin

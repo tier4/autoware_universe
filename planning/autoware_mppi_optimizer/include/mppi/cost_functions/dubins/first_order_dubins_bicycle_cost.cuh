@@ -355,6 +355,33 @@ public:
   /** Refresh the debug window after all distance maps for the current control cycle are ready. */
   __host__ void renderDistanceMapTextureDebug();
 
+  /**
+   * Queue an asynchronous copy of one time slice of the obstacle distance texture (the field the
+   * rollouts sample) into pinned host memory. No kernel runs and nothing is synchronized: the
+   * copy is ordered on the rollout stream, so call it after commitDataUpdate() and before
+   * computeControl(), whose own synchronization completes it. The copy is skipped when the
+   * texture has not been rebuilt since the previous copy of the same slice.
+   *
+   * @param time_step texture time slice; clamped to the horizon.
+   * @return false when no valid obstacle texture exists (nothing was queued).
+   */
+  __host__ bool enqueueObstacleCostmap(int time_step);
+
+  /**
+   * Wait for the queued copy (normally already complete) and move the slice and the cost
+   * metadata into @p out, with the grid origin in this cost's local frame. Frame, stamp, ego
+   * pose, and time offset are left to the caller.
+   * @return false if nothing is pending.
+   */
+  __host__ bool collectObstacleCostmap(
+    autoware::mppi_optimizer::FirstOrderDubinsMppiCostmapSnapshot & out);
+
+  /** Number of slice copies actually issued (cache hits do not count). */
+  [[nodiscard]] std::uint64_t obstacleCostmapCopyCount() const
+  {
+    return obstacle_costmap_copy_count_;
+  }
+
   /** Euclidean position error squared: ||p - ref[t]||^2. */
   __host__ __device__ float computeTrackValue(
     float x, float y, int timestep, const float * theta_c = nullptr) const;
@@ -520,7 +547,21 @@ private:
     bool drivable_area_geometry_changed, bool vegetation_geometry_changed);
   __host__ void distanceMapStateToDevice();
   __host__ void uploadVegetationCollisionPoints();
+  __host__ void ensureObstacleCostmapResources();
   __host__ void releaseDistanceMapResources();
+
+  mppi::memory::PinnedHostBuffer<float> obstacle_costmap_host_{};
+  cudaEvent_t obstacle_costmap_done_ = nullptr;
+  bool obstacle_costmap_pending_ = false;
+  bool obstacle_costmap_empty_ = true;
+  int obstacle_costmap_time_step_ = 0;
+  DistanceMapTextureGrid obstacle_costmap_grid_{};
+  bool obstacle_costmap_cached_ = false;
+  std::uint64_t obstacle_costmap_cached_build_ = 0;
+  int obstacle_costmap_cached_step_ = -1;
+  std::uint64_t obstacle_costmap_copy_count_ = 0;
+  /** Incremented whenever the obstacle texture is (re)built. */
+  std::uint64_t obstacle_texture_build_count_ = 0;
 
   bool preferred_lane_center_geometry_dirty_ = false;
   bool preferred_lane_center_texture_enabled_ = true;

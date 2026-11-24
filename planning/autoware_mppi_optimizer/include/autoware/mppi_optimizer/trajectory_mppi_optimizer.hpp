@@ -30,6 +30,7 @@
 
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/header.hpp>
@@ -165,6 +166,7 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr velocity_limit_trajectory_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr rollouts_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr obstacle_costmap_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr enabled_pub_;
   std::unique_ptr<autoware_utils_debug::DebugPublisher> debug_publisher_;
   std::unique_ptr<DiagnosticsInterface> cost_diagnostics_;
@@ -172,6 +174,9 @@ private:
   std::optional<FirstOrderDubinsMppiDebug> pending_debug_;
   MarkerArray pending_markers_;
   MarkerArray pending_rollouts_;
+  /** GPU costmap moved out of the debug copy; turned into an OccupancyGrid at publish time. */
+  mutable FirstOrderDubinsMppiCostmapSnapshot pending_costmap_;
+  double pending_costmap_z_{0.0};
   std_msgs::msg::Header pending_debug_header_;
   mutable bool debug_pending_{false};
 };
