@@ -321,6 +321,45 @@ TEST(BuildLaneletLists, LaneShiftAtBranchPoint)
   EXPECT_EQ(to_sorted_ids(*result), (IdLists{{1}, {1, 2, 4}}));
 }
 
+using XyPoints = std::vector<std::pair<double, double>>;
+
+XyPoints to_xy(const lanelet::ConstLineString2d & line)
+{
+  XyPoints points;
+  for (const auto & point : line) {
+    points.emplace_back(point.x(), point.y());
+  }
+  return points;
+}
+
+TEST(BuildLaneChain, LaneShiftCenterlineFollowsLane2)
+{
+  // follows_chain reads only the centerline of the chain shape, for the lateral and heading
+  // tests. Through both wedges, the centerline follows lanelet 2, not lanelet 3 or 7. Lanelet2
+  // gives each lanelet centerline a midpoint, so the chain centerline has 7 points.
+  const auto test_map = make_lane_shift_map();
+  const auto & layer = test_map.map().laneletLayer;
+  const lanelet::ConstLanelets lanelets{layer.get(1), layer.get(2), layer.get(4)};
+
+  const auto result = road_following::build_lane_chain(lanelets);
+
+  ASSERT_TRUE(result.has_value()) << result.error();
+  EXPECT_EQ(to_sorted_ids({result->lanelets}), (IdLists{{1, 2, 4}}));
+  constexpr double y4 = -2.0 * k_half_width;
+  EXPECT_EQ(
+    to_xy(result->shape.centerline2d()),
+    (XyPoints{
+      {0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}, {25.0, y4 / 2.0}, {30.0, y4}, {40.0, y4}, {50.0, y4}}));
+}
+
+TEST(BuildLaneChain, EmptyListGivesError)
+{
+  const auto result = road_following::build_lane_chain(lanelet::ConstLanelets{});
+
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), "cannot combine an empty lanelet list");
+}
+
 // The footprint of the J6 Gen2 vehicle (j6_gen2_description, vehicle_info.param.yaml) with the
 // default road following margin, built as generate_ego_trajectory in trajectory_utils.cpp does.
 // The base link is at the rear axle center. The footprint is 2.23 m wide, so 0.39 m of a 3 m lane
@@ -428,7 +467,7 @@ TrajectoryData make_ego_trajectory(const PoseTrajectory & poses)
 road_following::LaneChain make_lane_shift_chain(const TestMap & test_map)
 {
   const auto & layer = test_map.map().laneletLayer;
-  return {layer.get(1), layer.get(2), layer.get(4)};
+  return road_following::build_lane_chain({layer.get(1), layer.get(2), layer.get(4)}).value();
 }
 
 TEST(FollowsChain, SamplesInsideAllLimitsGiveTrue)
@@ -617,7 +656,7 @@ TEST(RoadFollowingChecker, LaneShiftRouteGivesTwoChains)
   ASSERT_TRUE(result.has_value()) << result.error();
   std::vector<lanelet::ConstLanelets> chain_lanelets;
   for (const auto & chain : result->chains()) {
-    chain_lanelets.push_back(chain);
+    chain_lanelets.push_back(chain.lanelets);
   }
   EXPECT_EQ(to_sorted_ids(chain_lanelets), (IdLists{{1}, {1, 2, 4}}));
 }
