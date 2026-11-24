@@ -45,9 +45,10 @@ TemporalBevCache::TemporalBevCache(
       throw std::runtime_error(
           "Localization continuity limits must be finite and positive");
   }
-  if (config_.frames < 2) {
+  // One frame is the newest map alone, warped to the planning pose (the 1.5-stage ML-Planner node).
+  if (config_.frames < 1) {
     throw std::runtime_error(
-      "TemporalBevCache: frames must be at least 2, got " + std::to_string(config_.frames));
+      "TemporalBevCache: frames must be at least 1, got " + std::to_string(config_.frames));
   }
   if (config_.interval_seconds <= 0.0) {
     throw std::runtime_error("TemporalBevCache: interval_seconds must be positive");
