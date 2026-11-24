@@ -67,6 +67,11 @@ Reference result: golden-val, one frame per second, 35,303 frames in 769 scenes.
 | taxi (prd_jt, 444 scenes) | 0.274 | 0.994 | 2.170 |
 | X2 (x2_dev, 325 scenes) | 0.162 | 0.584 | 1.299 |
 
+Per-frame values are not bit-exact between runs: the BEV backbone's float rounding depends on the batch. This command
+(batch 16) against an earlier run with batch 32 gives the same means to four decimals. The per-frame FDE at 6 s
+differs by 5e-5 m at the median and 6e-4 m at the 99th percentile, and 12 of 35,303 frames differ by more than 1 cm.
+The two 2-stage models reproduce bit-exactly.
+
 To rebuild the graph, run `scripts/export/export_onnx.py <checkpoint>`. It writes `ml_planner_bev.onnx` with a
 static batch of 1 and the input `bev_feature [1, 512, 180, 180]`. Its `metadata.json` carries
 `bev_feature_shape`.
