@@ -135,49 +135,4 @@ xt::xarray<float> create_traffic_light_past(
   return history;
 }
 
-xt::xarray<float> infer_traffic_light_future(const xt::xarray<float> & past)
-{
-  const size_t segments = past.shape().at(0);
-  xt::xarray<float> future = xt::zeros<float>(
-    {segments, static_cast<size_t>(OUTPUT_T), static_cast<size_t>(TRAFFIC_LIGHT_ONE_HOT_DIM)});
-  constexpr size_t amber_index = 1;
-  constexpr size_t red_index = 2;
-  constexpr size_t amber_duration_steps = 30;
-
-  for (size_t segment = 0; segment < segments; ++segment) {
-    const size_t current_t = past.shape().at(1) - 1;
-    bool has_state = false;
-    for (size_t d = 0; d < static_cast<size_t>(TRAFFIC_LIGHT_ONE_HOT_DIM); ++d) {
-      has_state = has_state || past(segment, current_t, d) != 0.0F;
-    }
-    if (!has_state) {
-      continue;
-    }
-
-    size_t remaining_amber_steps = 0;
-    if (past(segment, current_t, amber_index) > 0.5F) {
-      size_t elapsed_steps = 0;
-      for (size_t t = current_t + 1; t > 0; --t) {
-        if (past(segment, t - 1, amber_index) <= 0.5F) {
-          break;
-        }
-        ++elapsed_steps;
-      }
-      remaining_amber_steps =
-        amber_duration_steps > elapsed_steps ? amber_duration_steps - elapsed_steps : 0;
-    }
-
-    for (size_t t = 0; t < static_cast<size_t>(OUTPUT_T); ++t) {
-      if (past(segment, current_t, amber_index) > 0.5F && t >= remaining_amber_steps) {
-        future(segment, t, red_index) = 1.0F;
-      } else {
-        for (size_t d = 0; d < static_cast<size_t>(TRAFFIC_LIGHT_ONE_HOT_DIM); ++d) {
-          future(segment, t, d) = past(segment, current_t, d);
-        }
-      }
-    }
-  }
-  return future;
-}
-
 }  // namespace autoware::ml_planner::preprocess

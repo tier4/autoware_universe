@@ -21,7 +21,6 @@
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/update_param.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
@@ -30,6 +29,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/subscription.hpp>
 #include <rclcpp/timer.hpp>
+#include <t4scene_generation/generator.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
@@ -45,6 +45,8 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <cstdint>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -153,6 +155,21 @@ private:
    */
   void on_timer();
 
+  void subscribe_scene_inputs();
+  int64_t observe_clock(const rclcpp::Time & now);
+  bool has_recent_odometry(int64_t received_ns) const;
+  void discard_scene_history();
+  LaneletRoute::ConstSharedPtr resolve_scene_route(
+    t4scene::T4Scene & scene, int64_t anchor_ns, int64_t received_through_ns);
+
+  struct SceneInput
+  {
+    TensorMap tensors;
+    double steering_angle_rad;
+  };
+
+  tl::expected<SceneInput, std::string> build_scene_input(int64_t received_through_ns);
+
   /**
    * @brief Callback for receiving and processing map data.
    * @param map_msg The received map message.
@@ -242,27 +259,25 @@ private:
   bool remap_unsupported_objects_to_pedestrian_{false};
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
 
-  template <typename MessageT>
-  using BufferingPollingSubscriber =
-    autoware_utils::InterProcessPollingSubscriber<MessageT, autoware_utils::polling_policy::All>;
+  std::unique_ptr<t4scene::ros2::generation::SceneBuilder> scene_builder_;
+  std::optional<int64_t> last_observed_clock_ns_;
+  Odometry::ConstSharedPtr odometry_;
+  int64_t odometry_received_ns_{};
+  std::deque<TrackedObjects::ConstSharedPtr> tracked_batches_;
+  std::deque<LaneletRoute::ConstSharedPtr> routes_;
+  LaneletRoute::ConstSharedPtr route_before_clock_reset_;
+  std::unique_ptr<t4scene::ros2::generation::SceneBuilder> route_recovery_builder_;
+  geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr acceleration_;
+  t4scene::EgoShape ego_shape_;
 
-  template <typename MessageT>
-  using NewestPollingSubscriber =
-    autoware_utils::InterProcessPollingSubscriber<MessageT, autoware_utils::polling_policy::Newest>;
-
-  BufferingPollingSubscriber<Odometry> sub_current_odometry_{this, "~/input/odometry"};
-  BufferingPollingSubscriber<TrackedObjects> sub_tracked_objects_{this, "~/input/tracked_objects"};
-  BufferingPollingSubscriber<autoware_perception_msgs::msg::TrafficLightGroupArray>
-    sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
-  BufferingPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
-    this, "~/input/turn_indicators"};
-  BufferingPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
-  NewestPollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped> sub_acceleration_{
-    this, "~/input/acceleration"};
-  NewestPollingSubscriber<LaneletRoute> route_subscriber_{
-    this, "~/input/route", rclcpp::QoS{1}.transient_local()};
-  NewestPollingSubscriber<LaneletMapBin> vector_map_subscriber_{
-    this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
+  rclcpp::Subscription<Odometry>::SharedPtr sub_current_odometry_;
+  rclcpp::Subscription<TrackedObjects>::SharedPtr sub_tracked_objects_;
+  rclcpp::Subscription<autoware_perception_msgs::msg::TrafficLightGroupArray>::SharedPtr
+    sub_traffic_signals_;
+  rclcpp::Subscription<TurnIndicatorsReport>::SharedPtr sub_turn_indicators_;
+  rclcpp::Subscription<SteeringReport>::SharedPtr sub_steering_;
+  rclcpp::Subscription<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr sub_acceleration_;
+  rclcpp::Subscription<LaneletRoute>::SharedPtr sub_route_;
   rclcpp::Subscription<HADMapBin>::SharedPtr sub_map_;
   UUID generator_uuid_;
   VehicleInfo vehicle_info_;

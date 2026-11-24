@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNALS_HPP_
 #define AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNALS_HPP_
 
+#include "autoware/ml_planner/preprocessing/items/traffic_light_features.hpp"
+#include "autoware/ml_planner/preprocessing/items/traffic_signal_stamped.hpp"
 #include "autoware/ml_planner/preprocessing/message_view.hpp"
 
 #include <rclcpp/duration.hpp>
@@ -35,15 +37,6 @@
 
 namespace autoware::ml_planner::preprocess
 {
-/**
- * @brief Represents a traffic signal with a timestamp.
- */
-struct TrafficSignalStamped
-{
-  builtin_interfaces::msg::Time stamp;                      ///< Timestamp of the signal.
-  autoware_perception_msgs::msg::TrafficLightGroup signal;  ///< Traffic light group.
-};
-
 /**
  * @brief Builds a traffic signal map from a window of TrafficLightGroupArray messages.
  *
@@ -84,15 +77,6 @@ xt::xarray<float> create_traffic_light_past(
   const std::vector<std::pair<lanelet::Id, int64_t>> & segment_lights, const int64_t max_segments,
   const rclcpp::Time & current_time, const int64_t num_timesteps, const double time_step_s,
   const double timeout_s);
-
-/**
- * @brief Infer the 8-second traffic-light sequence used during online inference.
- *
- * Green, red, unknown, and white states are held constant. Amber is assumed
- * to last three seconds in total; its elapsed duration is estimated from the
- * history and the remaining sequence transitions to red.
- */
-xt::xarray<float> infer_traffic_light_future(const xt::xarray<float> & past);
 
 }  // namespace autoware::ml_planner::preprocess
 #endif  // AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNALS_HPP_

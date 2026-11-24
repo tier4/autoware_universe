@@ -16,14 +16,13 @@
 
 #include "autoware/ml_planner/constants.hpp"
 #include "autoware/ml_planner/dimensions.hpp"
+#include "autoware/ml_planner/preprocessing/items/traffic_light_features.hpp"
 #include "autoware_utils_math/normalization.hpp"
 #include "autoware_utils_math/unit_conversion.hpp"
 
 #include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>  // for lanelet::autoware::RoadMarking
 #include <xtensor/xbuilder.hpp>
-
-#include <geometry_msgs/msg/detail/point__struct.hpp>
 
 #include <Eigen/src/Core/Matrix.h>
 #include <lanelet2_core/Forward.h>
@@ -506,6 +505,12 @@ xt::xarray<float> create_polyline_tensor(
   int64_t num_elements, int64_t num_points);
 }  // namespace
 
+std::unique_ptr<LaneSegmentContext> build_map_context(
+  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
+{
+  return std::make_unique<LaneSegmentContext>(lanelet_map_ptr);
+}
+
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(
   const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
@@ -541,13 +546,25 @@ xt::xarray<float> LaneSegmentContext::create_road_border_tensor(
 
 std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
-  const double center_y, [[maybe_unused]] const double center_z, const double center_yaw,
+  const double center_y, const double center_z, const double center_yaw,
   const int64_t max_segments) const
 {
+  std::vector<lanelet::Id> preferred_lane_ids;
+  preferred_lane_ids.reserve(route.segments.size());
+  for (const auto & segment : route.segments) {
+    preferred_lane_ids.push_back(segment.preferred_primitive.id);
+  }
+  return select_route_segment_indices(
+    preferred_lane_ids, transform_matrix, center_x, center_y, center_z, center_yaw, max_segments);
+}
+
+std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
+  const std::vector<lanelet::Id> & preferred_lane_ids, const Eigen::Matrix4d & transform_matrix,
+  const double center_x, const double center_y, [[maybe_unused]] const double center_z,
+  const double center_yaw, const int64_t max_segments) const
+{
   std::vector<int64_t> array_indices;
-  for (const auto & route_segment : route.segments) {
-    // add index
-    const int64_t lanelet_id = route_segment.preferred_primitive.id;
+  for (const auto lanelet_id : preferred_lane_ids) {
     const auto itr = lanelet_id_to_array_index_.find(lanelet_id);
     if (itr == lanelet_id_to_array_index_.end()) {
       continue;
@@ -1028,81 +1045,15 @@ std::optional<size_t> find_closest_segment_index(
 TrafficLightStatus identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements)
 {
-  auto is_arrow_shape = [](const uint8_t shape) {
-    return shape == TrafficLightElement::LEFT_ARROW || shape == TrafficLightElement::RIGHT_ARROW ||
-           shape == TrafficLightElement::UP_ARROW || shape == TrafficLightElement::DOWN_ARROW ||
-           shape == TrafficLightElement::DOWN_LEFT_ARROW ||
-           shape == TrafficLightElement::DOWN_RIGHT_ARROW;
-  };
-  auto to_status = [&](const TrafficLightElement & element) {
-    return TrafficLightStatus{element.color, is_arrow_shape(element.shape)};
-  };
-
-  // Filter out ineffective elements (color == 0 which is UNKNOWN)
-  std::vector<TrafficLightElement> effective_elements;
+  std::vector<TrafficLightObservation> observations;
+  observations.reserve(traffic_light_elements.size());
   for (const auto & element : traffic_light_elements) {
-    if (element.color != TrafficLightElement::UNKNOWN) {
-      effective_elements.push_back(element);
-    }
+    observations.push_back(
+      {static_cast<TrafficLightColor>(element.color), static_cast<TrafficLightShape>(element.shape),
+       element.confidence});
   }
-
-  // If no effective elements, return UNKNOWN (0)
-  if (effective_elements.empty()) {
-    return TrafficLightStatus{};
-  }
-
-  // If only one effective element, return its state
-  if (effective_elements.size() == 1) {
-    return to_status(effective_elements[0]);
-  }
-
-  // For multiple elements, find the one that matches the turn direction
-  // Map turn direction to corresponding arrow shape
-  const std::map<int64_t, uint8_t> direction_to_shape_map = {
-    {LaneSegment::TURN_DIRECTION_NONE, TrafficLightElement::UNKNOWN},       // none
-    {LaneSegment::TURN_DIRECTION_STRAIGHT, TrafficLightElement::UP_ARROW},  // straight
-    {LaneSegment::TURN_DIRECTION_LEFT, TrafficLightElement::LEFT_ARROW},    // left
-    {LaneSegment::TURN_DIRECTION_RIGHT, TrafficLightElement::RIGHT_ARROW}   // right
-  };
-
-  const auto target_shape_iter = direction_to_shape_map.find(turn_direction);
-  const uint8_t target_shape = (target_shape_iter != direction_to_shape_map.end())
-                                 ? target_shape_iter->second
-                                 : TrafficLightElement::UNKNOWN;
-
-  // If multiple matching elements, take the one with highest confidence
-  auto get_max_confidence_status = [&](const std::vector<TrafficLightElement> & elements) {
-    return to_status(*std::max_element(
-      elements.begin(), elements.end(),
-      [](const TrafficLightElement & a, const TrafficLightElement & b) {
-        return a.confidence < b.confidence;
-      }));
-  };
-
-  // First priority: Find elements with exactly matching direction
-  std::vector<TrafficLightElement> matching_elements;
-  for (const TrafficLightElement & element : effective_elements) {
-    if (element.shape == target_shape) {
-      matching_elements.push_back(element);
-    }
-  }
-  if (!matching_elements.empty()) {
-    return get_max_confidence_status(matching_elements);
-  }
-
-  // Second priority: Find circle elements
-  std::vector<TrafficLightElement> circle_elements;
-  for (const TrafficLightElement & element : effective_elements) {
-    if (element.shape == TrafficLightElement::CIRCLE) {
-      circle_elements.push_back(element);
-    }
-  }
-  if (!circle_elements.empty()) {
-    return get_max_confidence_status(circle_elements);
-  }
-
-  // If no matching direction or circle, return the element with highest confidence
-  return get_max_confidence_status(effective_elements);
+  const auto feature = select_traffic_light(turn_direction, observations);
+  return {static_cast<uint8_t>(feature.color), feature.is_arrow};
 }
 
 }  // namespace autoware::ml_planner::preprocess
