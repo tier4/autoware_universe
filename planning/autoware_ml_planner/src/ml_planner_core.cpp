@@ -19,11 +19,14 @@
 #include "autoware/ml_planner/inference/single_step_inference.hpp"
 #include "autoware/ml_planner/postprocessing/postprocessing_utils.hpp"
 #include "autoware/ml_planner/preprocessing/items/initial_noise.hpp"
+#include "autoware/ml_planner/preprocessing/scene_input_builder.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
 #ifdef AUTOWARE_ML_PLANNER_USE_ONNXRUNTIME
 #include "autoware/ml_planner/inference/onnxruntime_inference.hpp"
 #endif
+
+#include <autoware_utils_uuid/uuid_helper.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/generator_info.hpp>
@@ -122,7 +125,7 @@ std::string onnxruntime_execution_provider_from_backend(const std::string & back
 #endif
 
 MLPlannerCore::MLPlannerCore(const MLPlannerParams & params, const VehicleInfo & vehicle_info)
-: params_(params), vehicle_info_(vehicle_info), vehicle_spec_(vehicle_info)
+: params_(params), vehicle_info_(vehicle_info)
 {
   if (
     params_.batch_size < 1 || params_.batch_size > 2 ||
@@ -221,101 +224,62 @@ void MLPlannerCore::set_map(const std::shared_ptr<const lanelet::LaneletMap> & l
   }
 }
 
-MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
-  const std::vector<std::shared_ptr<const Odometry>> & ego_kinematic_states,
-  const std::vector<std::shared_ptr<const TrackedObjects>> & objects,
-  const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
-    traffic_signals,
-  const std::vector<std::shared_ptr<const TurnIndicatorsReport>> & turn_indicators,
-  const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
-  const LaneletRoute::ConstSharedPtr & route_ptr)
+void MLPlannerCore::update_traffic_signal_debug(
+  const autoware_perception_msgs::msg::TrafficLightGroupArray & message)
 {
-  if (route_ptr) {
-    route_ptr_ = route_ptr;
-  }
-  for (const auto & msg : ego_kinematic_states) {
-    if (msg) {
-      ego_history_.push_back(*msg);
-    }
-  }
-  for (const auto & msg : steering_reports) {
-    if (msg) {
-      steering_history_.push_back(*msg);
-    }
-  }
-  for (const auto & msg : turn_indicators) {
-    if (msg) {
-      turn_indicators_history_.push_back(*msg);
-    }
-  }
-  for (const auto & msg : objects) {
-    if (msg) {
-      objects_history_.push_back(*msg);
-    }
-  }
-  for (const auto & msg : traffic_signals) {
-    if (msg) {
-      traffic_signals_history_.push_back(*msg);
-    }
-  }
+  traffic_signals_history_.push_back(message);
+}
 
-  std::vector<std::string> missing_inputs;
-  if (ego_history_.empty()) {
-    missing_inputs.emplace_back("ego kinematic state");
-  }
-  if (objects_history_.empty()) {
-    missing_inputs.emplace_back("tracked objects");
-  }
-  if (!route_ptr_) {
-    missing_inputs.emplace_back("route");
-  }
-  if (turn_indicators_history_.empty()) {
-    missing_inputs.emplace_back("turn indicators");
-  }
-  if (steering_history_.empty()) {
-    missing_inputs.emplace_back("steering status");
-  }
-  if (!missing_inputs.empty()) {
-    std::string error{"Missing required input: "};
-    for (size_t index = 0; index < missing_inputs.size(); ++index) {
-      if (index > 0) {
-        error += ", ";
-      }
-      error += missing_inputs[index];
-    }
-    return tl::unexpected(std::move(error));
-  }
-
-  return preprocess::FrameInputs{
-    frame_time(),
-    preprocess::MessageView<nav_msgs::msg::Odometry>{ego_history_.msgs()},
-    preprocess::MessageView<SteeringReport>{steering_history_.msgs()},
-    preprocess::MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport>{
-      turn_indicators_history_.msgs()},
-    preprocess::MessageView<autoware_perception_msgs::msg::TrackedObjects>{objects_history_.msgs()},
-    preprocess::MessageView<autoware_perception_msgs::msg::TrafficLightGroupArray>{
-      traffic_signals_history_.msgs()},
-    *route_ptr_};
+void MLPlannerCore::reset_observations()
+{
+  odometry_.reset();
+  route_ptr_.reset();
+  selected_agents_.clear();
+  traffic_signals_history_.clear();
+  turn_indicator_hold_ = postprocess::TurnIndicatorHold{};
 }
 
 preprocess::TensorMapResult MLPlannerCore::create_input_data(
-  const preprocess::FrameInputs & frame_inputs)
+  const t4scene::T4Scene & scene, Odometry::ConstSharedPtr odometry,
+  const TrackedObjects & tracked_objects, LaneletRoute::ConstSharedPtr route)
 {
-  selected_agents_.clear();
   if (!lane_segment_context_) {
     return tl::unexpected(std::string{"Map context is unavailable"});
   }
 
-  const preprocess::InputBuilderParams builder_params{
-    params_.traffic_light_group_msg_timeout_seconds};
-  auto single_input_result = preprocess::create_input_data_map(
-    frame_inputs, *lane_segment_context_, vehicle_spec_, builder_params);
-  if (!single_input_result) {
-    return tl::unexpected(single_input_result.error());
+  auto input = preprocess::build_scene_input(
+    scene, *lane_segment_context_, preprocess::TrafficLightFuture::Infer,
+    params_.traffic_light_group_msg_timeout_seconds);
+  if (!input) {
+    return tl::unexpected(input.error());
   }
-  auto builder_output = std::move(single_input_result.value());
-  selected_agents_ = std::move(builder_output.selected_agents);
-  TensorMap single_input_data_map = std::move(builder_output.tensors);
+
+  // The SDK keeps the track ID but does not retain ROS covariances or existence
+  // probabilities. Use the original batch only to populate PredictedObjects.
+  std::unordered_map<std::string, const autoware_perception_msgs::msg::TrackedObject *> by_id;
+  for (const auto & object : tracked_objects.objects) {
+    by_id.emplace(autoware_utils_uuid::to_hex_string(object.object_id), &object);
+  }
+  std::vector<preprocess::SelectedAgent> selected;
+  selected.reserve(input->selected_track_ids.size());
+  const Eigen::Matrix4d map_to_ego = utils::inverse(input->ego_to_map);
+  for (auto track_id : input->selected_track_ids) {
+    track_id.erase(std::remove(track_id.begin(), track_id.end(), '-'), track_id.end());
+    const auto found = by_id.find(track_id);
+    if (found == by_id.end()) {
+      return tl::unexpected(std::string{"No source object for selected track " + track_id});
+    }
+    const auto & object = *found->second;
+    selected.push_back(
+      {object.object_id.uuid, object,
+       map_to_ego * utils::pose_to_matrix4d(object.kinematics.pose_with_covariance.pose)});
+  }
+
+  odometry_ = std::move(odometry);
+  route_ptr_ = std::move(route);
+  selected_agents_ = std::move(selected);
+  ego_to_map_ = input->ego_to_map;
+  const auto & single_input_data_map = input->tensors;
 
   // Replicate for batch
   TensorMap input_data_map;
@@ -345,7 +309,7 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
 
 rclcpp::Time MLPlannerCore::frame_time() const
 {
-  return rclcpp::Time(ego_history_.back().header.stamp);
+  return rclcpp::Time(odometry_->header.stamp);
 }
 
 InferenceResult MLPlannerCore::run_inference(const TensorMap & input_data_map)
@@ -361,9 +325,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const UUID & generator_uuid, const double current_steering_angle_rad,
   const double current_acceleration_mps2)
 {
-  // Derive the frame state from the raw message buffers
-  const Odometry & kinematic_state = ego_history_.back();
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(kinematic_state.pose.pose);
+  const Odometry & kinematic_state = *odometry_;
 
   const auto & raw_predictions = inference_output.trajectory;
   const auto & turn_indicator_logits = inference_output.turn_indicator_logits;
@@ -378,8 +340,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
     inference_output.is_denormalized ? raw_predictions
                                      : postprocess::denormalize_prediction(raw_predictions);
 
-  const auto agent_poses =
-    postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
+  const auto agent_poses = postprocess::parse_predictions(denormalized_predictions, ego_to_map_);
 
   PlannerOutput output;
   // Trajectory and CandidateTrajectories
@@ -505,11 +466,11 @@ PlannerOutput MLPlannerCore::create_planner_output(
 autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffic_light_on_route()
   const
 {
-  if (!lane_segment_context_ || !route_ptr_ || ego_history_.empty()) {
+  if (!lane_segment_context_ || !route_ptr_ || !odometry_) {
     return autoware_perception_msgs::msg::TrafficLightGroup{};
   }
 
-  const geometry_msgs::msg::Pose & pose_center = ego_history_.back().pose.pose;
+  const geometry_msgs::msg::Pose & pose_center = odometry_->pose.pose;
 
   const double center_x = pose_center.position.x;
   const double center_y = pose_center.position.y;

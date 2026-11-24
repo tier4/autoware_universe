@@ -15,8 +15,7 @@
 #ifndef AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__MAP_HPP_
 #define AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__MAP_HPP_
 
-#include "autoware/ml_planner/preprocessing/items/traffic_signals.hpp"
-#include "autoware/traffic_light_utils/traffic_light_utils.hpp"
+#include "autoware/ml_planner/preprocessing/items/traffic_signal_stamped.hpp"
 
 #include <Eigen/Core>
 #include <xtensor/xarray.hpp>
@@ -24,7 +23,6 @@
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
-#include <geometry_msgs/msg/detail/point__struct.hpp>
 
 #include <Eigen/src/Core/Matrix.h>
 #include <lanelet2_core/LaneletMap.h>
@@ -179,6 +177,12 @@ public:
     const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
     const double center_y, const double center_z, const double center_yaw,
     const int64_t max_segments) const;
+
+  /// Select the same route segments given only the preferred lane IDs in route order.
+  std::vector<int64_t> select_route_segment_indices(
+    const std::vector<lanelet::Id> & preferred_lane_ids, const Eigen::Matrix4d & transform_matrix,
+    double center_x, double center_y, double center_z, double center_yaw,
+    int64_t max_segments) const;
 
   /**
    * @brief Select lane segment indices based on distances and constraints.

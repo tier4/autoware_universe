@@ -20,6 +20,8 @@
 #include "autoware/ml_planner/preprocessing/items/ego_history.hpp"
 #include "autoware/ml_planner/preprocessing/items/ego_shape.hpp"
 #include "autoware/ml_planner/preprocessing/items/goal_pose.hpp"
+#include "autoware/ml_planner/preprocessing/items/traffic_light_features.hpp"
+#include "autoware/ml_planner/preprocessing/items/traffic_signals.hpp"
 #include "autoware/ml_planner/preprocessing/items/turn_indicators.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
@@ -33,12 +35,6 @@
 
 namespace autoware::ml_planner::preprocess
 {
-std::unique_ptr<LaneSegmentContext> build_map_context(
-  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
-{
-  return std::make_unique<LaneSegmentContext>(lanelet_map_ptr);
-}
-
 InputBuilderResult create_input_data_map(
   const FrameInputs & frame_inputs, const LaneSegmentContext & map_context,
   const VehicleSpec & vehicle_spec, const InputBuilderParams & params)

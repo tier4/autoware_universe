@@ -1,0 +1,5 @@
+repositories:
+  universe/external/T4Scene:
+    type: git
+    url: https://github.com/tier4/T4Scene.git
+    version: 04277f074763011a8bbb5a1c9637d5952a51804b # v0.0.0
