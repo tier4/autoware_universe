@@ -120,6 +120,16 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   # every input of that version and adds bev_feature.
   target_compile_definitions(${PROJECT_NAME}_ml_planner_bev_component PRIVATE
     ML_PLANNER_WEIGHT_MAJOR_VERSION=7)
+  # MLPlannerCore has a member only under AUTOWARE_ML_PLANNER_USE_ACADOS, which autoware_ml_planner
+  # defines on its own target when acados was found; the ament export does not carry it here. So
+  # define it exactly when the installed package built its acados solver: a different class
+  # layout on the two sides of the library boundary would corrupt memory.
+  find_library(ML_PLANNER_ACADOS_LIB autoware_ml_planner_acados
+    HINTS ${autoware_ml_planner_DIR}/../../../lib NO_DEFAULT_PATH)
+  if(ML_PLANNER_ACADOS_LIB)
+    target_compile_definitions(${PROJECT_NAME}_ml_planner_bev_component PRIVATE
+      AUTOWARE_ML_PLANNER_USE_ACADOS)
+  endif()
   rclcpp_components_register_node(${PROJECT_NAME}_ml_planner_bev_component
     PLUGIN "autoware::ml_planner::MLPlannerBev"
     EXECUTABLE ml_planner_bev_node
