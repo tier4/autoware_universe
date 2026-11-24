@@ -11,7 +11,8 @@ inputs:
   traffic_lights: /perception/traffic_light_recognition/traffic_signals
   route: /planning/mission_planning/route
   acceleration: /localization/acceleration
-observations: {visibility: decision_snapshot, timestamp_order: received_monotonic}
+# The node admits each periodic measurement stamp once within its retained history.
+observations: {visibility: decision_snapshot, timestamp_order: sorted}
 resampling:
   odometry: {method: interpolate_or_hold_previous, max_delta_ns: 200000000}
   steering: {method: interpolate_or_hold_previous, max_delta_ns: 200000000}

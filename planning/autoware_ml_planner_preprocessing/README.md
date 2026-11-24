@@ -22,6 +22,13 @@ For online-style replay, keep the history-only grid and pass the decision's rece
 profile with 80 future steps and build the window without a receipt cutoff. The cutoff applies to
 every row in the window, including recorded future rows.
 
+The online node uses the latest odometry measurement as its decision time. A late measurement
+within the retained history (4.1 s) can fill a missing row in subsequent windows. Each topic keeps
+its first accepted message at a given measurement stamp. To reproduce this with recordings that
+contain same-stamp revisions, feed messages to the builder in receipt order and apply the same
+deduplication before ingesting them. The SDK's bare sorted profile selects the last eligible
+revision at a duplicated stamp.
+
 ## Python
 
 Build T4Scene with `-DT4SCENE_WITH_MAPS=ON` and build this package with `-DAUTOWARE_ML_PLANNER_PREPROCESSING_PYTHON=ON`. Source the installed workspace before importing the module. Use a Python interpreter compatible with the one used to build the module.

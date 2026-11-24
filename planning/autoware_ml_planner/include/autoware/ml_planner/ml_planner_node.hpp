@@ -45,10 +45,12 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <array>
 #include <cstdint>
-#include <deque>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -125,6 +127,8 @@ public:
   explicit MLPlanner(const rclcpp::NodeOptions & options);
 
 private:
+  friend class OnlineObservationTest;
+
   /**
    * @brief Initialize and declare node parameters.
    */
@@ -156,6 +160,12 @@ private:
   void on_timer();
 
   void subscribe_scene_inputs();
+  enum class PeriodicInput { Odometry, Objects, Lights, Indicators, Steering, Acceleration, Count };
+  template <typename Msg>
+  bool ingest_periodic(
+    PeriodicInput input, const Msg & msg, const builtin_interfaces::msg::Time & stamp,
+    int64_t received_ns);
+  bool advance_receipt_time(int64_t received_ns);
   bool has_recent_odometry(int64_t received_ns) const;
   void discard_scene_history();
   LaneletRoute::ConstSharedPtr resolve_scene_route(const t4scene::T4Scene & scene) const;
@@ -260,8 +270,12 @@ private:
   std::unique_ptr<t4scene::ros2::generation::SceneBuilder> scene_builder_;
   Odometry::ConstSharedPtr odometry_;
   int64_t odometry_received_ns_{};
-  std::deque<TrackedObjects::ConstSharedPtr> tracked_batches_;
-  std::deque<LaneletRoute::ConstSharedPtr> routes_;
+  int64_t latest_receipt_ns_{};
+  // The SDK sorts late observations. Keep the first accepted sample at each topic stamp.
+  std::array<std::set<int64_t>, static_cast<size_t>(PeriodicInput::Count)> accepted_stamps_;
+  std::map<int64_t, TrackedObjects::ConstSharedPtr> tracked_batches_;
+  std::map<int64_t, LaneletRoute::ConstSharedPtr> routes_;
+  std::optional<int64_t> newest_acceleration_ns_;
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr acceleration_;
   t4scene::EgoShape ego_shape_;
 

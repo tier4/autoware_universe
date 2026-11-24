@@ -142,6 +142,7 @@ if(BUILD_TESTING)
     test/marker_utils_test.cpp
     test/model_metadata_test.cpp
     test/object_remap_test.cpp
+    test/online_observation_test.cpp
     test/planning_factor_utils_test.cpp
     test/postprocessing_utils_test.cpp
     test/postprocessing_utils_edge_case_test.cpp

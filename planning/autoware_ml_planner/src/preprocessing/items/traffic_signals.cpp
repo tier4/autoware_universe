@@ -35,8 +35,8 @@ std::map<lanelet::Id, TrafficSignalStamped> create_traffic_signal_map(
   // Keep the latest signal per traffic light group id
   for (const auto & msg : msgs) {
     const rclcpp::Time msg_time(msg.stamp);
-    if ((current_time - msg_time).seconds() > time_threshold_seconds) {
-      continue;  // outdated message
+    if (msg_time > current_time || (current_time - msg_time).seconds() > time_threshold_seconds) {
+      continue;
     }
     for (const auto & signal : msg.traffic_light_groups) {
       auto & curr = traffic_signal_id_map[signal.traffic_light_group_id];

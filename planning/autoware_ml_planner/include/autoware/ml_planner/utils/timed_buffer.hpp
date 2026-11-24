@@ -17,6 +17,7 @@
 
 #include <rclcpp/time.hpp>
 
+#include <algorithm>
 #include <deque>
 #include <functional>
 #include <utility>
@@ -25,12 +26,10 @@ namespace autoware::ml_planner::utils
 {
 
 /**
- * @brief FIFO buffer of stamped messages bounded by a fixed time window.
+ * @brief Chronological history within a fixed interval behind the newest stamp.
  *
- * Messages are kept in chronological order. push_back() ignores messages that
- * are not strictly newer than the newest entry (deduplication by stamp) and
- * automatically drops entries older than the newest stamp minus the window,
- * so the buffer always holds at most window_s seconds of history.
+ * A late message can fill a gap in the retained history. The first message
+ * received for each measurement stamp is kept.
  */
 template <typename MsgT>
 class TimedBuffer
@@ -43,20 +42,21 @@ public:
   {
   }
 
-  /**
-   * @brief Append a message and trim the window.
-   *
-   * The message is ignored unless its stamp is strictly newer than the newest
-   * entry, so pushing the same (not yet updated) message every cycle is safe.
-   */
   void push_back(const MsgT & msg)
   {
-    const double stamp_sec = stamp_of_(msg).seconds();
-    if (!msgs_.empty() && stamp_sec <= stamp_of_(msgs_.back()).seconds()) {
+    const auto stamp = stamp_of_(msg);
+    const auto newest = msgs_.empty() ? stamp : std::max(stamp, stamp_of_(msgs_.back()));
+    if ((newest - stamp).seconds() > window_s_) {
       return;
     }
-    msgs_.push_back(msg);
-    while (stamp_of_(msgs_.front()).seconds() < stamp_sec - window_s_) {
+    const auto pos = std::lower_bound(
+      msgs_.begin(), msgs_.end(), stamp,
+      [this](const MsgT & entry, const rclcpp::Time & time) { return stamp_of_(entry) < time; });
+    if (pos != msgs_.end() && stamp_of_(*pos) == stamp) {
+      return;
+    }
+    msgs_.insert(pos, msg);
+    while ((newest - stamp_of_(msgs_.front())).seconds() > window_s_) {
       msgs_.pop_front();
     }
   }
