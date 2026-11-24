@@ -63,15 +63,19 @@ BEVFusionConfig make_lidar_only_config(const TrtBevFeatureExtractor::Config & co
   // detection head is decoded by this package's own kernel (detection_decode.hpp), and
   // only the preprocessing reads this config.
   const auto & detection = config.detection;
+  // feat/v0.64/e2e's autoware_bevfusion takes the class count and per-(distance band, class)
+  // score thresholds (#12637); empty bands are its neutral value (no band, no threshold).
   return BEVFusionConfig(
-    config.plugins_path, "", "", "", detection.out_size_factor, config.cloud_capacity,
+    /*class_size=*/detection.yaw_norm_thresholds.size(), config.plugins_path, "", "", "",
+    detection.out_size_factor, config.cloud_capacity,
     config.max_points_per_voxel, config.voxels_num, config.point_cloud_range, config.voxel_size,
     /*d_bound=*/{}, /*x_bound=*/{}, /*y_bound=*/{},
     /*z_bound=*/{}, /*num_cameras=*/0, /*raw_image_height=*/0, /*raw_image_width=*/0,
     /*img_aug_scale_x=*/0.0f, /*img_aug_scale_y=*/0.0f, /*roi_height=*/0, /*roi_width=*/0,
     /*features_height=*/0, /*features_width=*/0, /*num_depth_features=*/0,
     /*image_feature_channel=*/0, detection.num_proposals, /*circle_nms_dist_threshold=*/0.0f,
-    detection.yaw_norm_thresholds, /*score_threshold=*/0.0f, config.use_intensity);
+    detection.yaw_norm_thresholds, /*score_thresholds=*/{}, /*distance_bin_upper_limits=*/{},
+    config.use_intensity);
 }
 
 }  // namespace
