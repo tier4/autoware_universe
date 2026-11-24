@@ -21,6 +21,7 @@
 #include <tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -103,6 +104,18 @@ public:
     const LaneletRoute::ConstSharedPtr & route,
     const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map,
     const lanelet::routing::RoutingGraphConstPtr & routing_graph);
+
+  /**
+   * @brief Test if the candidate trajectory follows the road.
+   * @details The route lanelet that holds the base link at `ego_pose` sets the start of the walk.
+   * A base link in no route lanelet gives false. Otherwise, the window samples of `trajectory`
+   * must follow at least one chain that holds that lanelet.
+   * @param ego_pose The odometry pose of ego.
+   * @return True when one chain passes follows_chain.
+   */
+  [[nodiscard]] bool is_road_following(
+    const TrajectoryData & trajectory, const geometry_msgs::msg::Pose & ego_pose,
+    const RoadFollowingParams & params) const;
 
   [[nodiscard]] const std::vector<LaneChain> & chains() const;  // for tests and debug markers
 

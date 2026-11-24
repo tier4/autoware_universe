@@ -660,5 +660,144 @@ TEST(RoadFollowingChecker, LaneShiftRouteGivesTwoChains)
   }
   EXPECT_EQ(to_sorted_ids(chain_lanelets), (IdLists{{1}, {1, 2, 4}}));
 }
+
+// Returns `count` samples every 1 m along y = `y` from x = `x_start`, with yaw 0 and 0.1 s apart,
+// so at 10 m/s. The window ends at the first sample over 30 m and 3 s, which is sample 31.
+TrajectoryData make_straight_path(const double x_start, const double y, const size_t count)
+{
+  PoseTrajectory poses;
+  for (size_t i = 0; i < count; ++i) {
+    poses.push_back(make_pose(x_start + static_cast<double>(i), y, 0.0));
+  }
+  return make_ego_trajectory(poses);
+}
+
+// A road with two lanes from x = 0 to 60 m. The left lane is lanelets 1 and 2 on y = 0. The right
+// lane is lanelets 3 and 4 on y = -3 m.
+TestMap make_two_lane_map()
+{
+  TestMap test_map;
+  test_map.add_straight_lanelet(1, 0.0, 30.0);
+  test_map.add_straight_lanelet(2, 30.0, 60.0);
+  test_map.add_straight_lanelet(3, 0.0, 30.0, -2.0 * k_half_width);
+  test_map.add_straight_lanelet(4, 30.0, 60.0, -2.0 * k_half_width);
+  return test_map;
+}
+
+// Lanelet 2 lies between lanelets 1 and 3 and has the given turn direction. The geometry is
+// straight, as in TurnLaneletEndsTheListAndIsInNoList.
+TestMap make_intersection_map(const std::string & turn_direction)
+{
+  TestMap test_map;
+  test_map.add_straight_lanelet(1, 0.0, 20.0);
+  test_map.add_lanelet(
+    2, {{20.0, k_half_width}, {40.0, k_half_width}}, {{20.0, -k_half_width}, {40.0, -k_half_width}},
+    turn_direction);
+  test_map.add_straight_lanelet(3, 40.0, 80.0);
+  return test_map;
+}
+
+road_following::RoadFollowingChecker make_checker(const TestMap & test_map, const IdLists & route)
+{
+  return road_following::RoadFollowingChecker::create(
+           make_route_ptr(route), test_map.map_ptr(), test_map.routing_graph())
+    .value();
+}
+
+TEST(IsRoadFollowing, WindowInsideOneLaneGivesTrue)
+{
+  // Ego drives on the centerline of the left lane. The window ends at x = 36 m, inside lanelet 2.
+  const auto test_map = make_two_lane_map();
+  const auto checker = make_checker(test_map, {{1}, {2}});
+  const auto trajectory = make_straight_path(5.0, 0.0, 40);
+
+  EXPECT_TRUE(
+    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+}
+
+TEST(IsRoadFollowing, LaneChangeInWindowGivesFalse)
+{
+  // Ego changes from the left lane (route) to the right lane between x = 15 m and 35 m. The
+  // footprint crosses the right bound of the left lane.
+  const auto test_map = make_two_lane_map();
+  const auto checker = make_checker(test_map, {{1}, {2}});
+  PoseTrajectory poses;
+  for (size_t i = 0; i < 40; ++i) {
+    const double x = 5.0 + static_cast<double>(i);
+    const double u = std::clamp((x - 15.0) / 20.0, 0.0, 1.0);
+    const double y = -1.5 * (1.0 - std::cos(M_PI * u));
+    const double yaw = std::atan(-1.5 * M_PI / 20.0 * std::sin(M_PI * u));
+    poses.push_back(make_pose(x, y, yaw));
+  }
+  const auto trajectory = make_ego_trajectory(poses);
+
+  EXPECT_FALSE(checker.is_road_following(trajectory, poses.front(), RoadFollowingParams{}));
+}
+
+TEST(IsRoadFollowing, EgoInTurnLaneletGivesFalse)
+{
+  // Lanelet 2 is a turn lanelet, so it is in no chain. The base link is in lanelet 2, so no route
+  // lanelet of a chain holds it.
+  const auto test_map = make_intersection_map("right");
+  const auto checker = make_checker(test_map, {{1}, {2}, {3}});
+  const auto trajectory = make_straight_path(25.0, 0.0, 40);
+
+  EXPECT_FALSE(
+    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+}
+
+TEST(IsRoadFollowing, WindowIntoTurnLaneletGivesFalse)
+{
+  // The chain {1} ends at x = 20 m, before the turn lanelet 2. Past the end of the chain, the
+  // lateral distance to the end point of the centerline grows over 0.5 m.
+  const auto test_map = make_intersection_map("right");
+  const auto checker = make_checker(test_map, {{1}, {2}, {3}});
+  const auto trajectory = make_straight_path(5.0, 0.0, 40);
+
+  EXPECT_FALSE(
+    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+}
+
+TEST(IsRoadFollowing, StraightTurnDirectionGivesTrue)
+{
+  // Lanelet 2 has turn_direction straight, as a lanelet that goes straight through an
+  // intersection. It is not a turn lanelet, so the chain {1, 2, 3} continues.
+  const auto test_map = make_intersection_map("straight");
+  const auto checker = make_checker(test_map, {{1}, {2}, {3}});
+  const auto trajectory = make_straight_path(5.0, 0.0, 40);
+
+  EXPECT_TRUE(
+    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+}
+
+TEST(IsRoadFollowing, FollowsOneBranchGivesTrue)
+{
+  // Lanelet 1 ends at a branch point with the next lanelets 2 (straight) and 3 (bends to the left
+  // by 4 m in 40 m). The route takes lanelet 2, so the lists are {1} and {1, 2}. Ego goes
+  // straight. The chain {1} fails past its end, but the chain {1, 2} passes.
+  TestMap test_map;
+  test_map.add_straight_lanelet(1, 0.0, 20.0);
+  test_map.add_straight_lanelet(2, 20.0, 60.0);
+  test_map.add_lanelet(
+    3, {{20.0, k_half_width}, {60.0, k_half_width + 4.0}},
+    {{20.0, -k_half_width}, {60.0, -k_half_width + 4.0}});
+  const auto checker = make_checker(test_map, {{1}, {2}});
+  const auto trajectory = make_straight_path(5.0, 0.0, 40);
+
+  EXPECT_TRUE(
+    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+}
+
+TEST(IsRoadFollowing, EgoNotOnRouteGivesFalse)
+{
+  // The route is the left lane. Ego drives on the centerline of the right lane, so its base link is
+  // in no route lanelet.
+  const auto test_map = make_two_lane_map();
+  const auto checker = make_checker(test_map, {{1}, {2}});
+  const auto trajectory = make_straight_path(5.0, -2.0 * k_half_width, 40);
+
+  EXPECT_FALSE(
+    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+}
 }  // namespace
 }  // namespace autoware::trajectory_validator::plugin::safety

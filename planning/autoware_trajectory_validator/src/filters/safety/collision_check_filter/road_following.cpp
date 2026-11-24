@@ -18,6 +18,7 @@
 
 #include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/lanelet2_utils/intersection.hpp>
+#include <autoware/lanelet2_utils/nn_search.hpp>
 #include <autoware/lanelet2_utils/topology.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_math/normalization.hpp>
@@ -41,6 +42,12 @@ namespace
 using autoware_utils_geometry::Box2d;
 using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Segment2d;
+
+// The yaw limit of the search of the route lanelet under the base link. Within the 0 m distance
+// limit, it only picks one of the route lanelets that hold the base link. It also drops a lanelet
+// of the other direction. The heading test of follows_chain is the strict test.
+// minimum_rule_based_planner and RouteManager use the same value.
+constexpr double k_route_lanelet_yaw_threshold = 1.57;
 
 // One segment of a chain bound, as a ring of its 2 points, with its bounding box.
 struct BoundSegment
@@ -264,6 +271,25 @@ tl::expected<RoadFollowingChecker, std::string> RoadFollowingChecker::create(
     return tl::make_unexpected("the route gives no chain");
   }
   return RoadFollowingChecker(std::move(chains), std::move(route_lanelets));
+}
+
+bool RoadFollowingChecker::is_road_following(
+  const TrajectoryData & trajectory, const geometry_msgs::msg::Pose & ego_pose,
+  const RoadFollowingParams & params) const
+{
+  // With a distance limit of 0 m, a base link outside every route lanelet gives no lanelet.
+  const auto start_lanelet =
+    autoware::experimental::lanelet2_utils::get_closest_lanelet_within_constraint(
+      route_lanelets_, ego_pose, 0.0, k_route_lanelet_yaw_threshold);
+  if (!start_lanelet) {
+    return false;
+  }
+
+  const size_t window_end = find_window_end(trajectory, params);
+  // follows_chain returns false for a chain that does not hold the start lanelet.
+  return std::any_of(chains_.begin(), chains_.end(), [&](const LaneChain & chain) {
+    return follows_chain(chain, *start_lanelet, trajectory, window_end, params);
+  });
 }
 
 const std::vector<LaneChain> & RoadFollowingChecker::chains() const
