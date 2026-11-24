@@ -23,11 +23,12 @@ profile with 80 future steps and build the window without a receipt cutoff. The 
 every row in the window, including recorded future rows.
 
 The online node uses the latest odometry measurement as its decision time. A late measurement
-within the retained history (4.1 s) can fill a missing row in subsequent windows. Each topic keeps
-its first accepted message at a given measurement stamp. To reproduce this with recordings that
+within the retained history (4.1 s) can fill a missing row in subsequent windows. Periodic inputs
+keep their first accepted message at a given measurement stamp. To reproduce this with recordings that
 contain same-stamp revisions, feed messages to the builder in receipt order and apply the same
 deduplication before ingesting them. The SDK's bare sorted profile selects the last eligible
-revision at a duplicated stamp.
+revision at a duplicated stamp. The route uses `latest_received`, so the current row takes the
+last route received by the decision cutoff even when a restored route reuses its original stamp.
 
 ## Python
 

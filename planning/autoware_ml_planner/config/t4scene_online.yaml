@@ -22,7 +22,7 @@ resampling:
   # A group observed only in a skipped message can be lost if the chosen message
   # omits it. The planner checks freshness using the original stamps of sampled messages.
   traffic_lights: {method: previous}
-  route: {method: previous}
+  route: {method: latest_received}
   acceleration:
     method: interpolate_or_hold_previous
     max_delta_ns: 200000000

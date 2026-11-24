@@ -35,7 +35,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -807,13 +806,10 @@ void MLPlanner::subscribe_scene_inputs()
   sub_route_ = create_subscription<LaneletRoute>(
     "~/input/route", rclcpp::QoS{1}.transient_local(), [this](LaneletRoute::ConstSharedPtr msg) {
       const auto received_ns = get_clock()->now().nanoseconds();
-      if (!advance_receipt_time(received_ns) || msg->header.stamp.sec < 0) {
+      if (!advance_receipt_time(received_ns)) {
         return;
       }
-      const auto stamp_ns = rclcpp::Time(msg->header.stamp).nanoseconds();
-      if (!routes_.count(stamp_ns) && scene_builder_->ingest(*msg, received_ns)) {
-        routes_.emplace(stamp_ns, msg);
-      }
+      scene_builder_->ingest(*msg, received_ns);
     });
 }
 
@@ -839,25 +835,6 @@ void MLPlanner::discard_scene_history()
     stamps.erase(stamps.begin(), stamps.lower_bound(cutoff_ns));
   }
   tracked_batches_.erase(tracked_batches_.begin(), tracked_batches_.lower_bound(cutoff_ns));
-  // Keep the route in effect at the history boundary, even if it predates the whole window.
-  const auto after_cutoff = routes_.upper_bound(cutoff_ns);
-  if (after_cutoff != routes_.begin()) {
-    routes_.erase(routes_.begin(), std::prev(after_cutoff));
-  }
-}
-
-LaneletRoute::ConstSharedPtr MLPlanner::resolve_scene_route(const t4scene::T4Scene & scene) const
-{
-  const auto route_index = scene.routes ? scene.routes->indices.at(scene.current_index) : -1;
-  if (route_index < 0) {
-    throw std::runtime_error("Missing required input: route");
-  }
-  const auto route_stamp = scene.routes->rows.at(route_index).timestamp_ns;
-  const auto route = routes_.find(route_stamp.value());
-  if (route == routes_.end()) {
-    throw std::runtime_error("Missing source message for the current route");
-  }
-  return route->second;
 }
 
 tl::expected<MLPlanner::SceneInput, std::string> MLPlanner::build_scene_input(
@@ -868,8 +845,9 @@ tl::expected<MLPlanner::SceneInput, std::string> MLPlanner::build_scene_input(
   }
   try {
     const auto anchor_ns = rclcpp::Time(odometry_->header.stamp).nanoseconds();
-    auto scene = scene_builder_->build_window(
+    auto window = scene_builder_->build_window_with_route(
       anchor_ns, {"decision-" + std::to_string(anchor_ns)}, received_through_ns);
+    auto & scene = window.scene;
     const auto steering_angle = scene.ego && scene.ego->tire_steering_angles
                                   ? scene.ego->tire_steering_angles->get(scene.current_index)
                                   : std::nullopt;
@@ -897,9 +875,11 @@ tl::expected<MLPlanner::SceneInput, std::string> MLPlanner::build_scene_input(
       return tl::unexpected(std::string{"Missing required input: tracked objects"});
     }
 
-    auto route = resolve_scene_route(scene);
+    if (!window.active_route) {
+      return tl::unexpected(std::string{"Missing required input: route"});
+    }
     auto input_data =
-      core_->create_input_data(scene, odometry_, *tracked->second, std::move(route));
+      core_->create_input_data(scene, odometry_, *tracked->second, std::move(window.active_route));
     if (!input_data) {
       return tl::unexpected(std::move(input_data.error()));
     }

@@ -65,6 +65,29 @@ protected:
 
   int anchor() const { return node_->odometry_->header.stamp.sec; }
 
+  void receive_route(int receipt, int stamp, int64_t lane_id)
+  {
+    ASSERT_EQ(
+      rcl_set_ros_time_override(node_->get_clock()->get_clock_handle(), receipt * second),
+      RCL_RET_OK);
+    auto msg = std::make_shared<LaneletRoute>();
+    msg->header.frame_id = "map";
+    msg->header.stamp.sec = stamp;
+    msg->goal_pose.orientation.w = 1.0;
+    msg->goal_pose.position.x = static_cast<double>(lane_id);
+    auto & segment = msg->segments.emplace_back();
+    segment.preferred_primitive.id = lane_id;
+    segment.primitives.push_back(segment.preferred_primitive);
+    std::shared_ptr<void> data = msg;
+    node_->sub_route_->handle_message(data, rclcpp::MessageInfo{});
+  }
+
+  auto route_window(int receipt_cutoff) const
+  {
+    return node_->scene_builder_->build_window_with_route(
+      anchor() * second, {"route-test"}, receipt_cutoff * second);
+  }
+
   std::shared_ptr<MLPlanner> node_;
 };
 
@@ -84,5 +107,25 @@ TEST_F(OnlineObservationTest, BackfillsMissingMeasurementsAtTheirReceiptCutoff)
   receive_odometry(23, 11, 11.0);
   EXPECT_EQ(anchor(), 11);
   EXPECT_EQ(speed_at(9, 23), 9.0);
+}
+
+TEST_F(OnlineObservationTest, ReappliesTheMainRouteWithItsOriginalStamp)
+{
+  receive_odometry(20, 20, 2.0);
+  receive_route(20, 10, 101);
+  receive_route(21, 16, 202);
+  receive_route(22, 10, 101);
+
+  const auto earlier = route_window(21);
+  ASSERT_TRUE(earlier.active_route);
+  EXPECT_EQ(earlier.active_route->goal_pose.position.x, 202.0);
+
+  const auto restored = route_window(22);
+  ASSERT_TRUE(restored.active_route);
+  EXPECT_EQ(restored.active_route->header.stamp.sec, 10);
+  EXPECT_EQ(restored.active_route->goal_pose.position.x, 101.0);
+  const auto & routes = restored.scene.routes.value();
+  const auto & current = routes.rows.at(routes.indices.at(restored.scene.current_index));
+  EXPECT_EQ(current.segments.at(0).preferred_lane_id, 101);
 }
 }  // namespace autoware::ml_planner

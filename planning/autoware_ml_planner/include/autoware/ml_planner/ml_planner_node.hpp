@@ -168,7 +168,6 @@ private:
   bool advance_receipt_time(int64_t received_ns);
   bool has_recent_odometry(int64_t received_ns) const;
   void discard_scene_history();
-  LaneletRoute::ConstSharedPtr resolve_scene_route(const t4scene::T4Scene & scene) const;
 
   struct SceneInput
   {
@@ -274,7 +273,6 @@ private:
   // The SDK sorts late observations. Keep the first accepted sample at each topic stamp.
   std::array<std::set<int64_t>, static_cast<size_t>(PeriodicInput::Count)> accepted_stamps_;
   std::map<int64_t, TrackedObjects::ConstSharedPtr> tracked_batches_;
-  std::map<int64_t, LaneletRoute::ConstSharedPtr> routes_;
   std::optional<int64_t> newest_acceleration_ns_;
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr acceleration_;
   t4scene::EgoShape ego_shape_;
