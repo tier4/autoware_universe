@@ -270,18 +270,34 @@ std::optional<Eigen::Matrix4d> object_pose(
   if (!group.positions || !group.orientations) {
     return std::nullopt;
   }
-  const auto position = group.positions->row(i);
-  const auto rotation = group.orientations->row(i);
+  const auto & positions = *group.positions;
+  const auto & orientations = *group.orientations;
+  const auto & position_shape = positions.shape();
+  const auto & orientation_shape = orientations.shape();
+  if (
+    position_shape.empty() || orientation_shape.empty() || i >= position_shape[0] ||
+    i >= orientation_shape[0]) {
+    throw std::out_of_range("array row slice out of range");
+  }
   require(
-    position.shape() == std::vector<uint64_t>{3} && rotation.shape() == std::vector<uint64_t>{4},
+    position_shape.size() == 2 && position_shape[1] == 3 && orientation_shape.size() == 2 &&
+      orientation_shape[1] == 4,
     "invalid T4Scene object pose columns");
-  for (size_t component = 0; component < rotation.size(); ++component) {
-    if (rotation.masked(component) || (component < position.size() && position.masked(component))) {
-      return std::nullopt;
+  // T4Scene stores each column contiguously, including sliced views.
+  const size_t position_offset = i * 3;
+  const size_t orientation_offset = i * 4;
+  if (positions.has_mask() || orientations.has_mask()) {
+    for (size_t component = 0; component < 4; ++component) {
+      if (
+        orientations.masked(orientation_offset + component) ||
+        (component < 3 && positions.masked(position_offset + component))) {
+        return std::nullopt;
+      }
     }
   }
-  Eigen::Map<const Eigen::Vector3d> translation(position.data());
-  Eigen::Quaterniond quaternion(Eigen::Map<const Eigen::Vector4d>(rotation.data()));
+  Eigen::Map<const Eigen::Vector3d> translation(positions.data() + position_offset);
+  Eigen::Quaterniond quaternion(
+    Eigen::Map<const Eigen::Vector4d>(orientations.data() + orientation_offset));
   require(
     translation.allFinite() && std::abs(quaternion.squaredNorm() - 1.0) < 1e-5,
     "T4Scene object pose must be finite with a unit quaternion");

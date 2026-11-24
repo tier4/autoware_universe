@@ -21,6 +21,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -207,6 +208,43 @@ TEST(SceneInputBuilder, PreservesMeasuredCylinderSides)
   EXPECT_EQ(result->selected_track_ids, (std::vector<std::string>{"cylinder"}));
   EXPECT_FLOAT_EQ(result->tensors.at("agent_shape")(0, 0), 0.65F);
   EXPECT_FLOAT_EQ(result->tensors.at("agent_shape")(0, 1), 1.15F);
+}
+
+TEST(SceneInputBuilder, ReadsSlicedNeighborPoseColumnsAndMasks)
+{
+  const auto map = make_map();
+  const auto context = build_map_context(map);
+  auto scene = make_scene(map);
+  auto & sequence = scene.annotations.emplace();
+  sequence.available = t4scene::Array<bool>({sample_count});
+  sequence.available.set(current_index, true);
+  sequence.box_offsets.emplace(std::vector<uint64_t>{sample_count + 1});
+  for (size_t row = current_index + 1; row <= sample_count; ++row) {
+    sequence.box_offsets->set(row, 3);
+  }
+  auto & boxes = sequence.values.boxes.emplace();
+  auto positions = t4scene::Array<double>::from_values(
+    {99.0, 99.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0, 8.0, 2.0, 0.0}, {4, 3});
+  positions.set_mask({0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0});
+  boxes.positions = positions.slice_rows(1, 3);
+  auto orientations = t4scene::Array<double>::from_values(
+    {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0}, {4, 4});
+  orientations.set_mask({0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0});
+  boxes.orientations = orientations.slice_rows(1, 3);
+  boxes.labels = t4scene::Array<int64_t>::from_values({2, 2, 2}, {3});
+  boxes.dimensions =
+    t4scene::Array<double>::from_values({2.0, 4.0, 1.5, 2.0, 4.0, 1.5, 2.0, 4.0, 1.5}, {3, 3});
+  boxes.track_ids =
+    std::vector<std::optional<std::string>>{"masked_position", "masked_orientation", "visible"};
+  scene.validate();
+
+  const auto result = build_scene_input(scene, *context);
+  ASSERT_TRUE(result.has_value()) << result.error();
+  EXPECT_EQ(result->selected_track_ids, (std::vector<std::string>{"visible"}));
+  const auto & history = result->tensors.at("neighbor_agents_past");
+  EXPECT_FLOAT_EQ(history(0, current_index, 0), 7.0F);
+  EXPECT_FLOAT_EQ(history(0, current_index, 1), 2.0F);
+  EXPECT_FLOAT_EQ(history(0, current_index, 2), -1.0F);
 }
 
 }  // namespace autoware::ml_planner::preprocess
