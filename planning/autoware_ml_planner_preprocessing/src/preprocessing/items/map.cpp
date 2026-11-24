@@ -907,21 +907,26 @@ xt::xarray<float> create_polyline_tensor(
   std::vector<PolylineWithDistance> selected;
   selected.reserve(elements.size());
 
+  const auto in_lane_mask = [&](const LanePoint & point) {
+    const Eigen::Vector4d transformed_point =
+      transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
+    return is_inside_lane_mask(transformed_point);
+  };
   for (const auto & element : elements) {
+    // Skip out-of-range polylines before allocating points or computing distances.
+    if (std::none_of(element.points.begin(), element.points.end(), in_lane_mask)) {
+      continue;
+    }
+
     Polyline transformed;
     transformed.reserve(element.points.size());
     double min_distance = std::numeric_limits<double>::max();
-    bool is_inside = false;
     for (const auto & point : element.points) {
       const Eigen::Vector4d transformed_point =
         transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
       transformed.emplace_back(transformed_point.x(), transformed_point.y(), transformed_point.z());
       min_distance =
         std::min(min_distance, std::hypot(transformed_point.x(), transformed_point.y()));
-      is_inside = is_inside || is_inside_lane_mask(transformed_point);
-    }
-    if (!is_inside) {
-      continue;
     }
     if (!is_on_ego_level(transformed)) {
       continue;
