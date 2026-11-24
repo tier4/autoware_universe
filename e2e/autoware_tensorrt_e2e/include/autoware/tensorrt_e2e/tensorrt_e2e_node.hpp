@@ -1,0 +1,287 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_
+#define AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_
+
+#include "autoware/tensorrt_e2e/inference_engine.hpp"
+#include "autoware/tensorrt_e2e/input_provider.hpp"
+#include "autoware/tensorrt_e2e/planning_time.hpp"
+#include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
+#include "autoware/tensorrt_e2e/postprocess/trajectory_postprocessor.hpp"
+#include "autoware/tensorrt_e2e/providers/context_input_provider.hpp"
+#include "autoware/tensorrt_e2e/rolling_latency.hpp"
+#include "autoware/tensorrt_e2e/timestamped_buffer.hpp"
+#include "autoware/tensorrt_e2e/turn_indicator_filter.hpp"
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
+#include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <autoware_vehicle_msgs/msg/velocity_report.hpp>
+
+#include <autoware/diffusion_planner/utils/arg_reader.hpp>
+#include <autoware/diffusion_planner/utils/planning_factor_utils.hpp>
+#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
+#include <autoware/vehicle_info_utils/vehicle_info.hpp>
+#include <autoware_utils/ros/polling_subscriber.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
+#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
+#include <autoware_utils_system/stop_watch.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
+
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace autoware::tensorrt_e2e
+{
+using autoware_internal_planning_msgs::msg::CandidateTrajectories;
+using autoware_planning_msgs::msg::Trajectory;
+using autoware_utils_diagnostics::DiagnosticsInterface;
+using geometry_msgs::msg::AccelWithCovarianceStamped;
+using nav_msgs::msg::Odometry;
+
+struct TensorrtE2eParams
+{
+  std::string model_path;
+  std::string plugins_path;
+  std::string precision;
+  int64_t trt_workspace_mib{4096};
+  std::string args_path;  //!< Optional normalization JSON ("" to disable normalization).
+  bool build_only{false};
+  bool shift_x{false};
+  std::vector<std::string> sensor_inputs;  //!< Enabled sensor providers: "camera", "lidar".
+  bool enable_context_inputs{true};
+  //! How long the pacing sensor may stay silent before the node says so on its
+  //! diagnostic. Waiting is not a failure -- at start-up the LiDAR is usually not up
+  //! yet -- but silence with no explanation is indistinguishable from a dead node.
+  double input_timeout_seconds{1.0};
+  //! How long a pass waits for the acceleration at the planning stamp before it takes the
+  //! latest earlier sample; 0 never waits. See create_ego_frame().
+  double acceleration_max_wait_ms{50.0};
+  //! Debug: directory the node writes every host-side input tensor and every output tensor
+  //! of its first `dump_max_frames` inferences to ("" = off). What the network was actually
+  //! fed, for comparing against what it was trained on; the 2026-09-15 goal-token skew was
+  //! only visible this way. Device-side inputs (a BEV feature map) are not written.
+  std::string dump_dir;
+  int64_t dump_max_frames{300};
+};
+
+//! Stop / slow-down factors read off the published trajectory, as
+//! autoware_diffusion_planner reports them, for the consumers of a trajectory generator.
+struct PlanningFactorParams
+{
+  bool enable_stop{false};
+  bool enable_slowdown{false};
+  autoware::diffusion_planner::PlanningFactorDetectionConfig detection_config;
+};
+
+/**
+ * @class TensorrtE2eNode
+ * @brief Abstract E2E trajectory planner node.
+ *
+ * Runs any single-engine E2E model whose inputs can be produced by the configured input
+ * providers (camera, lidar, diffusion-planner-style context) and whose primary output is an
+ * ego trajectory tensor. See docs/design.md for the architecture.
+ */
+class TensorrtE2eNode : public rclcpp::Node
+{
+public:
+  explicit TensorrtE2eNode(const rclcpp::NodeOptions & options);
+
+private:
+  //! Stage durations of one tick, captured at each stage boundary.
+  struct TickTiming
+  {
+    double collect_ms{0.0};
+    //! Each provider's share of collect_ms, in collection order.
+    std::vector<std::pair<std::string, double>> provider_collect_ms;
+    double inference_ms{0.0};
+    double postprocess_ms{0.0};
+    double total_ms{0.0};
+  };
+
+  void set_up_params();
+
+  /**
+   * @brief Load the engine, create providers, match claims against the engine manifest, and
+   * validate the output contract.
+   * @throws std::runtime_error on any model/deployment mismatch.
+   */
+  void initialize_pipeline();
+  void create_providers();
+
+  /**
+   * @brief Ask each provider to drive the node from its own sensor callback.
+   *
+   * Never throws. A provider set that nothing paces is a configuration error, but a
+   * component constructor that throws is not loaded at all: in the deployed
+   * configuration this node is composed into /pointcloud_container, and the operator
+   * would see launch_ros's "Component constructor threw an exception" with the real
+   * reason buried further up the container log. The node stays loaded and says what is
+   * wrong on its diagnostic instead.
+   */
+  void wire_pacing();
+
+  /**
+   * @brief Publish the node's state while no tick is publishing it.
+   *
+   * Runs off a slow timer and never plans. It covers the two silences that otherwise
+   * look identical from outside: an input that has not started yet (WARN -- the normal
+   * start-up state, and what a LiDAR that comes up after this node looks like), and a
+   * start-up or runtime failure that has already been latched (ERROR, republished so it
+   * does not go stale in the aggregator).
+   */
+  void report_status();
+
+  //! Latch a status the node keeps reporting until it is fixed, and publish it now.
+  void latch_status(int8_t level, const std::string & message);
+
+  //! One pass: collect, infer, publish, driven by the pacing provider's input; then
+  //! whatever the providers still owe once the trajectory is out.
+  void run_once();
+  //! The pass itself, up to and including the trajectory. Fills `timing` as it goes and
+  //! returns early when an input is missing.
+  //! @return false when the pass was deferred (see create_ego_frame()) and will run again.
+  bool run_tick(TickTiming & timing);
+
+  /**
+   * @brief The ego frame at the planning stamp (see PlanningTime), with the pose at the
+   * pacing sensor timestamp beside it.
+   * @param[out] deferred Set when the frame is not ready yet but an input that is about to
+   *   arrive will make it so (the acceleration at the planning stamp): the pass is not a
+   *   failure, and that input's callback runs it again.
+   * @return std::nullopt when either pose bracket or the required dynamics are unavailable.
+   */
+  std::optional<EgoFrame> create_ego_frame(bool & deferred);
+
+  /**
+   * @brief Odometry interpolated to `stamp_ns` between the two samples bracketing it.
+   * @return std::nullopt outside the history or across a localization gap over 200 ms.
+   */
+  std::optional<Odometry> interpolate_odometry(int64_t stamp_ns) const;
+
+  /// Apply args-JSON normalization to host tensors that have stats (no-op without args_path).
+  void apply_normalization(TensorMap & inputs) const;
+
+  /// @return The name of the first host tensor containing NaN/Inf, or std::nullopt.
+  static std::optional<std::string> find_invalid_tensor(const TensorMap & inputs);
+
+  /// The diffusion planner's `valid_*_count` diagnostics, for the context tensors present.
+  void add_input_diagnostics(const TensorMap & inputs);
+  void publish_planning_factor(const Trajectory & trajectory);
+  //! See TensorrtE2eParams::dump_dir. One raw float32 file per host tensor and a JSONL
+  //! manifest line per frame (stamp, ego pose/twist, tensor shapes).
+  void dump_tensors(const TensorMap & inputs, const TensorMap & outputs, const EgoFrame & ego);
+  /// The bevfusion debug topic set: cyclic time, pipeline latency, per-stage processing time.
+  void publish_debug_timing(
+    const rclcpp::Time & now, const EgoFrame & ego, const TickTiming & timing);
+
+  // Parameters
+  TensorrtE2eParams params_;
+  PostprocessParams postprocess_params_;
+  PlanningFactorParams planning_factor_params_;
+  autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
+  double base_link_to_center_{0.0};
+
+  // Pipeline
+  std::unique_ptr<InferenceEngine> engine_;
+  std::vector<std::unique_ptr<InputProviderInterface>> providers_;
+  ContextInputProvider * context_provider_{nullptr};  //!< Borrowed from providers_.
+  //! The provider whose sensor drives the pass (borrowed from providers_). Its GPU work
+  //! is already in flight when the pass starts, so it is collected last: the others'
+  //! CPU work overlaps it instead of waiting behind it.
+  InputProviderInterface * pacing_provider_{nullptr};
+  std::unique_ptr<TrajectoryPostprocessor> postprocessor_;
+  autoware::diffusion_planner::utils::NormalizationMap normalization_map_;
+  bool pipeline_ready_{false};
+  //! Held for the whole tick. The tick and report_status() share `diagnostics_`, which
+  //! builds its message in a member, and the executor can run them on two threads.
+  //! report_status() only try-locks: a tick in progress is itself proof of life.
+  std::mutex tick_mutex_;
+  //! When the pacing input last started a tick, so a sensor that has not come up (or has
+  //! stopped) can be told apart from a node that is simply not scheduled.
+  std::optional<rclcpp::Time> last_tick_;
+  //! The sticky status report_status() republishes: a failed start-up, a model nothing
+  //! paces, or a tick that failed for good. Empty while the node is merely waiting.
+  int8_t latched_level_{0};
+  std::string latched_message_;
+  /// Set when a tick threw. A CUDA error normally poisons the context, so the node stops
+  /// ticking rather than retrying at sensor rate; it reports ERROR and leaves the shared
+  /// container alive.
+  bool runtime_failed_{false};
+
+  // ROS interfaces
+  tf2_ros::Buffer tf_buffer_;
+  //! Started by create_providers() only when a provider uses_tf(); see the interface.
+  std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
+  //! When the previous pass ran, to judge this one's processing time
+  //! against the interval the sensor actually delivered.
+  std::optional<rclcpp::Time> previous_run_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_;
+  rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  //! Only when the model has a turn-indicator output (`postprocess.turn_indicator.tensor`).
+  rclcpp::Publisher<autoware_vehicle_msgs::msg::TurnIndicatorsCommand>::SharedPtr
+    pub_turn_indicators_;
+  std::unique_ptr<TurnIndicatorFilter> turn_indicator_filter_;
+  std::string turn_indicator_tensor_;
+  TurnIndicatorFilter::Params turn_indicator_params_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    pub_processing_time_;
+  using SteeringReport = autoware_vehicle_msgs::msg::SteeringReport;
+  using VelocityReport = autoware_vehicle_msgs::msg::VelocityReport;
+  rclcpp::Subscription<Odometry>::SharedPtr sub_odometry_;
+  rclcpp::Subscription<AccelWithCovarianceStamped>::SharedPtr sub_acceleration_;
+  rclcpp::Subscription<SteeringReport>::SharedPtr sub_steering_;
+  rclcpp::Subscription<VelocityReport>::SharedPtr sub_velocity_;
+  TimestampedBuffer<Odometry> odometry_history_;
+  TimestampedBuffer<AccelWithCovarianceStamped> acceleration_history_;
+  TimestampedBuffer<SteeringReport> steering_history_;
+  TimestampedBuffer<VelocityReport> velocity_history_;
+  int64_t ego_history_keep_ns_{5000000000LL};
+  PoseContinuityLimits pose_limits_;
+  uint64_t localization_generation_{0};
+  RollingLatency pipeline_latency_, processing_latency_;
+  bool waiting_for_ego_{false};
+  //! When the current pass started waiting for the acceleration at its planning stamp.
+  std::optional<std::chrono::steady_clock::time_point> acceleration_wait_since_;
+  bool recorded_ego_dynamics_{false};
+  //! When the model plans from (`planning_time`); checked against the graph at start-up.
+  PlanningTime planning_time_{PlanningTime::kCloudStamp};
+  rclcpp::TimerBase::SharedPtr status_timer_;
+  rclcpp::CallbackGroup::SharedPtr status_callback_group_;
+  std::unique_ptr<DiagnosticsInterface> diagnostics_;
+  std::unique_ptr<autoware_utils_debug::DebugPublisher> debug_publisher_;
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface_;
+  unique_identifier_msgs::msg::UUID generator_uuid_;
+  int64_t dumped_frames_{0};
+  autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch_;
+};
+
+}  // namespace autoware::tensorrt_e2e
+
+#endif  // AUTOWARE__TENSORRT_E2E__TENSORRT_E2E_NODE_HPP_

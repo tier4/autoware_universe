@@ -1,0 +1,514 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "autoware/tensorrt_e2e/providers/bev_feature_input_provider.hpp"
+
+#include "autoware/tensorrt_e2e/input_provider_registry.hpp"
+
+#include <autoware/cuda_utils/cuda_check_error.hpp>
+#include <autoware/diffusion_planner/utils/utils.hpp>
+#include <rcl_interfaces/msg/parameter_descriptor.hpp>
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace autoware::tensorrt_e2e
+{
+
+namespace dp = autoware::diffusion_planner;
+
+namespace
+{
+constexpr int64_t LOG_THROTTLE_INTERVAL_MS = 5000;
+
+std::array<double, 4> se2_pose(const geometry_msgs::msg::Pose & pose)
+{
+  const Eigen::Matrix4d pose_matrix = dp::utils::pose_to_matrix4d(pose);
+  const auto [cos_yaw, sin_yaw] =
+    dp::utils::rotation_matrix_to_cos_sin(pose_matrix.block<3, 3>(0, 0));
+  // Double throughout: map coordinates are ~1e5 m, and the warp needs the metre-scale pose
+  // DIFFERENCE — a float cast here quantizes slow-speed inter-frame displacements away.
+  return {
+    pose.position.x, pose.position.y, static_cast<double>(cos_yaw),
+    static_cast<double>(sin_yaw)};
+}
+
+// Fields of the network description are declared the way autoware_bevfusion declares
+// its ml_package fields: read-only and without a default, so a model directory that
+// lacks one fails at startup instead of voxelizing for some other network.
+rcl_interfaces::msg::ParameterDescriptor network_field()
+{
+  return rcl_interfaces::msg::ParameterDescriptor{}.set__read_only(true);
+}
+
+}  // namespace
+
+BevFeatureInputProvider::BevFeatureInputProvider(rclcpp::Node & node) : node_(node)
+{
+  history_tensor_name_ =
+    node_.declare_parameter<std::string>("bev_feature.history_tensor", "bev_feature_history");
+  max_delay_ms_ = node_.declare_parameter<double>("bev_feature.max_delay_ms", 200.0);
+  max_future_skew_ms_ = node_.declare_parameter<double>("bev_feature.max_future_skew_ms", 20.0);
+  if (!std::isfinite(max_delay_ms_) || max_delay_ms_ <= 0.0 ||
+      !std::isfinite(max_future_skew_ms_) || max_future_skew_ms_ < 0.0) {
+    throw std::runtime_error("BEV cloud age bounds must be finite, with positive max_delay_ms");
+  }
+
+  cache_config_.frames = node_.declare_parameter<int64_t>("bev_feature.frames", 3);
+  cache_config_.interval_seconds =
+    node_.declare_parameter<double>("bev_feature.interval_seconds", 0.2);
+  cache_config_.interval_tolerance_seconds =
+    node_.declare_parameter<double>("bev_feature.interval_tolerance_seconds", 0.02);
+  cache_config_.substitute_max_seconds =
+    node_.declare_parameter<double>("bev_feature.substitute_max_seconds", 0.2);
+  cache_config_.bev_half_extent_m =
+    node_.declare_parameter<double>("bev_feature.bev_half_extent_m", 122.4);
+  const auto warmup = node_.declare_parameter<std::string>("bev_feature.warmup", "wait");
+  if (warmup != "wait" && warmup != "duplicate_current") {
+    throw std::runtime_error(
+      "bev_feature.warmup must be 'wait' or 'duplicate_current', got '" + warmup + "'");
+  }
+  cache_config_.duplicate_current_on_warmup = warmup == "duplicate_current";
+  cache_config_.pose_limits.translation_slack_m =
+      node_.declare_parameter<double>("localization_reset.translation_slack_m",
+                                      2.0);
+  cache_config_.pose_limits.max_speed_mps =
+      node_.declare_parameter<double>("localization_reset.max_speed_mps", 60.0);
+  cache_config_.pose_limits.yaw_slack_rad =
+      node_.declare_parameter<double>("localization_reset.yaw_slack_rad", 0.35);
+  cache_config_.pose_limits.max_yaw_rate_rps = node_.declare_parameter<double>(
+      "localization_reset.max_yaw_rate_rps", 2.0);
+
+  // Host-side settings keep defaults; they describe the deployment, not the network.
+  extractor_config_.onnx_path =
+    node_.declare_parameter<std::string>("bev_feature.extractor.onnx_path", "");
+  extractor_config_.engine_path =
+    node_.declare_parameter<std::string>("bev_feature.extractor.engine_path", "");
+  extractor_config_.plugins_path =
+    node_.declare_parameter<std::string>("bev_feature.extractor.plugins_path", "");
+  extractor_config_.precision =
+    node_.declare_parameter<std::string>("bev_feature.extractor.precision", "fp16");
+  extractor_config_.feature_tensor =
+    node_.declare_parameter<std::string>("bev_feature.extractor.feature_tensor", "bev_feature");
+  extractor_config_.cloud_capacity =
+    node_.declare_parameter<int64_t>("bev_feature.extractor.cloud_capacity", 2000000);
+  // One workspace setting for both engines; declared by the node before any provider.
+  if (node_.has_parameter("trt_workspace_mib")) {
+    extractor_config_.max_workspace_size =
+      static_cast<size_t>(node_.get_parameter("trt_workspace_mib").as_int()) * 1024ULL * 1024ULL;
+  }
+
+  // Network description: no defaults (see network_field()).
+  extractor_config_.max_points_per_voxel =
+    node_.declare_parameter<int64_t>("bev_feature.extractor.max_points_per_voxel", network_field());
+  extractor_config_.voxels_num = node_.declare_parameter<std::vector<int64_t>>(
+    "bev_feature.extractor.voxels_num", network_field());
+  const auto point_cloud_range = node_.declare_parameter<std::vector<double>>(
+    "bev_feature.extractor.point_cloud_range", network_field());
+  const auto voxel_size = node_.declare_parameter<std::vector<double>>(
+    "bev_feature.extractor.voxel_size", network_field());
+  extractor_config_.point_cloud_range.assign(point_cloud_range.begin(), point_cloud_range.end());
+  extractor_config_.voxel_size.assign(voxel_size.begin(), voxel_size.end());
+  extractor_config_.use_intensity =
+    node_.declare_parameter<bool>("bev_feature.extractor.use_intensity", network_field());
+
+  declare_detection_params();
+
+  // Subscribe here, in the constructor, as autoware_bevfusion does -- not later from
+  // claim_inputs(), which builds the TensorRT extractor first and so lands a full second
+  // after the node starts. In a shared container the concatenator negotiates and
+  // registers itself as a blackboard producer during that second, and a subscriber that
+  // joins afterwards flips an already-running topic into negotiated mode. Subscribing
+  // before the engine is built keeps the ordering the same as the node the blackboard
+  // was built around.
+  //
+  // (This alone does NOT fix the container abort under investigation: with the ordering
+  // reversed and verified in the logs, CudaBlackboard::registerData() still reports
+  // "already exists. Deleting. It had 1 tickets left" and the container still dies with
+  // cudaErrorInvalidDevice. Kept because matching the reference node is the better
+  // implementation, not because it is the cure.)
+  subscribe();
+}
+
+void BevFeatureInputProvider::declare_detection_params()
+{
+  // The detection head is optional: a model whose extractor graph predates it simply
+  // leaves this off, and the provider behaves exactly as before.
+  detection_requested_ = node_.declare_parameter<bool>("bev_feature.detection.enabled", false);
+  if (!detection_requested_) {
+    return;
+  }
+
+  // Network description -- the head's own, written into the ml_package file by the
+  // exporter, so no defaults here.
+  detection_config_.class_names = node_.declare_parameter<std::vector<std::string>>(
+    "bev_feature.detection.class_names", network_field());
+  // The head's calibrated score thresholds (autoware_bevfusion's
+  // detection_score_thresholds), shipped with its perception release and written into the
+  // package with it: ascending distance bands and one threshold per class per band.
+  extractor_config_.detection.distance_bin_upper_limits =
+    node_.declare_parameter<std::vector<double>>(
+      "bev_feature.detection.distance_bin_upper_limits", network_field());
+  extractor_config_.detection.score_thresholds = node_.declare_parameter<std::vector<double>>(
+    "bev_feature.detection.score_thresholds", network_field());
+  extractor_config_.detection.num_proposals =
+    node_.declare_parameter<int64_t>("bev_feature.detection.num_proposals", network_field());
+  extractor_config_.detection.out_size_factor =
+    node_.declare_parameter<int64_t>("bev_feature.detection.out_size_factor", network_field());
+
+  // Host behaviour -- the same knobs, with the same names and defaults, that
+  // autoware_bevfusion keeps in its deployment file rather than its ml_package.
+  detection_config_.circle_nms_dist_threshold =
+    node_.declare_parameter<double>("bev_feature.detection.circle_nms_dist_threshold", 0.5);
+  detection_config_.iou_nms_search_distance_2d =
+    node_.declare_parameter<double>("bev_feature.detection.iou_nms_search_distance_2d", 10.0);
+  detection_config_.iou_nms_threshold =
+    node_.declare_parameter<double>("bev_feature.detection.iou_nms_threshold", 0.1);
+  extractor_config_.detection.yaw_norm_thresholds = node_.declare_parameter<std::vector<double>>(
+    "bev_feature.detection.yaw_norm_thresholds", std::vector<double>{});
+  detection_config_.allow_remapping_by_area_matrix = node_.declare_parameter<std::vector<int64_t>>(
+    "bev_feature.detection.allow_remapping_by_area_matrix", std::vector<int64_t>{});
+  detection_config_.min_area_matrix = node_.declare_parameter<std::vector<double>>(
+    "bev_feature.detection.min_area_matrix", std::vector<double>{});
+  detection_config_.max_area_matrix = node_.declare_parameter<std::vector<double>>(
+    "bev_feature.detection.max_area_matrix", std::vector<double>{});
+
+  const size_t num_classes = detection_config_.class_names.size();
+  if (extractor_config_.detection.yaw_norm_thresholds.empty()) {
+    // The decode kernel indexes this by class; a zero floor keeps every box, which is
+    // what autoware_bevfusion configures for the classes it does not gate.
+    extractor_config_.detection.yaw_norm_thresholds.assign(num_classes, 0.0);
+  } else if (extractor_config_.detection.yaw_norm_thresholds.size() != num_classes) {
+    throw std::runtime_error(
+      "bev_feature.detection.yaw_norm_thresholds has " +
+      std::to_string(extractor_config_.detection.yaw_norm_thresholds.size()) +
+      " entries but the head has " + std::to_string(num_classes) + " classes");
+  }
+
+  extractor_config_.detection.enabled = true;
+}
+
+BevFeatureInputProvider::~BevFeatureInputProvider()
+{
+  if (extraction_start_)
+    cudaEventDestroy(extraction_start_);
+  if (extraction_end_)
+    cudaEventDestroy(extraction_end_);
+  if (owns_stream_) {
+    cudaStreamDestroy(stream_);
+  }
+}
+
+std::vector<std::string> BevFeatureInputProvider::claim_inputs(
+  const std::vector<TensorSpec> & engine_inputs)
+{
+  const TensorSpec * spec = find_spec(engine_inputs, history_tensor_name_);
+  if (!spec) {
+    throw std::runtime_error(
+      "The BEV feature input provider is enabled but the model has no input tensor named '" +
+      history_tensor_name_ + "' (set bev_feature.history_tensor to match the model)");
+  }
+
+  // Accept [1, K, C, H, W] or [K, C, H, W].
+  const auto & shape = spec->shape;
+  const bool has_batch = shape.size() == 5;
+  if (!(shape.size() == 4 || (has_batch && shape[0] == 1))) {
+    throw std::runtime_error(
+      "Model input '" + history_tensor_name_ + "' has shape " + shape_to_string(shape) +
+      "; expected [1, K, C, H, W] or [K, C, H, W]");
+  }
+  const size_t base = has_batch ? 1 : 0;
+  if (shape[base] != cache_config_.frames) {
+    throw std::runtime_error(
+      "Model input '" + history_tensor_name_ + "' has " + std::to_string(shape[base]) +
+      " temporal frames, but the cache is configured for " + std::to_string(cache_config_.frames));
+  }
+  history_shape_ = shape;
+
+  if (!stream_) {
+    CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+    owns_stream_ = true;
+  }
+  try {
+    extractor_ = std::make_unique<TrtBevFeatureExtractor>(extractor_config_, stream_);
+  } catch (const std::exception & e) {
+    throw std::runtime_error(
+      "Failed to create the BEV feature extractor (bev_feature.extractor.onnx_path: '" +
+      extractor_config_.onnx_path + "'): " + e.what());
+  }
+  if (
+    extractor_->channels() != shape[base + 1] || extractor_->height() != shape[base + 2] ||
+    extractor_->width() != shape[base + 3]) {
+    throw std::runtime_error(
+      "The BEV feature extractor produces [" + std::to_string(extractor_->channels()) + ", " +
+      std::to_string(extractor_->height()) + ", " + std::to_string(extractor_->width()) +
+      "] maps, but the planner expects '" + history_tensor_name_ + "' with shape " +
+      shape_to_string(shape));
+  }
+  CHECK_CUDA_ERROR(cudaEventCreate(&extraction_start_));
+  CHECK_CUDA_ERROR(cudaEventCreate(&extraction_end_));
+  cache_ = std::make_unique<TemporalBevCache>(
+    cache_config_, extractor_->channels(), extractor_->height(), extractor_->width());
+
+  if (detection_requested_) {
+    if (extractor_->detection_enabled()) {
+      detection_postprocessor_ = std::make_unique<DetectionPostprocessor>(detection_config_);
+      detected_objects_pub_ =
+        node_.create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
+          "~/output/detected_objects", rclcpp::QoS(1));
+      detection_time_pub_ =
+        node_.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+          "~/debug/processing_time/detection_ms", 1);
+      RCLCPP_INFO_STREAM(
+        node_.get_logger(), "BEV feature extractor detection head enabled: "
+                              << detection_config_.class_names.size() << " classes, "
+                              << extractor_config_.detection.num_proposals << " proposals, "
+                              << extractor_config_.detection.distance_bin_upper_limits.size()
+                              << " score-threshold distance bands");
+    } else {
+      // Configured on, but this graph has no head. That is a stale artifact next to a
+      // current config, and silently publishing nothing would look like a dead detector.
+      RCLCPP_WARN(
+        node_.get_logger(),
+        "bev_feature.detection is enabled but the extractor graph (%s) has no '%s'/'%s'/'%s' "
+        "outputs; no objects will be published",
+        extractor_config_.onnx_path.c_str(), extractor_config_.detection.bbox_tensor.c_str(),
+        extractor_config_.detection.score_tensor.c_str(),
+        extractor_config_.detection.label_tensor.c_str());
+    }
+  }
+
+  return {history_tensor_name_};
+}
+
+void BevFeatureInputProvider::subscribe()
+{
+  pointcloud_sub_ =
+    std::make_unique<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
+      node_, "~/input/pointcloud",
+      [this](std::shared_ptr<const cuda_blackboard::CudaPointCloud2> msg) {
+        // Counted first, before any reason to drop the cloud: this number on the
+        // diagnostic is how an operator tells a subscription that receives nothing
+        // from a node that receives and does nothing.
+        received_.fetch_add(1, std::memory_order_relaxed);
+        // Subscribing happens in the constructor, so a cloud can arrive before the
+        // extractor exists. Drop those: the cache is empty anyway and the first ticks
+        // would have nothing to plan on. This is also the normal start-up state -- the
+        // node is regularly composed before the LiDAR pipeline it reads is up -- and it
+        // is a wait, not a failure: report_status() says so once a second.
+        if (!extractor_) {
+          return;
+        }
+        if (!on_data_) {
+          // Nothing paces the node: its pipeline never came up, it has latched why and
+          // is reporting it. Running the extractor for a pass that will never happen
+          // is ~10 ms of GPU per frame spent on nothing, inside the container the
+          // sensing stack shares.
+          return;
+        }
+        if (!extraction_error_.empty()) {
+          // Already latched and already reported by the tick it was rethrown into.
+          return;
+        }
+        if (last_extracted_stamp_ &&
+            rclcpp::Time(msg->header.stamp) == *last_extracted_stamp_) {
+          ++duplicate_clouds_;
+          return;
+        }
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          latest_pointcloud_ = msg;
+        }
+        // The extractor starts here, before the pass this triggers: queued on the tick's
+        // stream and not waited for, it runs while the pass collects the context tensors
+        // on the CPU. The staleness check comes first, as it did when the extraction ran
+        // inside the pass: a cloud that is already too old to plan on is not worth the GPU,
+        // and the pass reports it exactly as before.
+        pending_stamp_ = rclcpp::Time(msg->header.stamp);
+        pending_inserted_ = false;
+        pending_detections_published_ = false;
+        pending_error_.clear();
+        pending_feature_ = nullptr;
+        const double delay_ms = (node_.now() - *pending_stamp_).seconds() * 1e3;
+        if (delay_ms > max_delay_ms_ || delay_ms < -max_future_skew_ms_) {
+          ++stale_clouds_;
+          pending_error_ = "Point cloud age outside allowed window: " + std::to_string(delay_ms) + " ms";
+        } else {
+          // extract() reports a frame it cannot use (empty cloud, too few voxels, a failed
+          // enqueue) through `pending_error_`, but CHECK_CUDA_ERROR and TrtCommon throw.
+          // This is a subscription callback: an exception leaving it unwinds through the
+          // executor and terminates the process, and in the deployed configuration that
+          // process is the shared /pointcloud_container running the vehicle's whole CUDA
+          // sensing stack. Latch it here and let collect() rethrow it inside the tick,
+          // which already catches, latches ERROR and stops planning.
+          try {
+            CHECK_CUDA_ERROR(cudaEventRecord(extraction_start_, stream_));
+            pending_feature_ = extractor_->extract(*msg, pending_error_);
+            CHECK_CUDA_ERROR(cudaEventRecord(extraction_end_, stream_));
+          } catch (const std::exception & e) {
+            extraction_error_ = std::string("BEV feature extraction failed: ") + e.what();
+            pending_feature_ = nullptr;
+          }
+          last_extracted_stamp_ = pending_stamp_;
+          history_ptr_ = nullptr;
+        }
+        // Outside the lock: what this starts collects from this provider.
+        if (on_data_) {
+          on_data_();
+        }
+      });
+}
+
+bool BevFeatureInputProvider::collect(
+  const EgoFrame & ego, const rclcpp::Time & now, TensorMap & inputs, std::string & error)
+{
+  if (!extraction_error_.empty()) {
+    // Thrown here rather than where it happened: run_once() catches it, reports ERROR on
+    // `inference_status` and stops the node planning, with the container still standing.
+    throw std::runtime_error(extraction_error_);
+  }
+
+  std::shared_ptr<const cuda_blackboard::CudaPointCloud2> cloud;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cloud = latest_pointcloud_;
+  }
+  if (!cloud) {
+    // The start-up state until the LiDAR pipeline comes up. The node waits; the tick
+    // reports WARN and publishes nothing, as autoware_bevfusion does for the same cloud.
+    error = "No point cloud received yet";
+    return false;
+  }
+
+  const rclcpp::Time cloud_stamp(cloud->header.stamp);
+  const double delay_ms = (now - cloud_stamp).seconds() * 1e3;
+  if (delay_ms > max_delay_ms_) {
+    error = "Point cloud is stale (" + std::to_string(delay_ms) + " ms > " +
+            std::to_string(max_delay_ms_) + " ms)";
+    return false;
+  }
+
+  // The extraction itself was queued by the callback that triggered this pass; here the
+  // map is only handed to the cache, once per LiDAR frame. Between frames the assembled
+  // history is reused (it stays anchored at the newest frame's ego pose, as in the
+  // reference cache).
+  if (!pending_stamp_ || *pending_stamp_ != cloud_stamp) {
+    // The subscription delivered nothing new since the last pass, so no extraction was
+    // queued for the cloud this pass is looking at.
+    error = "No extraction queued for the current point cloud";
+    return false;
+  }
+  if (!pending_feature_) {
+    error = pending_error_;
+    return false;
+  }
+  if (localization_generation_ != ego.localization_generation) {
+    cache_->reset();
+    history_ptr_ = nullptr;
+    pending_inserted_ = false;
+    localization_generation_ = ego.localization_generation;
+  }
+  if (!pending_inserted_) {
+    // The BEV feature lives in the base_link frame of its source LiDAR frame; the pose is
+    // interpolated to the source cloud timestamp by create_ego_frame().
+    // Queued behind the extractor on the same stream: the cache has its copy before the
+    // next callback's extraction can overwrite the map.
+    const auto insert_result =
+      cache_->insert(pending_feature_, se2_pose(ego.sensor_pose), cloud_stamp, stream_);
+    if (insert_result == TemporalBevCache::InsertResult::kGapReset ||
+        insert_result == TemporalBevCache::InsertResult::kPoseReset) {
+      RCLCPP_WARN_THROTTLE(
+          node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS,
+          "Time/localization discontinuity: BEV feature cache reset");
+    }
+    pending_inserted_ = true;
+  }
+
+  if (!cache_->ready()) {
+    error = "BEV feature history incomplete (" + std::to_string(cache_->cached_frames()) +
+            " maps cached, need " + std::to_string(cache_->frames()) +
+            " at the configured interval)";
+    return false;
+  }
+
+  // Every map is warped into the frame the plan starts in. That is the newest map's own
+  // frame under cloud_stamp -- it is then copied, not warped -- and the newer planning
+  // pose under planning_time, where the current map is warped like the older ones, as in
+  // training. A pass that plans from a different pose than the last one rebuilds.
+  const auto target_pose = se2_pose(ego.odometry.pose.pose);
+  if (!history_ptr_ || target_pose != history_target_pose_) {
+    if (const int64_t substituted = cache_->substituted_frames(); substituted > 0) {
+      RCLCPP_WARN_THROTTLE(
+        node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS,
+        "LiDAR frame dropped: %ld BEV history step(s) use the next older map", substituted);
+    }
+    history_ptr_ = cache_->build_history(stream_, target_pose);
+    history_target_pose_ = target_pose;
+  }
+  inputs[history_tensor_name_] = Tensor::from_device(history_shape_, history_ptr_);
+  return true;
+}
+
+TENSORRT_E2E_REGISTER_INPUT_PROVIDER("bev_feature", [](rclcpp::Node & node, tf2_ros::Buffer &) {
+  return std::make_unique<BevFeatureInputProvider>(node);
+});
+
+bool BevFeatureInputProvider::pace(std::function<void()> on_data)
+{
+  on_data_ = std::move(on_data);
+  return true;
+}
+
+void BevFeatureInputProvider::finish_tick()
+{
+  // The trajectory is out (or the pass gave up). Only now are the detection head's
+  // proposals brought to the host, decoded and published -- once per LiDAR frame, in that
+  // cloud's frame, as before; the planner never reads them, so nothing that consumes the
+  // trajectory waits for them.
+  if (!detection_postprocessor_ || !pending_feature_ || pending_detections_published_) {
+    return;
+  }
+  pending_detections_published_ = true;
+  const auto started = std::chrono::steady_clock::now();
+  std::string error;
+  if (!extractor_->decode_detections(error)) {
+    RCLCPP_WARN_STREAM_THROTTLE(
+      node_.get_logger(), *node_.get_clock(), LOG_THROTTLE_INTERVAL_MS, error);
+    return;
+  }
+  std::shared_ptr<const cuda_blackboard::CudaPointCloud2> cloud;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cloud = latest_pointcloud_;
+  }
+  const auto objects =
+    detection_postprocessor_->build(extractor_->last_detections(), cloud->header);
+  last_detected_object_count_ = objects.objects.size();
+  detected_objects_pub_->publish(objects);
+  last_detection_ms_ =
+    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+  autoware_internal_debug_msgs::msg::Float64Stamped timing;
+  timing.stamp = node_.now();
+  timing.data = last_detection_ms_;
+  detection_time_pub_->publish(timing);
+}
+
+}  // namespace autoware::tensorrt_e2e

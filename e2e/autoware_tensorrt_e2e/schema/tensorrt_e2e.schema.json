@@ -1,0 +1,560 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for autoware_tensorrt_e2e",
+  "type": "object",
+  "definitions": {
+    "tensorrt_e2e": {
+      "type": "object",
+      "properties": {
+        "model_path": {
+          "type": "string",
+          "description": "Path to the ONNX model. The TensorRT engine is built and cached alongside it."
+        },
+        "plugins_path": {
+          "type": "string",
+          "description": "Path to a TensorRT plugin shared library. Empty to disable.",
+          "default": ""
+        },
+        "precision": {
+          "type": "string",
+          "description": "TensorRT builder precision. For an all-float32 graph, fp16 lets the builder run any layer in half. A graph that carries float16 tensors of its own (an exporter-side fp16-core / fp32-rim graph) decides layer by layer: with fp16 the node pins every layer to the dtype of its outputs and the builder obeys; with fp32 the float16 core is upcast and the engine runs slower than the exporter intended.",
+          "enum": [
+            "fp32",
+            "fp16"
+          ],
+          "default": "fp16"
+        },
+        "args_path": {
+          "type": "string",
+          "description": "Optional normalization JSON in the diffusion planner observation_normalizer format. Empty to disable normalization.",
+          "default": ""
+        },
+        "acceleration_max_wait_ms": {
+          "type": "number",
+          "description": "How long a pass waits for the acceleration stamped at its planning stamp before it takes the latest earlier sample; 0 never waits.",
+          "default": 50.0,
+          "minimum": 0.0
+        },
+        "build_only": {
+          "type": "boolean",
+          "description": "Shutdown the node after the TensorRT engine file is built.",
+          "default": false
+        },
+        "debug": {
+          "type": "object",
+          "properties": {
+            "dump_dir": {
+              "type": "string",
+              "description": "Debug only: directory the node writes every host-side input tensor and every output tensor of its first dump_max_frames inferences to, as raw float32 files plus a JSONL manifest. Empty disables it.",
+              "default": ""
+            },
+            "dump_max_frames": {
+              "type": "integer",
+              "description": "How many inferences debug.dump_dir records.",
+              "default": 300
+            }
+          },
+          "required": [
+            "dump_dir",
+            "dump_max_frames"
+          ],
+          "additionalProperties": false
+        },
+        "shift_x": {
+          "type": "boolean",
+          "description": "Use the vehicle center (instead of base_link) as the model reference frame, mirroring the diffusion planner option.",
+          "default": false
+        },
+        "sensor_inputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "camera",
+              "lidar",
+              "bev_feature"
+            ]
+          },
+          "description": "Enabled sensor input providers.",
+          "default": []
+        },
+        "enable_context_inputs": {
+          "type": "boolean",
+          "description": "Enable the diffusion-planner-style context input provider (individual tensors are claimed on demand from the engine manifest).",
+          "default": true
+        },
+        "camera": {
+          "type": "object",
+          "properties": {
+            "num_cameras": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "input_width": {
+              "type": "integer",
+              "description": "Camera sensor image width.",
+              "default": 1920
+            },
+            "input_height": {
+              "type": "integer",
+              "description": "Camera sensor image height.",
+              "default": 1280
+            },
+            "image_transport": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "compressed"
+              ],
+              "default": "compressed"
+            },
+            "ego_frame": {
+              "type": "string",
+              "default": "base_link"
+            },
+            "images_tensor": {
+              "type": "string",
+              "default": "camera_images"
+            },
+            "intrinsics_tensor": {
+              "type": "string",
+              "default": "camera_intrinsics"
+            },
+            "extrinsics_tensor": {
+              "type": "string",
+              "default": "camera2ego"
+            },
+            "normalization_mean": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Per-channel mean (RGB, 0-255 scale).",
+              "default": [
+                123.675,
+                116.28,
+                103.53
+              ]
+            },
+            "normalization_std": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Per-channel standard deviation (RGB, 0-255 scale).",
+              "default": [
+                58.395,
+                57.12,
+                57.375
+              ]
+            },
+            "sync_tolerance_ms": {
+              "type": "number",
+              "default": 100.0
+            },
+            "max_delay_ms": {
+              "type": "number",
+              "default": 200.0
+            },
+            "allow_dropped_cameras": {
+              "type": "boolean",
+              "description": "Zero-fill dropped non-anchor cameras instead of skipping the tick.",
+              "default": false
+            },
+            "anchor_camera_index": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        },
+        "lidar": {
+          "type": "object",
+          "properties": {
+            "points_tensor": {
+              "type": "string",
+              "default": "points"
+            },
+            "num_points_tensor": {
+              "type": "string",
+              "default": "num_points"
+            },
+            "max_delay_ms": {
+              "type": "number",
+              "default": 200.0
+            },
+            "intensity_scale": {
+              "type": "number",
+              "default": 1.0
+            }
+          }
+        },
+        "bev_feature": {
+          "type": "object",
+          "description": "Temporal LiDAR BEV feature provider (ResWorld-style models).",
+          "properties": {
+            "history_tensor": {
+              "type": "string",
+              "default": "bev_feature_history"
+            },
+            "frames": {
+              "type": "integer",
+              "minimum": 2,
+              "default": 3
+            },
+            "interval_seconds": {
+              "type": "number",
+              "default": 0.2,
+              "description": "Gap between history frames. The shipped models train on 0.2 s; a model with another cadence says so in its ml_package file."
+            },
+            "interval_tolerance_seconds": {
+              "type": "number",
+              "default": 0.02
+            },
+            "substitute_max_seconds": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 0.2,
+              "description": "How much older than its target a map may be to stand in for a dropped LiDAR frame (a T4 window indexes history by position over the recorded scans, so a dropped scan's slot is the next older one). Must be below interval_seconds."
+            },
+            "bev_half_extent_m": {
+              "type": "number",
+              "default": 122.4
+            },
+            "warmup": {
+              "type": "string",
+              "enum": [
+                "wait",
+                "duplicate_current"
+              ],
+              "default": "wait"
+            },
+            "max_delay_ms": {
+              "type": "number",
+              "default": 200.0
+            },
+            "extractor": {
+              "type": "object",
+              "description": "Frozen BEVFusion-L feature extractor. The voxelization fields describe the network and are read from the model's ml_package file without defaults, as autoware_bevfusion reads its own.",
+              "properties": {
+                "onnx_path": {
+                  "type": "string"
+                },
+                "plugins_path": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string",
+                  "enum": [
+                    "fp32",
+                    "fp16"
+                  ],
+                  "default": "fp16"
+                },
+                "feature_tensor": {
+                  "type": "string",
+                  "default": "bev_feature"
+                },
+                "cloud_capacity": {
+                  "type": "integer",
+                  "default": 2000000
+                },
+                "max_points_per_voxel": {
+                  "type": "integer",
+                  "description": "Points kept per voxel, from the model's ml_package file. No default: it describes the network."
+                },
+                "voxels_num": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "point_cloud_range": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 6,
+                  "maxItems": 6
+                },
+                "voxel_size": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3
+                },
+                "use_intensity": {
+                  "type": "boolean",
+                  "description": "Whether the point features carry intensity (5 features) or not (4), from the ml_package file. No default."
+                },
+                "engine_path": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Engine cache path for the extractor. Empty derives it from onnx_path, as TrtCommon does."
+                }
+              },
+              "required": [
+                "onnx_path",
+                "max_points_per_voxel",
+                "voxels_num",
+                "point_cloud_range",
+                "voxel_size",
+                "use_intensity"
+              ]
+            },
+            "detection": {
+              "type": "object",
+              "description": "The frozen BEVFusion detection head the extractor graph carries. The graph emits undecoded proposals, as AWML's released bevfusion_lidar.onnx does; the node decodes and suppresses them with autoware_bevfusion's own postprocessing and publishes ~/output/detected_objects. Nothing in the planner path reads them. The fields that describe the head come from the model's ml_package file without defaults; the NMS and yaw-norm knobs are host behaviour and keep autoware_bevfusion's values.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Decode and publish the head's boxes. False for a graph exported before the head existed; the provider then behaves exactly as before."
+                },
+                "class_names": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "One Autoware class name per head class, in the head's label order, from the ml_package file. A head class with no ObjectClassification counterpart (the gen2 head's traffic_cone and barrier) is written as UNKNOWN. No default."
+                },
+                "score_thresholds": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "description": "One score threshold per class, from the head's own bbox coder. The device filter runs at the lowest of them and the per-class cut is applied on the host, so together they are exactly the head's thresholds. No default."
+                },
+                "num_proposals": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Proposals the head emits; validated against the engine's own output shapes. No default: it describes the network."
+                },
+                "out_size_factor": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "BEV stride the TransFusion coder decodes centres with. No default."
+                },
+                "circle_nms_dist_threshold": {
+                  "type": "number",
+                  "default": 0.5,
+                  "description": "Device-side circle NMS distance, as autoware_bevfusion sets it."
+                },
+                "iou_nms_search_distance_2d": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "default": 10.0,
+                  "description": "Host-side BEV-IoU NMS neighbour search radius."
+                },
+                "iou_nms_threshold": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 0.1,
+                  "description": "Host-side BEV-IoU NMS suppression threshold."
+                },
+                "yaw_norm_thresholds": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "default": [
+                    0.3,
+                    0.3,
+                    0.3,
+                    0.3,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "description": "Per class, in class_names order: a proposal whose (sin, cos) norm falls below its class's floor is scored zero. Must have one entry per class; empty gates nothing."
+                },
+                "allow_remapping_by_area_matrix": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "description": "Area-based class remapping, as autoware_bevfusion's detection_class_remapper.param.yaml states it: a square table indexed by ObjectClassification label. Unset by default, which disables the step; set it together with min_area_matrix and max_area_matrix."
+                },
+                "min_area_matrix": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "description": "Lower area bound per remapping cell. See allow_remapping_by_area_matrix."
+                },
+                "max_area_matrix": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "description": "Upper area bound per remapping cell. See allow_remapping_by_area_matrix."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "traffic_light_group_msg_timeout_seconds": {
+              "type": "number",
+              "default": 0.2
+            },
+            "line_string_max_step_m": {
+              "type": "number",
+              "default": 5.0
+            },
+            "use_time_interpolation": {
+              "type": "boolean",
+              "default": false
+            },
+            "turn_indicators": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Subscribe to the turn-indicator report for a model that declares the tensor. False for a network whose graph carries the input but never reads it: the node binds a constant and subscribes to nothing."
+                }
+              }
+            }
+          }
+        },
+        "postprocess": {
+          "type": "object",
+          "properties": {
+            "prediction_tensor": {
+              "type": "string",
+              "default": "prediction"
+            },
+            "extra_trajectory_tensors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Additional ego-only [B, T, 4] trajectory outputs published as extra candidates (e.g. ResWorld's prior_trajectory).",
+              "default": []
+            },
+            "horizon_seconds": {
+              "type": "number",
+              "default": 4.0,
+              "exclusiveMinimum": 0.0
+            },
+            "time_step": {
+              "type": "number",
+              "description": "Trajectory point interval. Must be 0.1 s (fixed by the reused diffusion planner postprocessing).",
+              "const": 0.1,
+              "default": 0.1
+            },
+            "velocity_smoothing_window": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 8
+            },
+            "stopping_threshold": {
+              "type": "number",
+              "default": 0.3
+            },
+            "generator_name": {
+              "type": "string",
+              "default": "TensorrtE2e"
+            },
+            "turn_indicator": {
+              "type": "object",
+              "description": "The model's [B, 3] turn-indicator logits (DISABLE, ENABLE_LEFT, ENABLE_RIGHT), published on ~/output/turn_indicators. The tensor name comes from the model's ml_package file; the thresholds are host behaviour.",
+              "properties": {
+                "tensor": {
+                  "type": "string",
+                  "description": "Output tensor name; empty when the model has none, in which case nothing is published.",
+                  "default": ""
+                },
+                "min_probability": {
+                  "type": "number",
+                  "description": "A new state needs at least this softmax probability.",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "default": 0.7
+                },
+                "confirm_cycles": {
+                  "type": "integer",
+                  "description": "Consecutive cycles a new state must lead before the command changes.",
+                  "minimum": 1,
+                  "default": 1
+                },
+                "hold_s": {
+                  "type": "number",
+                  "description": "Minimum time between two changes of the command.",
+                  "minimum": 0.0,
+                  "default": 1.0
+                }
+              }
+            }
+          }
+        },
+        "trt_workspace_mib": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4096,
+          "description": "TensorRT builder workspace for every engine the node builds, in MiB. An upper bound on builder scratch, not an allocation; 4 GiB builds both ResWorld engines. Raise it only for a graph whose build reports insufficient workspace."
+        },
+        "planning_factor": {
+          "type": "object",
+          "description": "Stop / slow-down planning factors detected on the published trajectory, as autoware_diffusion_planner reports them.",
+          "properties": {
+            "enable_stop": {
+              "type": "boolean",
+              "default": false
+            },
+            "enable_slowdown": {
+              "type": "boolean",
+              "default": false
+            },
+            "stop_velocity_threshold": {
+              "type": "number",
+              "default": 0.1
+            },
+            "stop_keep_duration_threshold": {
+              "type": "number",
+              "default": 1.0
+            },
+            "slowdown_accel_threshold": {
+              "type": "number",
+              "default": -0.3
+            }
+          }
+        }
+      },
+      "required": [
+        "model_path",
+        "sensor_inputs"
+      ]
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/tensorrt_e2e"
+        }
+      },
+      "required": [
+        "ros__parameters"
+      ]
+    }
+  },
+  "required": [
+    "/**"
+  ]
+}

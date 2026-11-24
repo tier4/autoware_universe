@@ -1,0 +1,89 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "autoware/tensorrt_e2e/engine_identity.hpp"
+#include "autoware/tensorrt_e2e/planning_time.hpp"
+#include "autoware/tensorrt_e2e/pose_discontinuity.hpp"
+#include "autoware/tensorrt_e2e/rolling_latency.hpp"
+#include <iostream>
+#include <limits>
+using namespace autoware::tensorrt_e2e;
+void check(bool ok) {
+  if (!ok)
+    throw std::runtime_error("Regression failed");
+}
+int main(int argc, char **argv) {
+  if (argc != 2)
+    throw std::runtime_error("Pass an empty scratch directory");
+  const std::filesystem::path root(argv[1]);
+  const auto file = root / "graph.onnx";
+  std::ofstream(file) << "original graph";
+  const auto digest = file_sha256(file);
+  const auto engine = root / "graph.engine";
+  std::ofstream(engine) << "engine one";
+  check(!engine_identity_matches(file.string(), engine.string()));
+  record_engine_identity(file.string(), engine.string());
+  check(engine_identity_matches(file.string(), engine.string()));
+  check(!engine_identity_matches(file.string(), engine.string(), "fp16"));
+  std::ofstream(engine) << "engine two";
+  check(!engine_identity_matches(file.string(), engine.string()));
+  record_engine_identity(file.string(), engine.string());
+  std::ofstream(file) << "wrong graph";
+  check(file_sha256(file) != digest);
+  check(!engine_identity_matches(file.string(), engine.string()));
+  PoseContinuityLimits limits;
+  check(!pose_discontinuous({100000, 0, 1, 0}, {100003, 0, 1, 0}, 0.1, limits));
+  check(pose_discontinuous({100000, 0, 1, 0}, {100020, 0, 1, 0}, 0.1, limits));
+  check(pose_discontinuous({0, 0, 1, 0}, {0, 0, 0, 1}, 0.1, limits));
+  check(
+      !pose_discontinuous({0, 0, -1, 0.001}, {0, 0, -1, -0.001}, 0.1, limits));
+  RollingLatency latency;
+  for (int i = 1; i <= 100; ++i)
+    latency.add(i);
+  check(latency.percentile(.95) == 95 && latency.percentile(.99) == 99);
+  latency.add(-1);
+  latency.add(std::numeric_limits<double>::infinity());
+  check(latency.percentile(.99) == 99);
+  for (int i = 0; i < 512; ++i)
+    latency.add(7);
+  check(latency.percentile(.99) == 7);
+  latency.clear();
+  check(latency.percentile(.95) == 0);
+  // When the plan starts: a package and its graph must agree, and a planning-time plan
+  // starts at the newest odometry, never before the cloud.
+  const auto refuses = [](const auto &call) {
+    try {
+      call();
+    } catch (const std::runtime_error &) {
+      return true;
+    }
+    return false;
+  };
+  check(parse_planning_time("cloud_stamp") == PlanningTime::kCloudStamp);
+  check(parse_planning_time("planning_time") == PlanningTime::kPlanningTime);
+  check(refuses([] { parse_planning_time("now"); }));
+  check(refuses([] { parse_planning_time(""); }));
+  check(std::string(planning_time_name(PlanningTime::kPlanningTime)) == "planning_time");
+  check(!refuses([] { check_planning_time_inputs(PlanningTime::kCloudStamp, false); }));
+  check(!refuses([] { check_planning_time_inputs(PlanningTime::kPlanningTime, true); }));
+  check(refuses([] { check_planning_time_inputs(PlanningTime::kCloudStamp, true); }));
+  check(refuses([] { check_planning_time_inputs(PlanningTime::kPlanningTime, false); }));
+  const int64_t cloud = 1'000'000'000;
+  const int64_t odometry = cloud + 146'000'000;
+  check(planning_stamp_ns(PlanningTime::kCloudStamp, cloud, odometry) == cloud);
+  check(planning_stamp_ns(PlanningTime::kPlanningTime, cloud, odometry) == odometry);
+  check(planning_stamp_ns(PlanningTime::kPlanningTime, cloud, cloud) == cloud);
+  check(!planning_stamp_ns(PlanningTime::kPlanningTime, cloud, cloud - 1));
+  std::cout << "Engine identity, pose reset, rolling latency, planning time: PASS\n";
+}

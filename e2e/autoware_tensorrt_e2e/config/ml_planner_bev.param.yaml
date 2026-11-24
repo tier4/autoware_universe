@@ -1,0 +1,27 @@
+# The 1.5-stage ML-Planner (launch/ml_planner_bev.launch.xml): loaded after autoware_ml_planner's own
+# ml_planner.param.yaml, it overrides only what differs. The planner graph is ml_planner_bev.onnx (the
+# stock inputs plus bev_feature), and bev_feature is BEVFusion-L's map of the concatenated point cloud,
+# extracted as the one-stage node extracts it: the same extractor graph and voxelization as the ResWorld
+# release (awml-2.8.2-jpntaxi), one map per tick (no history), warped to the ego pose at planning time.
+/**:
+  ros__parameters:
+    model:
+      onnx_model_filename: ml_planner_bev.onnx
+    bev_feature:
+      history_tensor: "bev_feature"
+      frames: 1
+      interval_seconds: 0.1
+      bev_half_extent_m: 122.4
+      extractor:
+        onnx_path: $(var data_path)/bevfusion_lidar_feature.onnx
+        engine_path: ""  # empty: <onnx stem>.trt.engine beside the ONNX
+        plugins_path: $(find-pkg-share autoware_tensorrt_plugins)/plugins/libautoware_tensorrt_plugins.so
+        precision: "fp16"
+        feature_tensor: "bev_feature"
+        max_points_per_voxel: 32
+        use_intensity: true
+        voxels_num: [1, 128000, 256000]  # [min, opt, max]
+        point_cloud_range: [-122.4, -122.4, -3.0, 122.4, 122.4, 5.0]
+        voxel_size: [0.17, 0.17, 0.2]
+      detection:
+        enabled: false
