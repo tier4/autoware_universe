@@ -21,7 +21,6 @@
 #include <tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
-#include <geometry_msgs/msg/pose.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -77,16 +76,14 @@ struct LaneChain
 /**
  * @brief Test if the window samples follow one chain.
  * @details The window is the samples `[0, window_end)` of `trajectory`. Each window sample must
- * pass three tests. Its footprint crosses no left or right bound of the chain lanelets from
- * `start_lanelet` to the end of the chain. Its lateral distance from the chain centerline is
- * `max_lateral_deviation` or less. Its heading differs from the centerline angle by
- * `max_heading_deviation` or less.
- * @return False when `start_lanelet` is not in the chain. Otherwise, true when every window sample
- * passes the three tests. An empty window gives true.
+ * pass three tests. Its footprint is within the polygon of the chain shape. Its lateral distance
+ * from the chain centerline is `max_lateral_deviation` or less. Its heading differs from the
+ * centerline angle by `max_heading_deviation` or less.
+ * @return True when every window sample passes the three tests. An empty window gives true.
  */
 [[nodiscard]] bool follows_chain(
-  const LaneChain & chain, const lanelet::ConstLanelet & start_lanelet,
-  const TrajectoryData & trajectory, size_t window_end, const RoadFollowingParams & params);
+  const LaneChain & chain, const TrajectoryData & trajectory, size_t window_end,
+  const RoadFollowingParams & params);
 
 /**
  * @brief The road following test of one route. It builds the lane chains once for one route and
@@ -96,7 +93,7 @@ class RoadFollowingChecker
 {
 public:
   /**
-   * @brief Build the chains and the route lanelets once for one route and one map.
+   * @brief Build the chains once for one route and one map.
    * @return The checker, or the reason when an input is null, a step of the chain build fails, or
    * the route gives no chain.
    */
@@ -107,23 +104,18 @@ public:
 
   /**
    * @brief Test if the candidate trajectory follows the road.
-   * @details The route lanelet that holds the base link at `ego_pose` sets the start of the walk.
-   * A base link in no route lanelet gives false. Otherwise, the window samples of `trajectory`
-   * must follow at least one chain that holds that lanelet.
-   * @param ego_pose The odometry pose of ego.
+   * @details The window samples of `trajectory` must follow at least one chain.
    * @return True when one chain passes follows_chain.
    */
   [[nodiscard]] bool is_road_following(
-    const TrajectoryData & trajectory, const geometry_msgs::msg::Pose & ego_pose,
-    const RoadFollowingParams & params) const;
+    const TrajectoryData & trajectory, const RoadFollowingParams & params) const;
 
   [[nodiscard]] const std::vector<LaneChain> & chains() const;  // for tests and debug markers
 
 private:
-  RoadFollowingChecker(std::vector<LaneChain> chains, lanelet::ConstLanelets route_lanelets);
+  explicit RoadFollowingChecker(std::vector<LaneChain> chains);
 
   std::vector<LaneChain> chains_;
-  lanelet::ConstLanelets route_lanelets_;  // the lanelets of all chains, each lanelet once
 };
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following
 
