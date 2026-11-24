@@ -175,7 +175,7 @@ TEST(RouteWaypointsTest, FollowsRouteSegmentCenterlinesInEgoFrame)
   map_to_ego(1, 3) = -0.5;
   const auto segment_indices = context.select_route_segment_indices(
     route, map_to_ego, 30.0, 0.5, 0.0, 0.0, NUM_SEGMENTS_IN_ROUTE);
-  ASSERT_EQ(segment_indices.size(), 2U);
+  ASSERT_EQ(segment_indices.size(), 6U);  // Each 100 m lanelet is split into three map segments.
 
   const auto waypoints = context.create_route_waypoint_tensor(
     map_to_ego, segment_indices, NUM_ROUTE_WAYPOINTS, ROUTE_WAYPOINT_SPACING_M);
