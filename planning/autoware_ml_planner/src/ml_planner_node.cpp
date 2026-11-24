@@ -238,6 +238,9 @@ void MLPlanner::set_up_params()
     "trajectory_optimization.temporal_consistency.decay_time_constant_s", 1.0);
   temporal.far_weight_ratio = this->declare_parameter<double>(
     "trajectory_optimization.temporal_consistency.far_weight_ratio", 0.05);
+  temporal.release_longitudinal_on_route_signal_change = this->declare_parameter<bool>(
+    "trajectory_optimization.temporal_consistency.release_longitudinal_on_route_signal_change",
+    true);
 #ifndef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (opt.enable) {
     RCLCPP_WARN(
@@ -443,6 +446,10 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<double>(
     parameters, "trajectory_optimization.temporal_consistency.far_weight_ratio",
     temporal.far_weight_ratio);
+  update_param<bool>(
+    parameters,
+    "trajectory_optimization.temporal_consistency.release_longitudinal_on_route_signal_change",
+    temporal.release_longitudinal_on_route_signal_change);
 
   auto & avoidance = new_params.road_border_avoidance;
   update_param<bool>(parameters, "road_border_avoidance.enable", avoidance.enable);

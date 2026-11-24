@@ -382,6 +382,10 @@ PlannerOutput MLPlannerCore::create_planner_output(
     postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
 
   PlannerOutput output;
+  const bool route_signal_changed = route_signal_color_changed();
+  const bool release_temporal_longitudinal =
+    route_signal_changed && params_.trajectory_optimization.temporal_consistency
+                              .release_longitudinal_on_route_signal_change;
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
@@ -417,7 +421,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
       }
       auto optimization_result = trajectory_optimizer_->optimize(
         trajectory, kinematic_state, current_steering_angle_rad, current_acceleration_mps2,
-        static_cast<size_t>(i), goal_pose);
+        static_cast<size_t>(i), goal_pose, release_temporal_longitudinal);
       if (i == 0) {
         output.optimization_debug.attempted = true;
         output.optimization_debug.optimized = optimization_result.optimized;
@@ -430,6 +434,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
 #else
     (void)current_steering_angle_rad;
     (void)current_acceleration_mps2;
+    (void)release_temporal_longitudinal;
 #endif
 
     if (optimization_failed) {
@@ -500,6 +505,27 @@ PlannerOutput MLPlannerCore::create_planner_output(
     postprocess::create_predicted_objects(agent_poses, selected_agents_, timestamp, batch_idx);
 
   return output;
+}
+
+bool MLPlannerCore::route_signal_color_changed()
+{
+  using autoware_perception_msgs::msg::TrafficLightElement;
+  if (!lane_segment_context_ || !route_ptr_ || ego_history_.empty()) {
+    return route_signal_release_.observe(false, TrafficLightElement::UNKNOWN);
+  }
+
+  const geometry_msgs::msg::Pose & pose_center = ego_history_.back().pose.pose;
+  const Eigen::Matrix4d map_to_ego_transform = utils::inverse(utils::pose_to_matrix4d(pose_center));
+  const auto traffic_light_id_map = preprocess::create_traffic_signal_map(
+    traffic_signals_history_.msgs(), frame_time(), params_.traffic_light_group_msg_timeout_seconds);
+  const auto color = lane_segment_context_->first_route_traffic_light_color(
+    *route_ptr_, map_to_ego_transform, pose_center.position.x, pose_center.position.y,
+    pose_center.position.z, utils::yaw_from_quaternion(pose_center.orientation),
+    traffic_light_id_map);
+  if (!color) {
+    return route_signal_release_.observe(false, TrafficLightElement::UNKNOWN);
+  }
+  return route_signal_release_.observe(true, *color);
 }
 
 autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffic_light_on_route()

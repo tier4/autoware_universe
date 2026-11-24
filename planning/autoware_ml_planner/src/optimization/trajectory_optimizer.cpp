@@ -57,7 +57,8 @@ TrajectoryOptimizer::TrajectoryOptimizer(
 OptimizationResult TrajectoryOptimizer::optimize(
   const Trajectory & raw_trajectory, const Odometry & ego_odometry,
   const double current_steering_angle_rad, const double current_acceleration_mps2,
-  const size_t batch_index, const std::optional<geometry_msgs::msg::Pose> & goal_pose)
+  const size_t batch_index, const std::optional<geometry_msgs::msg::Pose> & goal_pose,
+  const bool release_temporal_longitudinal)
 {
   OptimizationResult result;
   result.trajectory = raw_trajectory;
@@ -211,7 +212,10 @@ OptimizationResult TrajectoryOptimizer::optimize(
   }
 
   SolverSolution solution = solver_->solve(
-    initial_state, references, goal_terminal_reference, temporal_references_ptr, warm_start_ptr);
+    initial_state, references, goal_terminal_reference, temporal_references_ptr, warm_start_ptr,
+    release_temporal_longitudinal && temporal_references_ptr != nullptr);
+  result.temporal_longitudinal_released =
+    release_temporal_longitudinal && temporal_references_ptr != nullptr;
   result.solver_status = solution.status;
   result.solve_time_ms = solution.solve_time_s * 1e3;
 

@@ -597,6 +597,23 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   return selected_indices;
 }
 
+std::optional<int64_t> LaneSegmentContext::first_traffic_light_segment_on_route(
+  const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+  const double center_y, const double center_z, const double center_yaw) const
+{
+  const std::vector<int64_t> segment_indices = select_route_segment_indices(
+    route, transform_matrix, center_x, center_y, center_z, center_yaw, NUM_SEGMENTS_IN_ROUTE);
+
+  for (const int64_t segment_idx : segment_indices) {
+    if (
+      lanelet_map_.lane_segments[segment_idx].traffic_light_id !=
+      LaneSegment::TRAFFIC_LIGHT_ID_NONE) {
+      return segment_idx;
+    }
+  }
+  return std::nullopt;
+}
+
 autoware_perception_msgs::msg::TrafficLightGroup
 LaneSegmentContext::get_first_traffic_light_on_route(
   const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
@@ -606,31 +623,45 @@ LaneSegmentContext::get_first_traffic_light_on_route(
   autoware_perception_msgs::msg::TrafficLightGroup result;
   result.traffic_light_group_id = 0;
 
-  const std::vector<int64_t> segment_indices = select_route_segment_indices(
-    route, transform_matrix, center_x, center_y, center_z, center_yaw, NUM_SEGMENTS_IN_ROUTE);
-
-  for (const int64_t segment_idx : segment_indices) {
-    const LaneSegment & segment = lanelet_map_.lane_segments[segment_idx];
-    if (segment.traffic_light_id == LaneSegment::TRAFFIC_LIGHT_ID_NONE) {
-      continue;
-    }
-
-    const auto it = traffic_light_id_map.find(segment.traffic_light_id);
-    if (it != traffic_light_id_map.end()) {
-      result = it->second.signal;
-    } else {
-      result.traffic_light_group_id = static_cast<int64_t>(segment.traffic_light_id);
-      autoware_perception_msgs::msg::TrafficLightElement unknown_element;
-      unknown_element.color = TrafficLightElement::UNKNOWN;
-      unknown_element.shape = TrafficLightElement::UNKNOWN;
-      unknown_element.status = TrafficLightElement::UNKNOWN;
-      unknown_element.confidence = 0.0f;
-      result.elements = {unknown_element};
-    }
+  const auto segment_idx = first_traffic_light_segment_on_route(
+    route, transform_matrix, center_x, center_y, center_z, center_yaw);
+  if (!segment_idx) {
     return result;
   }
 
+  const LaneSegment & segment = lanelet_map_.lane_segments[*segment_idx];
+  const auto it = traffic_light_id_map.find(segment.traffic_light_id);
+  if (it != traffic_light_id_map.end()) {
+    result = it->second.signal;
+  } else {
+    result.traffic_light_group_id = static_cast<int64_t>(segment.traffic_light_id);
+    autoware_perception_msgs::msg::TrafficLightElement unknown_element;
+    unknown_element.color = TrafficLightElement::UNKNOWN;
+    unknown_element.shape = TrafficLightElement::UNKNOWN;
+    unknown_element.status = TrafficLightElement::UNKNOWN;
+    unknown_element.confidence = 0.0f;
+    result.elements = {unknown_element};
+  }
   return result;
+}
+
+std::optional<uint8_t> LaneSegmentContext::first_route_traffic_light_color(
+  const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+  const double center_y, const double center_z, const double center_yaw,
+  const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map) const
+{
+  const auto segment_idx = first_traffic_light_segment_on_route(
+    route, transform_matrix, center_x, center_y, center_z, center_yaw);
+  if (!segment_idx) {
+    return std::nullopt;
+  }
+
+  const LaneSegment & segment = lanelet_map_.lane_segments[*segment_idx];
+  const auto it = traffic_light_id_map.find(segment.traffic_light_id);
+  if (it == traffic_light_id_map.end()) {
+    return autoware_perception_msgs::msg::TrafficLightElement::UNKNOWN;
+  }
+  return identify_current_light_status(segment.turn_direction, it->second.signal.elements).color;
 }
 
 std::vector<std::pair<lanelet::Id, int64_t>> LaneSegmentContext::get_traffic_light_ids(

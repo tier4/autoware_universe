@@ -151,6 +151,7 @@ if(BUILD_TESTING)
     test/route_waypoints_test.cpp
     test/turn_indicator_hold_test.cpp
     test/utils_test.cpp
+    test/route_signal_release_test.cpp
   )
 
   # Keep the optimizer test conditional because its public API is only available with acados.

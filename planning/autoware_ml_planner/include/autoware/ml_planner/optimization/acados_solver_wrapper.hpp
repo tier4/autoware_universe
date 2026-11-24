@@ -120,13 +120,15 @@ public:
    *                            initial_state. Yaw must be on the same branch as the
    *                            corresponding entry of `references`.
    * @param warm_start Previous solution in the same frame, or nullptr for a cold start.
+   * @param release_temporal_longitudinal Zero the temporal longitudinal and velocity
+   *        weights. Lateral and yaw weights are unchanged.
    */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
     const std::array<StageReference, opt_horizon> & references,
     const std::optional<GoalTerminalReference> & goal_terminal_reference,
     const std::array<StageTemporalReference, opt_horizon> * temporal_references,
-    const SolverSolution * warm_start);
+    const SolverSolution * warm_start, bool release_temporal_longitudinal = false);
 
 private:
   struct Impl;

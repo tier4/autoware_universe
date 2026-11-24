@@ -115,6 +115,13 @@ struct TrajectoryOptimizationParams
     double decay_time_constant_s{1.0};
     /// Fraction of the weight that remains at the far end of the horizon, in [0, 1].
     double far_weight_ratio{0.05};
+    /**
+     * On the planning cycle where the first traffic light on the route changes
+     * color, zero the temporal longitudinal and velocity weights for that solve.
+     * Lateral and yaw consistency stay. The next cycle tracks the solution just
+     * produced, so the release lasts one cycle.
+     */
+    bool release_longitudinal_on_route_signal_change{true};
   } temporal_consistency;
 };
 

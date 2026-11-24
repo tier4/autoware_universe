@@ -42,6 +42,8 @@ struct OptimizationResult
   double solve_time_ms{0.0};
   bool goal_snap_active{false};
   bool temporal_applied{false};
+  /// True when this solve kept lateral and yaw memory but dropped longitudinal and speed memory.
+  bool temporal_longitudinal_released{false};
 };
 
 /**
@@ -75,12 +77,17 @@ public:
    *                  to this goal and the extra terminal weights stay latched until the
    *                  goal position changes, or until ego is farther from the goal than
    *                  unlatch_horizon_s * max(|v|, unlatch_min_speed_mps).
+   * @param release_temporal_longitudinal Zero the temporal longitudinal and velocity
+   *        weights for this solve. Lateral and yaw consistency are unchanged, and
+   *        the warm start is still applied. Used for the one cycle on which the
+   *        route traffic light changes color.
    * @return Optimized trajectory, or the raw trajectory when the solver fails.
    */
   OptimizationResult optimize(
     const Trajectory & raw_trajectory, const Odometry & ego_odometry,
     double current_steering_angle_rad, double current_acceleration_mps2, size_t batch_index,
-    const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
+    const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt,
+    bool release_temporal_longitudinal = false);
 
 private:
   TrajectoryOptimizationParams params_;

@@ -160,8 +160,7 @@ public:
    * @param lanelet_map_ptr Shared pointer to the lanelet map.
    * @param line_string_max_step_m Maximum arc-length step per point for resampled line strings.
    */
-  explicit LaneSegmentContext(
-    const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr);
+  explicit LaneSegmentContext(const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr);
 
   /**
    * @brief Select route segment indices based on route and constraints.
@@ -249,6 +248,19 @@ public:
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map) const;
 
   /**
+   * @brief Color of the first traffic light on the route, for this lane's turn.
+   *
+   * @return The color selected by identify_current_light_status for that segment's
+   *         turn direction. nullopt when the route ahead has no traffic light.
+   *         UNKNOWN when the light is on the route but perception has no reading.
+   *         Bulbs that do not govern this turn, and lights off the route, are ignored.
+   */
+  std::optional<uint8_t> first_route_traffic_light_color(
+    const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+    const double center_y, const double center_z, const double center_yaw,
+    const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map) const;
+
+  /**
    * @brief Get the mapping from lanelet ID to array indices.
    *
    * @return Map of lanelet IDs to the indices of their lane segments, in driving order. A lanelet
@@ -266,6 +278,11 @@ public:
   xt::xarray<float> create_road_border_tensor(const Eigen::Matrix4d & transform_matrix) const;
 
 private:
+  /// Index of the first route segment ahead of ego that carries a traffic light.
+  std::optional<int64_t> first_traffic_light_segment_on_route(
+    const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+    const double center_y, const double center_z, const double center_yaw) const;
+
   const autoware::ml_planner::LaneletMap lanelet_map_;
   const std::map<lanelet::Id, std::vector<size_t>> lanelet_id_to_array_index_;
 };

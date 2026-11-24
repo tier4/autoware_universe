@@ -26,6 +26,7 @@
 #include "autoware/ml_planner/preprocessing/input_builder.hpp"
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 #include "autoware/ml_planner/preprocessing/items/traffic_signals.hpp"
+#include "autoware/ml_planner/preprocessing/route_signal_release.hpp"
 #include "autoware/ml_planner/utils/timed_buffer.hpp"
 
 #include <Eigen/Dense>
@@ -255,6 +256,14 @@ public:
   autoware_perception_msgs::msg::TrafficLightGroup get_first_traffic_light_on_route() const;
 
   /**
+   * @brief Observe the route traffic light and report whether its color changed.
+   *
+   * The first definite color only arms the memory. Unknown and the absence of a
+   * light on the route do not count as a change and do not clear the memory.
+   */
+  bool route_signal_color_changed();
+
+  /**
    * @brief Count valid elements in input data for diagnostics.
    *
    * @param input_data_map Input data map
@@ -291,6 +300,7 @@ private:
   // Postprocessing
   std::vector<preprocess::SelectedAgent> selected_agents_;
   postprocess::TurnIndicatorHold turn_indicator_hold_;
+  preprocess::RouteSignalRelease route_signal_release_;
 
   // Raw message history buffers, bounded to the model input time window.
   // All derived history data is computed statelessly from these buffers.

@@ -196,7 +196,7 @@ SolverSolution AcadosSolverWrapper::solve(
   const std::array<StageReference, opt_horizon> & references,
   const std::optional<GoalTerminalReference> & goal_terminal_reference,
   const std::array<StageTemporalReference, opt_horizon> * temporal_references,
-  const SolverSolution * warm_start)
+  const SolverSolution * warm_start, const bool release_temporal_longitudinal)
 {
   auto x0 = initial_state;
 
@@ -262,10 +262,12 @@ SolverSolution AcadosSolverWrapper::solve(
     if (use_temporal && !is_initial_stage) {
       const auto & previous = (*temporal_references)[stage - 1];
       const double scale = temporal_scale(stage);
-      const double t_lon = scale * temporal.weight_longitudinal;
+      const double t_lon =
+        release_temporal_longitudinal ? 0.0 : scale * temporal.weight_longitudinal;
       const double t_lat = scale * temporal.weight_lateral;
       const double t_yaw = scale * temporal.weight_yaw;
-      const double t_velocity = scale * temporal.weight_velocity;
+      const double t_velocity =
+        release_temporal_longitudinal ? 0.0 : scale * temporal.weight_velocity;
       const auto temporal_block = position_block(previous.yaw, t_lon, t_lat);
       block = {
         track_block[0] + temporal_block[0], track_block[1] + temporal_block[1],
@@ -327,10 +329,11 @@ SolverSolution AcadosSolverWrapper::solve(
   if (use_temporal) {
     const auto & previous = (*temporal_references)[gen_n - 1];
     const double scale = temporal_scale(gen_n);
-    const double t_lon = scale * temporal.weight_longitudinal;
+    const double t_lon = release_temporal_longitudinal ? 0.0 : scale * temporal.weight_longitudinal;
     const double t_lat = scale * temporal.weight_lateral;
     const double t_yaw = scale * temporal.weight_yaw;
-    const double t_velocity = scale * temporal.weight_velocity;
+    const double t_velocity =
+      release_temporal_longitudinal ? 0.0 : scale * temporal.weight_velocity;
     const auto temporal_block = position_block(previous.yaw, t_lon, t_lat);
     auto summed_block = terminal_block;
     for (size_t i = 0; i < summed_block.size(); ++i) {
