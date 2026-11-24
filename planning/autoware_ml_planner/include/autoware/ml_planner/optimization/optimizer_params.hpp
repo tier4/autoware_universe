@@ -116,6 +116,24 @@ struct TrajectoryOptimizationParams
     /// Fraction of the weight that remains at the far end of the horizon, in [0, 1].
     double far_weight_ratio{0.05};
   } temporal_consistency;
+
+  /**
+   * @brief Two-pass reference: smooth the poses, then retime them, then optimize.
+   *
+   * The first solve tracks the raw poses with a loose lateral-acceleration bound and
+   * without the goal or the temporal term, so it is free to take the kinks out of the
+   * heading. Curvature is then estimated from that smoothed heading, the polyline is
+   * retimed under ``max_lateral_acceleration_mps2``, and the second solve is the normal
+   * constrained problem. Its shooting-node guess is the retimed profile.
+   *
+   * Disabled by default. The extra cost is one SQP solve per candidate.
+   */
+  struct ReferenceResampleParams
+  {
+    bool enable{false};
+    /// Lateral-acceleration bound of the smoothing solve only [m/s^2].
+    double smoothing_lateral_acceleration_mps2{10.0};
+  } reference_resample;
 };
 
 }  // namespace autoware::ml_planner::optimization

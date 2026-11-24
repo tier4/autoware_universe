@@ -230,6 +230,24 @@
               "minimum": 1,
               "description": "Maximum SQP iterations per solve"
             },
+            "reference_resample": {
+              "type": "object",
+              "description": "Smooth the raw poses, estimate curvature from the smoothed heading, retime the polyline under the lateral-acceleration bound, then run the constrained solve from that retimed profile",
+              "properties": {
+                "enable": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Run the smoothing solve before the constrained solve"
+                },
+                "smoothing_lateral_acceleration_mps2": {
+                  "type": "number",
+                  "default": 10.0,
+                  "minimum": 0.0,
+                  "description": "Lateral-acceleration bound used only by the smoothing solve [m/s^2]"
+                }
+              },
+              "required": ["enable"]
+            },
             "temporal_consistency": {
               "type": "object",
               "description": "Weakly tracks the previous cycle's own plan, shifted by the elapsed interval, so consecutive outputs stay coherent. Keep the weights clearly below the tracking weights; at comparable magnitude the term becomes a memory that stops the planner reacting to new model output",

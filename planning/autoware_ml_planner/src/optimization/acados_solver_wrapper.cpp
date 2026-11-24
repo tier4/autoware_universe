@@ -183,6 +183,23 @@ AcadosSolverWrapper::AcadosSolverWrapper(
   ocp_nlp_solver_opts_set(impl_->config, impl_->opts, "max_iter", &max_iter);
 }
 
+void AcadosSolverWrapper::set_max_lateral_acceleration(const double max_lateral_acceleration_mps2)
+{
+  std::array<double, 1> lh{-max_lateral_acceleration_mps2};
+  std::array<double, 1> uh{max_lateral_acceleration_mps2};
+  for (size_t stage = 0; stage < gen_n; ++stage) {
+    const int path_constraints = ocp_nlp_dims_get_from_attr(
+      impl_->config, impl_->dims, impl_->out, static_cast<int>(stage), "nh");
+    if (path_constraints <= 0) {
+      continue;
+    }
+    ocp_nlp_constraints_model_set(
+      impl_->config, impl_->dims, impl_->in, impl_->out, static_cast<int>(stage), "lh", lh.data());
+    ocp_nlp_constraints_model_set(
+      impl_->config, impl_->dims, impl_->in, impl_->out, static_cast<int>(stage), "uh", uh.data());
+  }
+}
+
 AcadosSolverWrapper::~AcadosSolverWrapper()
 {
   if (impl_ && impl_->capsule) {
@@ -196,7 +213,7 @@ SolverSolution AcadosSolverWrapper::solve(
   const std::array<StageReference, opt_horizon> & references,
   const std::optional<GoalTerminalReference> & goal_terminal_reference,
   const std::array<StageTemporalReference, opt_horizon> * temporal_references,
-  const SolverSolution * warm_start)
+  const SolverSolution * warm_start, const SolverSolution * initial_guess)
 {
   auto x0 = initial_state;
 
@@ -364,10 +381,13 @@ SolverSolution AcadosSolverWrapper::solve(
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "yref", yref_e.data());
 
-  // Initial guess: previous solution shifted by one stage, or the initial state.
+  // Initial guess. A same-cycle seed is already aligned with this horizon. A previous-cycle
+  // warm start is one stage ahead, because time has moved by one step.
   for (size_t stage = 0; stage <= gen_n; ++stage) {
     std::array<double, gen_nx> x_guess = x0;
-    if (warm_start != nullptr) {
+    if (initial_guess != nullptr) {
+      x_guess = initial_guess->states[stage];
+    } else if (warm_start != nullptr) {
       x_guess = warm_start->states[std::min(stage + 1, gen_n)];
     }
     ocp_nlp_out_set(
@@ -375,7 +395,9 @@ SolverSolution AcadosSolverWrapper::solve(
       x_guess.data());
     if (stage < gen_n) {
       std::array<double, gen_nu> u_guess{};
-      if (warm_start != nullptr) {
+      if (initial_guess != nullptr) {
+        u_guess = initial_guess->inputs[stage];
+      } else if (warm_start != nullptr) {
         u_guess = warm_start->inputs[std::min(stage + 1, gen_n - 1)];
       }
       ocp_nlp_out_set(

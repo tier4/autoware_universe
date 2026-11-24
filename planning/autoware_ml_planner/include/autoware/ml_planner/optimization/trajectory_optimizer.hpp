@@ -83,6 +83,25 @@ public:
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
 private:
+  /// Smoothing solve plus a retimed reference. Empty when the smoothing solve fails.
+  struct ResampledTracking
+  {
+    Trajectory trajectory;
+    SolverSolution guess_local;
+    double smooth_solve_time_ms{0.0};
+  };
+
+  /**
+   * @brief Smooth the raw poses, estimate curvature there, and retime the polyline.
+   *
+   * Does not update the goal latch or the stored warm start. The returned guess is in
+   * the current ego-centered frame and is aligned with this cycle's stage times.
+   * ``smooth_solve_time_ms`` is written even when the smoothing solve fails.
+   */
+  std::optional<ResampledTracking> smooth_and_resample(
+    const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
+    double base_x, double base_y, size_t batch_index, double & smooth_solve_time_ms);
+
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
   double max_steering_angle_rad_;

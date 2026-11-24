@@ -109,6 +109,14 @@ public:
   AcadosSolverWrapper & operator=(AcadosSolverWrapper &&) = delete;
 
   /**
+   * @brief Replace the soft lateral-acceleration bound on every stage that has one.
+   *
+   * The smoothing pass of reference resampling uses a loose bound and the following
+   * constrained pass restores the configured one. Stages with no path constraint are skipped.
+   */
+  void set_max_lateral_acceleration(double max_lateral_acceleration_mps2);
+
+  /**
    * @brief Solve the OCP.
    *
    * @param initial_state Stage-0 state (equality constrained): x, y, yaw, v, delta, a.
@@ -120,13 +128,18 @@ public:
    *                            initial_state. Yaw must be on the same branch as the
    *                            corresponding entry of `references`.
    * @param warm_start Previous solution in the same frame, or nullptr for a cold start.
+   *                   Applied with a one-stage shift, because it comes from the previous cycle.
+   * @param initial_guess Same-cycle seed, applied without that shift. When non-null it
+   *                      replaces ``warm_start`` as the shooting-node guess. Used by the
+   *                      resampled profile, whose stage ``k`` is already the state at time
+   *                      ``k * dt`` of this cycle.
    */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
     const std::array<StageReference, opt_horizon> & references,
     const std::optional<GoalTerminalReference> & goal_terminal_reference,
     const std::array<StageTemporalReference, opt_horizon> * temporal_references,
-    const SolverSolution * warm_start);
+    const SolverSolution * warm_start, const SolverSolution * initial_guess = nullptr);
 
 private:
   struct Impl;

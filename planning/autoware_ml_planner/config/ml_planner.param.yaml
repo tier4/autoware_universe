@@ -40,6 +40,12 @@
       max_steering_rate_rps: 1.0     # [rad/s]
       max_lateral_acceleration_mps2: 3.0  # soft constraint bound [m/s^2]
       max_sqp_iterations: 50
+      # Smooth the poses once, estimate curvature from that heading, retime the
+      # polyline under max_lateral_acceleration_mps2, then run the constrained solve.
+      # The second solve is seeded with the retimed profile. Off keeps the single solve.
+      reference_resample:
+        enable: false
+        smoothing_lateral_acceleration_mps2: 10.0  # bound used only by the smoothing solve
       temporal_consistency:
         # Track this candidate's own previous plan so consecutive outputs stay coherent.
         # Weights below are the values at t = 0 and are scaled down over the horizon by
