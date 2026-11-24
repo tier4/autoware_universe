@@ -14,10 +14,13 @@ Use `find_package(autoware_ml_planner_preprocessing REQUIRED)` and link `autowar
 ## Generate Scenes from a recording
 
 For raw recordings, call `t4scene_generation.SceneBuilder.open_bag` with the planner's installed
-`config/t4scene_online.yaml`. Build each window at its decision timestamp. For a replay with
-known receipt times, supply the decision's receipt cutoff to `build_window`. The recording's map
-geometry, map registration, and vehicle dimensions are attached before converting the Scene.
-Evaluation may use a copy of the profile with 80 future steps when it needs recorded signal data.
+`config/t4scene_online.yaml`. Build each window at its decision timestamp. Attach the recording's
+map geometry, map registration, and vehicle dimensions before converting the Scene.
+
+For online-style replay, keep the history-only grid and pass the decision's receipt cutoff as
+`received_through_ns` when calling `build_window`. For recorded-signal evaluation, use a copy of the
+profile with 80 future steps and build the window without a receipt cutoff. The cutoff applies to
+every row in the window, including recorded future rows.
 
 ## Python
 
