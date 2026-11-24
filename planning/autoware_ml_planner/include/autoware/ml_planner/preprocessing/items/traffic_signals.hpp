@@ -15,25 +15,16 @@
 #ifndef AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNALS_HPP_
 #define AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNALS_HPP_
 
-#include "autoware/ml_planner/preprocessing/items/traffic_light_features.hpp"
 #include "autoware/ml_planner/preprocessing/items/traffic_signal_stamped.hpp"
-#include "autoware/ml_planner/preprocessing/message_view.hpp"
 
-#include <rclcpp/duration.hpp>
 #include <rclcpp/time.hpp>
-#include <xtensor/xarray.hpp>
 
-#include <autoware_perception_msgs/msg/detail/traffic_light_group__struct.hpp>
-#include <autoware_perception_msgs/msg/detail/traffic_light_group_array__struct.hpp>
-#include <autoware_perception_msgs/msg/traffic_signal.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 
-#include <lanelet2_traffic_rules/TrafficRules.h>
+#include <lanelet2_core/primitives/Traits.h>
 
-#include <cstdint>
 #include <deque>
 #include <map>
-#include <utility>
-#include <vector>
 
 namespace autoware::ml_planner::preprocess
 {
@@ -53,30 +44,6 @@ namespace autoware::ml_planner::preprocess
 std::map<lanelet::Id, TrafficSignalStamped> create_traffic_signal_map(
   const std::deque<autoware_perception_msgs::msg::TrafficLightGroupArray> & msgs,
   const rclcpp::Time & current_time, const double time_threshold_seconds);
-
-/**
- * @brief Build the one-hot traffic light state history tensor per lane segment.
- *
- * Stateless: samples the messages on a fixed time grid ending at current_time
- * (zero-order hold on message stamps).
- * Output layout: (max_segments, num_timesteps, TRAFFIC_LIGHT_ONE_HOT_DIM).
- * Slot layout per timestep: [GREEN, AMBER, RED, UNKNOWN/no-data, WHITE or no
- * light]. Rows beyond segment_lights.size() stay all-zero (padding).
- *
- * @param traffic_signals_msgs Chronological window of TrafficLightGroupArray messages.
- * @param segment_lights (traffic light id, turn_direction) per lane segment.
- * @param max_segments Number of segment rows in the output tensor.
- * @param current_time Time of the newest grid sample.
- * @param num_timesteps Number of grid samples.
- * @param time_step_s Grid interval in seconds.
- * @param timeout_s Observations older than this relative to a grid time are treated as no-data.
- * @return Tensor with shape [max_segments, num_timesteps, TRAFFIC_LIGHT_ONE_HOT_DIM].
- */
-xt::xarray<float> create_traffic_light_past(
-  const MessageView<autoware_perception_msgs::msg::TrafficLightGroupArray> & traffic_signals_msgs,
-  const std::vector<std::pair<lanelet::Id, int64_t>> & segment_lights, const int64_t max_segments,
-  const rclcpp::Time & current_time, const int64_t num_timesteps, const double time_step_s,
-  const double timeout_s);
 
 }  // namespace autoware::ml_planner::preprocess
 #endif  // AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNALS_HPP_

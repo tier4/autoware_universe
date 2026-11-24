@@ -16,7 +16,6 @@
 
 #include "autoware/ml_planner/constants.hpp"
 #include "autoware/ml_planner/dimensions.hpp"
-#include "autoware/ml_planner/preprocessing/items/traffic_light_features.hpp"
 #include "autoware_utils_math/normalization.hpp"
 #include "autoware_utils_math/unit_conversion.hpp"
 
@@ -1046,19 +1045,5 @@ std::optional<size_t> find_closest_segment_index(
 }
 
 }  // namespace
-
-TrafficLightStatus identify_current_light_status(
-  const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements)
-{
-  std::vector<TrafficLightObservation> observations;
-  observations.reserve(traffic_light_elements.size());
-  for (const auto & element : traffic_light_elements) {
-    observations.push_back(
-      {static_cast<TrafficLightColor>(element.color), static_cast<TrafficLightShape>(element.shape),
-       element.confidence});
-  }
-  const auto feature = select_traffic_light(turn_direction, observations);
-  return {static_cast<uint8_t>(feature.color), feature.is_arrow};
-}
 
 }  // namespace autoware::ml_planner::preprocess

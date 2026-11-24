@@ -275,23 +275,6 @@ private:
 };
 
 /**
- * @brief Effective state of a traffic light group for a specific lane.
- */
-struct TrafficLightStatus
-{
-  uint8_t color{autoware_perception_msgs::msg::TrafficLightElement::UNKNOWN};
-  bool is_arrow{false};  ///< True when the decisive element is an arrow (not a circle).
-};
-
-/**
- * @brief Identify the effective light state of a traffic light group for a
- * lane with the given turn direction.
- */
-TrafficLightStatus identify_current_light_status(
-  const int64_t turn_direction,
-  const std::vector<autoware_perception_msgs::msg::TrafficLightElement> & traffic_light_elements);
-
-/**
  * @brief Place waypoints at equal spacing along a line, starting at the origin's projection on it.
  *
  * The origin (the ego in the ego frame) is projected onto the nearest part of the line, and

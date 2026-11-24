@@ -46,13 +46,8 @@ set(ML_PLANNER_SOURCES
   src/inference/utils.cpp
   src/postprocessing/postprocessing_utils.cpp
   src/postprocessing/road_border_avoidance.cpp
-  src/preprocessing/input_builder.cpp
-  src/preprocessing/items/agent.cpp
-  src/preprocessing/items/ego_history.cpp
-  src/preprocessing/items/goal_pose.cpp
   src/preprocessing/items/initial_noise.cpp
   src/preprocessing/items/traffic_signals.cpp
-  src/preprocessing/items/turn_indicators.cpp
   src/utils/marker_utils.cpp
   src/utils/model_metadata.cpp
   src/utils/object_remap.cpp
