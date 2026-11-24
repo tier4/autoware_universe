@@ -38,11 +38,12 @@ std::array<PoseSample, opt_horizon + 1> straight()
 std::array<PoseSample, opt_horizon + 1> circle(const double radius_m, const double sign)
 {
   std::array<PoseSample, opt_horizon + 1> poses{};
+  const double steering = std::atan(sign * kWheelbase / radius_m);
   double x = 0.0;
   double y = 0.0;
   double yaw = 0.0;
   for (size_t index = 0; index < poses.size(); ++index) {
-    poses[index] = {x, y, yaw};
+    poses[index] = {x, y, yaw, steering};
     yaw += sign * kStep / radius_m;
     x += kStep * std::cos(yaw);
     y += kStep * std::sin(yaw);
@@ -71,15 +72,23 @@ TEST(ReferenceResample, LeftAndRightTurnsShareTheSpeedCap)
   EXPECT_GT(right.speed_mps.back(), 5.4);
 }
 
-TEST(ReferenceResample, CurvatureFollowsTheGivenYaw)
+TEST(ReferenceResample, CurvatureFollowsSteeringNotYaw)
 {
-  auto noisy = straight();
-  for (size_t index = 0; index < noisy.size(); ++index) {
-    noisy[index].yaw = 0.15 * std::sin(0.4 * static_cast<double>(index));
+  auto yaw_noise_only = straight();
+  for (size_t index = 0; index < yaw_noise_only.size(); ++index) {
+    yaw_noise_only[index].yaw = 0.15 * std::sin(0.4 * static_cast<double>(index));
   }
-  const auto clean = resample_pose_sequence(straight(), kSpeed, 0.35, kWheelbase, -4.0, 3.0);
-  const auto from_noisy = resample_pose_sequence(noisy, kSpeed, 0.35, kWheelbase, -4.0, 3.0);
-  EXPECT_LT(from_noisy.speed_mps.back(), clean.speed_mps.back() - 1.0);
+  auto steered = straight();
+  const double steering = std::atan(kWheelbase / 100.0);
+  for (auto & pose : steered) {
+    pose.steering_rad = steering;
+    pose.yaw = 0.0;
+  }
+  const auto from_yaw = resample_pose_sequence(yaw_noise_only, kSpeed, 0.35, kWheelbase, -4.0, 3.0);
+  const auto from_steer = resample_pose_sequence(steered, kSpeed, 0.35, kWheelbase, -4.0, 3.0);
+  EXPECT_NEAR(from_yaw.speed_mps.back(), kSpeed, 0.05);
+  EXPECT_LT(from_steer.speed_mps.back(), 6.2);
+  EXPECT_NEAR(from_steer.curvature_inv_m[40], std::tan(steering) / kWheelbase, 1.0e-9);
 }
 
 }  // namespace autoware::ml_planner::optimization

@@ -232,7 +232,7 @@
             },
             "reference_resample": {
               "type": "object",
-              "description": "Smooth the raw poses, estimate curvature from the smoothed heading, retime the polyline under the lateral-acceleration bound, then run the constrained solve from that retimed profile",
+              "description": "Smooth the raw poses, take curvature from that solution's steering angle, retime the polyline under the lateral-acceleration bound, then run the constrained solve from that retimed profile",
               "properties": {
                 "enable": {
                   "type": "boolean",

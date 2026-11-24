@@ -345,6 +345,7 @@ std::optional<TrajectoryOptimizer::ResampledTracking> TrajectoryOptimizer::smoot
     poses[index].x = smooth.states[index][kX] + base_x;
     poses[index].y = smooth.states[index][kY] + base_y;
     poses[index].yaw = smooth.states[index][kPsi];
+    poses[index].steering_rad = smooth.states[index][kDelta];
   }
   const ResampledSequence resampled = resample_pose_sequence(
     poses, initial_state[kV], configured_bound, wheelbase_m_, params_.min_acceleration_mps2,

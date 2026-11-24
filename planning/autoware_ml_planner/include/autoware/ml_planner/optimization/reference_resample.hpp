@@ -22,12 +22,14 @@
 namespace autoware::ml_planner::optimization
 {
 
-/// One pose on the polyline. Index 0 is the ego sample; indices 1..N are the horizon.
+/// One sample of the smoothed solution. Index 0 is the ego sample; indices 1..N are the horizon.
+/// ``steering_rad`` is the solved steering angle, the source of the curvature.
 struct PoseSample
 {
   double x{0.0};
   double y{0.0};
   double yaw{0.0};
+  double steering_rad{0.0};
 };
 
 /**
@@ -36,7 +38,8 @@ struct PoseSample
  * ``poses[k]`` is where stage ``k`` should sit. ``speed_mps``, ``steering_rad`` and
  * ``acceleration_mps2`` are the feasible profile at that stage and are meant as the
  * initial guess of the following constrained solve, not as a tracked reference.
- * ``curvature_inv_m`` is the curvature of the input polyline, one value per input sample.
+ * ``curvature_inv_m`` is ``tan(steering) / wheelbase`` of the smoothed solution, one value per
+ * sample.
  */
 struct ResampledSequence
 {
@@ -48,18 +51,20 @@ struct ResampledSequence
 };
 
 /**
- * @brief Retime a pose sequence without leaving its polyline.
+ * @brief Retime the smoothed solution without leaving its polyline.
  *
- * Curvature is a smoothed ``d(yaw) / ds`` of ``poses``. The speed implied by the
- * spacing, and any steering stored elsewhere, are not inputs. The speed cap at a
- * station is ``sqrt(a_lat_max / |kappa|)``. The profile brakes or accelerates toward
+ * Curvature at each sample is the bicycle curvature of the solved steering angle,
+ * ``tan(steering_rad) / wheelbase``. Heading differences are not used: the smoothing
+ * solve already produced a steering profile, and the raw model output's steering is
+ * not what this function sees. The speed cap at a station is
+ * ``sqrt(a_lat_max / |kappa|)``. The profile brakes or accelerates toward
  * ``min(cap, ego_speed)`` inside ``[min_acceleration, max_acceleration]`` and never
  * goes faster than ``ego_speed_mps``.
  *
- * @param poses ``opt_horizon + 1`` poses. Index 0 is the ego pose.
+ * @param poses ``opt_horizon + 1`` samples of the smoothed solution. Index 0 is ego.
  * @param ego_speed_mps Measured speed at index 0 [m/s].
  * @param lateral_accel_limit_mps2 Lateral-acceleration cap used for the speed limit [m/s^2].
- * @param wheelbase_m Wheelbase used to turn curvature into a steering seed [m].
+ * @param wheelbase_m Wheelbase used to turn steering into curvature [m].
  * @param min_acceleration_mps2 Most negative acceleration of one step [m/s^2].
  * @param max_acceleration_mps2 Most positive acceleration of one step [m/s^2].
  */

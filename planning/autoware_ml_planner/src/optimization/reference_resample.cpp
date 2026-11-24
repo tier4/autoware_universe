@@ -25,7 +25,6 @@ namespace autoware::ml_planner::optimization
 {
 namespace
 {
-constexpr double min_curvature_span_m = 2.0;
 constexpr double curvature_epsilon_inv_m = 1.0e-6;
 constexpr double steer_curvature_limit_rad = 0.7;
 
@@ -41,52 +40,17 @@ std::array<double, opt_horizon + 1> unwrap_yaw(
   return yaw;
 }
 
-std::array<double, opt_horizon + 1> curvature_from_poses(
-  const std::array<double, opt_horizon + 1> & arc, const std::array<double, opt_horizon + 1> & yaw,
-  const double wheelbase_m)
+std::array<double, opt_horizon + 1> curvature_from_steering(
+  const std::array<PoseSample, opt_horizon + 1> & poses, const double wheelbase_m)
 {
-  constexpr size_t count = opt_horizon + 1;
-  std::array<double, count> kappa{};
-  for (size_t index = 0; index < count; ++index) {
-    size_t lower = index;
-    size_t upper = index;
-    while (arc[upper] - arc[lower] < min_curvature_span_m && (lower > 0 || upper + 1 < count)) {
-      if (upper + 1 < count) {
-        ++upper;
-      }
-      if (arc[upper] - arc[lower] >= min_curvature_span_m) {
-        break;
-      }
-      if (lower > 0) {
-        --lower;
-      }
-    }
-    const double span = arc[upper] - arc[lower];
-    if (span < 1.0e-3 || upper == lower) {
-      kappa[index] = 0.0;
-    } else {
-      kappa[index] = autoware_utils::normalize_radian(yaw[upper] - yaw[lower]) / span;
-    }
-  }
-
-  // 5-tap [1, 2, 3, 2, 1] with edge padding, matching the Python resampler.
-  constexpr std::array<double, 5> kernel{1.0, 2.0, 3.0, 2.0, 1.0};
-  constexpr double kernel_sum = 9.0;
-  std::array<double, count> smoothed{};
-  for (size_t index = 0; index < count; ++index) {
-    double accum = 0.0;
-    for (size_t tap = 0; tap < kernel.size(); ++tap) {
-      const int source =
-        std::clamp(static_cast<int>(index + tap) - 2, 0, static_cast<int>(count) - 1);
-      accum += kernel[tap] * kappa[static_cast<size_t>(source)];
-    }
-    smoothed[index] = accum / kernel_sum;
-  }
   const double kappa_limit = std::tan(steer_curvature_limit_rad) / wheelbase_m;
-  for (double & value : smoothed) {
-    value = std::clamp(value, -kappa_limit, kappa_limit);
+  std::array<double, opt_horizon + 1> kappa{};
+  for (size_t index = 0; index < poses.size(); ++index) {
+    const double steering =
+      std::clamp(poses[index].steering_rad, -steer_curvature_limit_rad, steer_curvature_limit_rad);
+    kappa[index] = std::clamp(std::tan(steering) / wheelbase_m, -kappa_limit, kappa_limit);
   }
-  return smoothed;
+  return kappa;
 }
 
 double interpolate(
@@ -133,7 +97,7 @@ ResampledSequence resample_pose_sequence(
       arc[index] = arc[index - 1] + std::hypot(x[index] - x[index - 1], y[index] - y[index - 1]);
     }
   }
-  const auto curvature = curvature_from_poses(arc, yaw, wheelbase_m);
+  const auto curvature = curvature_from_steering(poses, wheelbase_m);
   const double arc_end = arc.back();
   const double speed_ceiling = std::max(0.0, ego_speed_mps);
 
