@@ -470,6 +470,36 @@ road_following::LaneChain make_lane_shift_chain(const TestMap & test_map)
   return road_following::build_lane_chain({layer.get(1), layer.get(2), layer.get(4)}).value();
 }
 
+// The chain of the one lanelet `id` of `test_map`.
+road_following::LaneChain make_one_lanelet_chain(const TestMap & test_map, const lanelet::Id id)
+{
+  return road_following::build_lane_chain({test_map.map().laneletLayer.get(id)}).value();
+}
+
+// Lanelet 2 lies between lanelets 1 and 3 and has the given turn direction. The geometry is
+// straight, as in TurnLaneletEndsTheListAndIsInNoList.
+TestMap make_intersection_map(const std::string & turn_direction)
+{
+  TestMap test_map;
+  test_map.add_straight_lanelet(1, 0.0, 20.0);
+  test_map.add_lanelet(
+    2, {{20.0, k_half_width}, {40.0, k_half_width}}, {{20.0, -k_half_width}, {40.0, -k_half_width}},
+    turn_direction);
+  test_map.add_straight_lanelet(3, 40.0, 80.0);
+  return test_map;
+}
+
+// One straight lanelet 1, 5 m wide, from x = 0 to 40 m on the x axis. The J6 footprint has 1.39 m
+// free on each side, so the lateral and heading limits fail before the footprint leaves the lane.
+TestMap make_wide_lane_map()
+{
+  constexpr double half_width = 2.5;
+  TestMap test_map;
+  test_map.add_lanelet(
+    1, {{0.0, half_width}, {40.0, half_width}}, {{0.0, -half_width}, {40.0, -half_width}});
+  return test_map;
+}
+
 TEST(FollowsChain, SamplesInsideAllLimitsGiveTrue)
 {
   // The samples are on the chain centerline, with its heading, in lanelets 1, 2, and 4.
@@ -481,118 +511,100 @@ TEST(FollowsChain, SamplesInsideAllLimitsGiveTrue)
      make_pose(40.0, -3.0, 0.0)});
 
   EXPECT_TRUE(
-    road_following::follows_chain(
-      chain, test_map.map().laneletLayer.get(1), trajectory, trajectory.size(),
-      RoadFollowingParams{}));
+    road_following::follows_chain(chain, trajectory, trajectory.size(), RoadFollowingParams{}));
 }
 
-TEST(FollowsChain, FootprintCrossingBoundGivesFalse)
+TEST(FollowsChain, FootprintLeavesChainGivesFalse)
 {
-  // An offset of 0.45 m puts one side of the footprint 0.06 m past a bound of lanelet 1. The
-  // lateral distance stays under 0.5 m and the heading is 0, so only the bound test fails.
+  // An offset of 0.45 m puts one side of the footprint 0.06 m outside the chain polygon. The
+  // lateral distance stays under 0.5 m and the heading is 0, so only the containment test fails.
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
-  const auto & start_lanelet = test_map.map().laneletLayer.get(1);
   const auto over_left = make_ego_trajectory({make_pose(10.0, 0.45, 0.0)});
   const auto over_right = make_ego_trajectory({make_pose(10.0, -0.45, 0.0)});
 
-  EXPECT_FALSE(
-    road_following::follows_chain(chain, start_lanelet, over_left, 1U, RoadFollowingParams{}));
-  EXPECT_FALSE(
-    road_following::follows_chain(chain, start_lanelet, over_right, 1U, RoadFollowingParams{}));
+  EXPECT_FALSE(road_following::follows_chain(chain, over_left, 1U, RoadFollowingParams{}));
+  EXPECT_FALSE(road_following::follows_chain(chain, over_right, 1U, RoadFollowingParams{}));
 }
 
-TEST(FollowsChain, LateralPastChainEndGivesFalse)
+TEST(FollowsChain, FrontPastChainEndGivesFalse)
 {
-  // The chain ends at x = 50 m, and its end edge is not a bound. The sample is 2 m past the end,
-  // on the line of the last centerline segment, so its footprint starts at x = 50.47 m and meets
-  // no bound. The lateral distance to the closest centerline segment is the distance to its end
-  // point, 2 m, which is over the 0.5 m limit.
+  // The chain ends at x = 50 m. The front of the footprint is 5.71 m ahead of the base link: at
+  // x = 49.71 m for a base link at x = 44 m, and at x = 50.21 m for a base link at x = 44.5 m.
+  // Both base links are on the centerline, so only the containment test fails.
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
-  const auto trajectory = make_ego_trajectory({make_pose(52.0, -3.0, 0.0)});
+  const auto front_inside = make_ego_trajectory({make_pose(44.0, -3.0, 0.0)});
+  const auto front_past_end = make_ego_trajectory({make_pose(44.5, -3.0, 0.0)});
 
-  EXPECT_FALSE(
-    road_following::follows_chain(
-      chain, test_map.map().laneletLayer.get(4), trajectory, 1U, RoadFollowingParams{}));
+  EXPECT_TRUE(road_following::follows_chain(chain, front_inside, 1U, RoadFollowingParams{}));
+  EXPECT_FALSE(road_following::follows_chain(chain, front_past_end, 1U, RoadFollowingParams{}));
 }
 
-TEST(FollowsChain, HeadingPastChainEndGivesFalse)
+TEST(FollowsChain, RearInTurnLaneletGivesFalse)
 {
-  // The sample is 0.3 m past the chain end with a heading of 0.15 rad. Its footprint is inside the
-  // bounds of lanelet 4 up to x = 50 m and meets no bound after it, and the lateral distance is
-  // 0.3 m. The heading differs from the last centerline segment by 0.15 rad, which is over the
-  // 0.1 rad limit.
-  const auto test_map = make_lane_shift_map();
-  const auto chain = make_lane_shift_chain(test_map);
-  const auto trajectory = make_ego_trajectory({make_pose(50.3, -3.0, 0.15)});
+  // The chain {3} starts at x = 40 m, after the turn lanelet 2. The rear of the footprint is
+  // 1.53 m behind the base link: at x = 40.47 m for a base link at x = 42 m, and at x = 39.47 m,
+  // in the turn lanelet, for a base link at x = 41 m.
+  const auto test_map = make_intersection_map("right");
+  const auto chain = make_one_lanelet_chain(test_map, 3);
+  const auto rear_inside = make_ego_trajectory({make_pose(42.0, 0.0, 0.0)});
+  const auto rear_in_turn = make_ego_trajectory({make_pose(41.0, 0.0, 0.0)});
 
-  EXPECT_FALSE(
-    road_following::follows_chain(
-      chain, test_map.map().laneletLayer.get(4), trajectory, 1U, RoadFollowingParams{}));
+  EXPECT_TRUE(road_following::follows_chain(chain, rear_inside, 1U, RoadFollowingParams{}));
+  EXPECT_FALSE(road_following::follows_chain(chain, rear_in_turn, 1U, RoadFollowingParams{}));
 }
 
-TEST(FollowsChain, SkipsBoundsBeforeStartLanelet)
+TEST(FollowsChain, LateralOverLimitGivesFalse)
 {
-  // The base link is in lanelet 2, 0.25 m left of its centerline, with its heading. The rear left
-  // corner of the footprint is behind x = 20 m, 0.06 m above the left bound of lanelet 1. The
-  // footprint is 0.07 m inside the bounds of lanelet 2. A walk from lanelet 2 skips the bound of
-  // lanelet 1. A walk from lanelet 1 tests it.
-  const auto test_map = make_lane_shift_map();
-  const auto chain = make_lane_shift_chain(test_map);
-  const auto & layer = test_map.map().laneletLayer;
-  const auto trajectory = make_ego_trajectory({make_pose(20.7, 0.05, std::atan2(-3.0, 10.0))});
+  // In the 5 m lane, the footprint stays inside the chain polygon at 0.4 m and at 0.6 m left of
+  // the centerline. The lateral distance 0.4 m is under the 0.5 m limit, and 0.6 m is over it.
+  const auto test_map = make_wide_lane_map();
+  const auto chain = make_one_lanelet_chain(test_map, 1);
+  const auto under_limit = make_ego_trajectory({make_pose(10.0, 0.4, 0.0)});
+  const auto over_limit = make_ego_trajectory({make_pose(10.0, 0.6, 0.0)});
 
-  EXPECT_TRUE(
-    road_following::follows_chain(chain, layer.get(2), trajectory, 1U, RoadFollowingParams{}));
-  EXPECT_FALSE(
-    road_following::follows_chain(chain, layer.get(1), trajectory, 1U, RoadFollowingParams{}));
+  EXPECT_TRUE(road_following::follows_chain(chain, under_limit, 1U, RoadFollowingParams{}));
+  EXPECT_FALSE(road_following::follows_chain(chain, over_limit, 1U, RoadFollowingParams{}));
 }
 
-TEST(FollowsChain, StartOutsideChainGivesFalse)
+TEST(FollowsChain, HeadingOverLimitGivesFalse)
 {
-  // Lanelet 3, the branch lanelet, is not in the chain {1, 2, 4}. The sample passes all three
-  // tests with a walk from lanelet 1.
-  const auto test_map = make_lane_shift_map();
-  const auto chain = make_lane_shift_chain(test_map);
-  const auto & layer = test_map.map().laneletLayer;
-  const auto trajectory = make_ego_trajectory({make_pose(10.0, 0.0, 0.0)});
+  // In the 5 m lane, the footprint on the centerline stays inside the chain polygon with a heading
+  // of 0.05 rad and of 0.15 rad. The heading deviation 0.05 rad is under the 0.1 rad limit, and
+  // 0.15 rad is over it.
+  const auto test_map = make_wide_lane_map();
+  const auto chain = make_one_lanelet_chain(test_map, 1);
+  const auto under_limit = make_ego_trajectory({make_pose(10.0, 0.0, 0.05)});
+  const auto over_limit = make_ego_trajectory({make_pose(10.0, 0.0, 0.15)});
 
-  EXPECT_TRUE(
-    road_following::follows_chain(chain, layer.get(1), trajectory, 1U, RoadFollowingParams{}));
-  EXPECT_FALSE(
-    road_following::follows_chain(chain, layer.get(3), trajectory, 1U, RoadFollowingParams{}));
+  EXPECT_TRUE(road_following::follows_chain(chain, under_limit, 1U, RoadFollowingParams{}));
+  EXPECT_FALSE(road_following::follows_chain(chain, over_limit, 1U, RoadFollowingParams{}));
 }
 
 TEST(FollowsChain, EmptyWindowGivesTrue)
 {
-  // The footprint of the only sample crosses the left bound of lanelet 1. A window of one sample
+  // The footprint of the only sample leaves the chain polygon on the left. A window of one sample
   // tests it. An empty window tests nothing.
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
-  const auto & start_lanelet = test_map.map().laneletLayer.get(1);
   const auto trajectory = make_ego_trajectory({make_pose(10.0, 0.45, 0.0)});
 
-  EXPECT_FALSE(
-    road_following::follows_chain(chain, start_lanelet, trajectory, 1U, RoadFollowingParams{}));
-  EXPECT_TRUE(
-    road_following::follows_chain(chain, start_lanelet, trajectory, 0U, RoadFollowingParams{}));
+  EXPECT_FALSE(road_following::follows_chain(chain, trajectory, 1U, RoadFollowingParams{}));
+  EXPECT_TRUE(road_following::follows_chain(chain, trajectory, 0U, RoadFollowingParams{}));
 }
 
 TEST(FollowsChain, SkipsSamplesFromWindowEnd)
 {
-  // Sample 0 is on the centerline of lanelet 1. The footprint of sample 1 crosses the left bound
-  // of lanelet 1. A window that ends at sample 1 does not test it.
+  // Sample 0 is on the centerline of lanelet 1. The footprint of sample 1 leaves the chain polygon
+  // on the left. A window that ends at sample 1 does not test it.
   const auto test_map = make_lane_shift_map();
   const auto chain = make_lane_shift_chain(test_map);
-  const auto & start_lanelet = test_map.map().laneletLayer.get(1);
   const auto trajectory =
     make_ego_trajectory({make_pose(3.0, 0.0, 0.0), make_pose(10.0, 0.45, 0.0)});
 
-  EXPECT_TRUE(
-    road_following::follows_chain(chain, start_lanelet, trajectory, 1U, RoadFollowingParams{}));
-  EXPECT_FALSE(
-    road_following::follows_chain(chain, start_lanelet, trajectory, 2U, RoadFollowingParams{}));
+  EXPECT_TRUE(road_following::follows_chain(chain, trajectory, 1U, RoadFollowingParams{}));
+  EXPECT_FALSE(road_following::follows_chain(chain, trajectory, 2U, RoadFollowingParams{}));
 }
 
 TEST(RoadFollowingChecker, NullInputGivesErrorWithItsName)
@@ -684,19 +696,6 @@ TestMap make_two_lane_map()
   return test_map;
 }
 
-// Lanelet 2 lies between lanelets 1 and 3 and has the given turn direction. The geometry is
-// straight, as in TurnLaneletEndsTheListAndIsInNoList.
-TestMap make_intersection_map(const std::string & turn_direction)
-{
-  TestMap test_map;
-  test_map.add_straight_lanelet(1, 0.0, 20.0);
-  test_map.add_lanelet(
-    2, {{20.0, k_half_width}, {40.0, k_half_width}}, {{20.0, -k_half_width}, {40.0, -k_half_width}},
-    turn_direction);
-  test_map.add_straight_lanelet(3, 40.0, 80.0);
-  return test_map;
-}
-
 road_following::RoadFollowingChecker make_checker(const TestMap & test_map, const IdLists & route)
 {
   return road_following::RoadFollowingChecker::create(
@@ -711,14 +710,13 @@ TEST(IsRoadFollowing, WindowInsideOneLaneGivesTrue)
   const auto checker = make_checker(test_map, {{1}, {2}});
   const auto trajectory = make_straight_path(5.0, 0.0, 40);
 
-  EXPECT_TRUE(
-    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+  EXPECT_TRUE(checker.is_road_following(trajectory, RoadFollowingParams{}));
 }
 
 TEST(IsRoadFollowing, LaneChangeInWindowGivesFalse)
 {
   // Ego changes from the left lane (route) to the right lane between x = 15 m and 35 m. The
-  // footprint crosses the right bound of the left lane.
+  // footprint leaves the polygon of the left lane.
   const auto test_map = make_two_lane_map();
   const auto checker = make_checker(test_map, {{1}, {2}});
   PoseTrajectory poses;
@@ -731,31 +729,29 @@ TEST(IsRoadFollowing, LaneChangeInWindowGivesFalse)
   }
   const auto trajectory = make_ego_trajectory(poses);
 
-  EXPECT_FALSE(checker.is_road_following(trajectory, poses.front(), RoadFollowingParams{}));
+  EXPECT_FALSE(checker.is_road_following(trajectory, RoadFollowingParams{}));
 }
 
 TEST(IsRoadFollowing, EgoInTurnLaneletGivesFalse)
 {
-  // Lanelet 2 is a turn lanelet, so it is in no chain. The base link is in lanelet 2, so no route
-  // lanelet of a chain holds it.
+  // Lanelet 2 is a turn lanelet, so it is in no chain. The first footprint is in lanelet 2, so it
+  // is outside the polygons of the chains {1} and {3}.
   const auto test_map = make_intersection_map("right");
   const auto checker = make_checker(test_map, {{1}, {2}, {3}});
   const auto trajectory = make_straight_path(25.0, 0.0, 40);
 
-  EXPECT_FALSE(
-    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+  EXPECT_FALSE(checker.is_road_following(trajectory, RoadFollowingParams{}));
 }
 
 TEST(IsRoadFollowing, WindowIntoTurnLaneletGivesFalse)
 {
-  // The chain {1} ends at x = 20 m, before the turn lanelet 2. Past the end of the chain, the
-  // lateral distance to the end point of the centerline grows over 0.5 m.
+  // The chain {1} ends at x = 20 m, before the turn lanelet 2. The front of the footprint passes
+  // the end at sample 10 (base link at x = 15 m), so the footprint leaves the chain polygon.
   const auto test_map = make_intersection_map("right");
   const auto checker = make_checker(test_map, {{1}, {2}, {3}});
   const auto trajectory = make_straight_path(5.0, 0.0, 40);
 
-  EXPECT_FALSE(
-    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+  EXPECT_FALSE(checker.is_road_following(trajectory, RoadFollowingParams{}));
 }
 
 TEST(IsRoadFollowing, StraightTurnDirectionGivesTrue)
@@ -766,8 +762,7 @@ TEST(IsRoadFollowing, StraightTurnDirectionGivesTrue)
   const auto checker = make_checker(test_map, {{1}, {2}, {3}});
   const auto trajectory = make_straight_path(5.0, 0.0, 40);
 
-  EXPECT_TRUE(
-    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+  EXPECT_TRUE(checker.is_road_following(trajectory, RoadFollowingParams{}));
 }
 
 TEST(IsRoadFollowing, FollowsOneBranchGivesTrue)
@@ -784,20 +779,18 @@ TEST(IsRoadFollowing, FollowsOneBranchGivesTrue)
   const auto checker = make_checker(test_map, {{1}, {2}});
   const auto trajectory = make_straight_path(5.0, 0.0, 40);
 
-  EXPECT_TRUE(
-    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+  EXPECT_TRUE(checker.is_road_following(trajectory, RoadFollowingParams{}));
 }
 
 TEST(IsRoadFollowing, EgoNotOnRouteGivesFalse)
 {
-  // The route is the left lane. Ego drives on the centerline of the right lane, so its base link is
-  // in no route lanelet.
+  // The route is the left lane. Ego drives on the centerline of the right lane, so its footprint
+  // is outside the chain polygon.
   const auto test_map = make_two_lane_map();
   const auto checker = make_checker(test_map, {{1}, {2}});
   const auto trajectory = make_straight_path(5.0, -2.0 * k_half_width, 40);
 
-  EXPECT_FALSE(
-    checker.is_road_following(trajectory, trajectory.getPoses().front(), RoadFollowingParams{}));
+  EXPECT_FALSE(checker.is_road_following(trajectory, RoadFollowingParams{}));
 }
 }  // namespace
 }  // namespace autoware::trajectory_validator::plugin::safety
