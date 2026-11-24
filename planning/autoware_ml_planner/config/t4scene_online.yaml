@@ -17,7 +17,7 @@ resampling:
   odometry: {method: interpolate_or_hold_previous, max_delta_ns: 200000000}
   steering: {method: interpolate_or_hold_previous, max_delta_ns: 200000000}
   indicator: {method: previous, max_age_ns: 200000000}
-  annotations: {method: previous, max_age_ns: 200000000}
+  annotations: {method: previous, max_age_ns: 1000000000}
   # Each 100 ms row takes the latest eligible traffic-light message as a whole.
   # A group observed only in a skipped message can be lost if the chosen message
   # omits it. The planner checks freshness using the original stamps of sampled messages.
