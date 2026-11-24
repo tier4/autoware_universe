@@ -6,6 +6,7 @@
 /**:
   ros__parameters:
     model:
+      base_model_directory: $(var data_path)  # every artifact in one directory (the stock default adds /ml_planner)
       onnx_model_filename: ml_planner_bev.onnx
     bev_feature:
       history_tensor: "bev_feature"
