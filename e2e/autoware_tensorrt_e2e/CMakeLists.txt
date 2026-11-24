@@ -78,6 +78,9 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     src/bev_feature/detection_decode_kernel.cu
   )
 
+  # This branch (feat/v0.64/e2e: its diffusion_planner, autoware_internal_msgs 1.14) builds the 1.5-stage ML-Planner
+  # node only. The generic E2E node (tensorrt_e2e_node.cpp with its trajectory postprocessor and its context / camera /
+  # lidar providers) needs the foundation's diffusion_planner and builds on dev/e2e-foundation and the model branches.
   ament_auto_add_library(${PROJECT_NAME}_component SHARED
     src/types.cpp
     src/input_provider_registry.cpp
@@ -85,13 +88,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     src/bev_feature/temporal_bev_cache.cpp
     src/bev_feature/detection_decode.cpp
     src/bev_feature/trt_bev_feature_extractor.cpp
-    src/providers/camera_input_provider.cpp
-    src/providers/lidar_input_provider.cpp
-    src/providers/context_input_provider.cpp
     src/providers/bev_feature_input_provider.cpp
     src/postprocess/detection_postprocessor.cpp
-    src/postprocess/trajectory_postprocessor.cpp
-    src/tensorrt_e2e_node.cpp
   )
 
   # The BEVFusion voxelization kernels live in a separately installed CUDA library that
@@ -110,11 +108,6 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${OpenCV_LIBS}
     ${PROJECT_NAME}_cuda_lib
     ${AUTOWARE_BEVFUSION_CUDA_LIB}
-  )
-
-  rclcpp_components_register_node(${PROJECT_NAME}_component
-    PLUGIN "autoware::tensorrt_e2e::TensorrtE2eNode"
-    EXECUTABLE ${PROJECT_NAME}_node
   )
 
   # The 1.5-stage ML-Planner node: autoware_ml_planner's node with its planner graph run through
@@ -140,7 +133,6 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   if(BUILD_TESTING)
     ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
       test/types_test.cpp
-      test/trajectory_postprocessor_test.cpp
       test/bev_warp_test.cpp
       test/bev_warp_golden_test.cpp
       test/temporal_bev_cache_test.cpp
