@@ -16,6 +16,7 @@
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
 
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
@@ -25,6 +26,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <numeric>
 #include <vector>
 
 namespace autoware::ml_planner::test
@@ -164,6 +166,50 @@ TEST_F(MapLevelSelectionTest, KeepsTheRoadAheadThatClimbs)
   // At x = 100 the climb starts at the ego's height; its far end is 8 m up but the closest point
   // decides.
   EXPECT_TRUE(contains(selected_lanelet_ids(90.0, 0.0, 0.0), uphill_));
+}
+
+TEST(MapLaneSelectionTest, KeepsLaneInsideTheTiltedEgoMask)
+{
+  const Eigen::Isometry3d ego_to_map = Eigen::Translation3d(2'000'000, -1'000'000, 100) *
+                                       Eigen::AngleAxisd(0.6, Eigen::Vector3d::UnitZ()) *
+                                       Eigen::AngleAxisd(0.35, Eigen::Vector3d::UnitY()) *
+                                       Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitX());
+  const Eigen::Vector3d start = ego_to_map * Eigen::Vector3d(149.9, 99.9, 12.9);
+  const Eigen::Vector3d end = ego_to_map * Eigen::Vector3d(149.0, 99.9, 12.9);
+  const auto in_mask = make_lanelet(start.x(), start.y(), start.z(), end.x(), end.y(), end.z());
+  const auto far_away = make_lanelet(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  map->add(in_mask);
+  map->add(far_away);
+  const LaneSegmentContext context(map);
+
+  const auto expected = context.get_lanelet_id_to_array_index().at(in_mask.id()).front();
+  EXPECT_EQ(
+    context.select_lane_segment_indices(ego_to_map.inverse().matrix(), NUM_SEGMENTS_IN_LANE),
+    (std::vector<int64_t>{static_cast<int64_t>(expected)}));
+}
+
+TEST(MapLaneSelectionTest, PreservesMapIterationOrderBeforeTheDistanceSort)
+{
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  constexpr size_t tied_count = NUM_SEGMENTS_IN_LANE + 4;
+  for (size_t i = 0; i < tied_count; ++i) {
+    map->add(make_lanelet(5.0, 0.0, 0.0, 10.0, 0.0, 0.0));
+  }
+  const auto far_away = make_lanelet(2000.0, 2000.0, 0.0, 2010.0, 2000.0, 0.0);
+  map->add(far_away);
+  const LaneSegmentContext context(map);
+  const auto far_index = context.get_lanelet_id_to_array_index().at(far_away.id()).front();
+
+  std::vector<int64_t> expected(tied_count + 1);
+  std::iota(expected.begin(), expected.end(), 0);
+  expected.erase(expected.begin() + far_index);
+  // The original full scan fed these tied distances to std::sort in map order.
+  std::sort(expected.begin(), expected.end(), [](int64_t, int64_t) { return false; });
+  expected.resize(NUM_SEGMENTS_IN_LANE);
+  EXPECT_EQ(
+    context.select_lane_segment_indices(Eigen::Matrix4d::Identity(), NUM_SEGMENTS_IN_LANE),
+    expected);
 }
 
 TEST_F(MapLevelSelectionTest, LeavesOutTheRoadBorderOnTheOtherLevel)

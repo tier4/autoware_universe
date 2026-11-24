@@ -19,11 +19,15 @@
 #include "autoware_utils_math/normalization.hpp"
 #include "autoware_utils_math/unit_conversion.hpp"
 
+#include <Eigen/LU>
 #include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>  // for lanelet::autoware::RoadMarking
 #include <xtensor/xbuilder.hpp>
 
-#include <Eigen/src/Core/Matrix.h>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/geometry/geometries/point.hpp>
+#include <boost/geometry/index/rtree.hpp>
+
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/geometry/Point.h>
@@ -36,6 +40,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -510,11 +515,110 @@ std::unique_ptr<LaneSegmentContext> build_map_context(
   return std::make_unique<LaneSegmentContext>(lanelet_map_ptr);
 }
 
+class LaneSegmentContext::LaneSegmentIndex
+{
+public:
+  explicit LaneSegmentIndex(const std::vector<LaneSegment> & segments)
+  : segment_count_(segments.size())
+  {
+    std::vector<Entry> entries;
+    entries.reserve(segments.size());
+    for (size_t i = 0; i < segments.size(); ++i) {
+      const auto & centerline = segments[i].centerline;
+      if (centerline.size() < 2) {
+        continue;
+      }
+      if (!std::all_of(centerline.begin(), centerline.end(), [](const auto & point) {
+            return point.allFinite();
+          })) {
+        unindexed_.push_back(i);
+        continue;
+      }
+      Eigen::Vector3d lower = centerline.front();
+      Eigen::Vector3d upper = lower;
+      for (const auto & point : centerline) {
+        lower = lower.cwiseMin(point);
+        upper = upper.cwiseMax(point);
+      }
+      entries.emplace_back(Box{as_point(lower), as_point(upper)}, i);
+    }
+    tree_ = Tree(entries.begin(), entries.end());
+  }
+
+  std::vector<size_t> candidates(const Eigen::Matrix4d & map_to_ego) const
+  {
+    const auto bounds = search_box(map_to_ego);
+    if (!bounds) {
+      std::vector<size_t> indices(segment_count_);
+      std::iota(indices.begin(), indices.end(), size_t{0});
+      return indices;
+    }
+
+    auto indices = unindexed_;
+    const auto end = tree_.qend();
+    for (auto it = tree_.qbegin(boost::geometry::index::intersects(*bounds)); it != end; ++it) {
+      indices.push_back(it->second);
+    }
+    // The exact distance sort must receive candidates in original map order for ties.
+    std::sort(indices.begin(), indices.end());
+    return indices;
+  }
+
+private:
+  using Point = boost::geometry::model::point<double, 3, boost::geometry::cs::cartesian>;
+  using Box = boost::geometry::model::box<Point>;
+  using Entry = std::pair<Box, size_t>;
+  using Tree = boost::geometry::index::rtree<Entry, boost::geometry::index::rstar<16>>;
+
+  static Point as_point(const Eigen::Vector3d & value)
+  {
+    return Point(value.x(), value.y(), value.z());
+  }
+
+  static std::optional<Box> search_box(const Eigen::Matrix4d & map_to_ego)
+  {
+    const Eigen::Matrix3d rotation = map_to_ego.topLeftCorner<3, 3>();
+    if (!map_to_ego.allFinite() || !rotation.isUnitary(1e-3)) {
+      return std::nullopt;
+    }
+
+    using namespace autoware::ml_planner::constants;
+    const double radius =
+      std::hypot(std::max(LANE_MASK_BACKWARD_M, LANE_MASK_FORWARD_M), LANE_MASK_RANGE_M);
+    const double height =
+      MAX_SAME_LEVEL_HEIGHT_DIFF_M + SAME_LEVEL_HEIGHT_DIFF_PER_DISTANCE * radius;
+    // An in-mask sample bounds the closest sample's XY distance. The level test bounds the
+    // closest sample's Z, even if it differs from the in-mask sample. Enclose this cylinder
+    // in map coordinates to retain all segments that can pass both exact checks.
+    const Eigen::Matrix3d ego_to_map = rotation.inverse();
+    const Eigen::Vector3d center = -ego_to_map * map_to_ego.topRightCorner<3, 1>();
+    Eigen::Vector3d extent;
+    for (Eigen::Index axis = 0; axis < 3; ++axis) {
+      extent(axis) = radius * std::hypot(ego_to_map(axis, 0), ego_to_map(axis, 1)) +
+                     height * std::abs(ego_to_map(axis, 2));
+    }
+    // Round outward at the inclusive mask boundary, including on maps with large offsets.
+    const double padding = 1e-6 + 64 * std::numeric_limits<double>::epsilon() *
+                                    (center.cwiseAbs().maxCoeff() + extent.maxCoeff());
+    const Eigen::Vector3d lower = center - extent - Eigen::Vector3d::Constant(padding);
+    const Eigen::Vector3d upper = center + extent + Eigen::Vector3d::Constant(padding);
+    if (!lower.allFinite() || !upper.allFinite()) {
+      return std::nullopt;
+    }
+    return Box{as_point(lower), as_point(upper)};
+  }
+
+  const size_t segment_count_;
+  std::vector<size_t> unindexed_;
+  Tree tree_;
+};
+
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(
   const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
 : lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr)),
-  lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
+  lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments)),
+  lane_segment_index_(std::make_shared<LaneSegmentIndex>(lanelet_map_.lane_segments))
 {
   if (lanelet_map_.lane_segments.empty()) {
     throw std::runtime_error("No lane segments found in the map");
@@ -681,10 +785,11 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   };
 
   // Step 1: Compute distances
+  const auto candidate_indices = lane_segment_index_->candidates(transform_matrix);
   std::vector<ColWithDistance> distances;
-  distances.reserve(lanelet_map_.lane_segments.size());
+  distances.reserve(candidate_indices.size());
 
-  for (size_t i = 0; i < lanelet_map_.lane_segments.size(); ++i) {
+  for (const size_t i : candidate_indices) {
     const LaneSegment & segment = lanelet_map_.lane_segments[i];
 
     if (!is_segment_inside(segment, transform_matrix)) {

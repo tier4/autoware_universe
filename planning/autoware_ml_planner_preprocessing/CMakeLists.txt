@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.17)
 project(autoware_ml_planner_preprocessing)
 
 find_package(ament_cmake REQUIRED)
+find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(xtensor REQUIRED)
 find_package(t4scene 0.0.0 EXACT CONFIG REQUIRED)
@@ -31,6 +32,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 ament_target_dependencies(${PROJECT_NAME} PUBLIC ${ros_dependencies})
 target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen t4scene::data xtensor)
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::boost)
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
 install(TARGETS ${PROJECT_NAME} EXPORT export_${PROJECT_NAME}

@@ -270,8 +270,10 @@ public:
   xt::xarray<float> create_road_border_tensor(const Eigen::Matrix4d & transform_matrix) const;
 
 private:
+  class LaneSegmentIndex;
   const autoware::ml_planner::LaneletMap lanelet_map_;
   const std::map<lanelet::Id, std::vector<size_t>> lanelet_id_to_array_index_;
+  const std::shared_ptr<const LaneSegmentIndex> lane_segment_index_;
 };
 
 /**

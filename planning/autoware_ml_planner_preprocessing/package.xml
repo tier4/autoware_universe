@@ -21,6 +21,7 @@
   <depend>t4scene</depend>
   <depend>xtensor</depend>
 
+  <build_depend>boost</build_depend>
   <build_depend>pybind11_vendor</build_depend>
   <exec_depend>python3-numpy</exec_depend>
 
