@@ -27,6 +27,7 @@
 #include <lanelet2_routing/Forward.h>
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -85,6 +86,32 @@ struct LaneChain
 [[nodiscard]] bool follows_chain(
   const LaneChain & chain, const lanelet::ConstLanelet & start_lanelet,
   const TrajectoryData & trajectory, size_t window_end, const RoadFollowingParams & params);
+
+/**
+ * @brief The road following test of one route. It builds the lane chains once for one route and
+ * one map.
+ */
+class RoadFollowingChecker
+{
+public:
+  /**
+   * @brief Build the chains and the route lanelets once for one route and one map.
+   * @return The checker, or the reason when an input is null, a step of the chain build fails, or
+   * the route gives no chain.
+   */
+  [[nodiscard]] static tl::expected<RoadFollowingChecker, std::string> create(
+    const LaneletRoute::ConstSharedPtr & route,
+    const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map,
+    const lanelet::routing::RoutingGraphConstPtr & routing_graph);
+
+  [[nodiscard]] const std::vector<LaneChain> & chains() const;  // for tests and debug markers
+
+private:
+  RoadFollowingChecker(std::vector<LaneChain> chains, lanelet::ConstLanelets route_lanelets);
+
+  std::vector<LaneChain> chains_;
+  lanelet::ConstLanelets route_lanelets_;  // the lanelets of all chains, each lanelet once
+};
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ROAD_FOLLOWING_HPP_

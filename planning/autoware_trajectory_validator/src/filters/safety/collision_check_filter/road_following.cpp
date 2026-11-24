@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -215,5 +216,58 @@ bool follows_chain(
     }
   }
   return true;
+}
+
+RoadFollowingChecker::RoadFollowingChecker(
+  std::vector<LaneChain> chains, lanelet::ConstLanelets route_lanelets)
+: chains_(std::move(chains)), route_lanelets_(std::move(route_lanelets))
+{
+}
+
+tl::expected<RoadFollowingChecker, std::string> RoadFollowingChecker::create(
+  const LaneletRoute::ConstSharedPtr & route,
+  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph)
+{
+  if (!route) {
+    return tl::make_unexpected("the route is missing");
+  }
+  if (!lanelet_map) {
+    return tl::make_unexpected("the lanelet map is missing");
+  }
+  if (!routing_graph) {
+    return tl::make_unexpected("the routing graph is missing");
+  }
+
+  const auto lists = build_lanelet_lists(*route, *lanelet_map, routing_graph);
+  if (!lists) {
+    return tl::make_unexpected(lists.error());
+  }
+
+  std::vector<LaneChain> chains;
+  chains.reserve(lists->size());
+  lanelet::ConstLanelets route_lanelets;
+  for (const auto & list : *lists) {
+    auto chain = build_lane_chain(list);
+    if (!chain) {
+      return tl::make_unexpected(chain.error());
+    }
+    // The lists repeat a lanelet at a branch point, so each lanelet is kept once.
+    for (const auto & lanelet : list) {
+      if (!contains_lanelet(route_lanelets, lanelet)) {
+        route_lanelets.push_back(lanelet);
+      }
+    }
+    chains.push_back(std::move(*chain));
+  }
+  if (chains.empty()) {
+    return tl::make_unexpected("the route gives no chain");
+  }
+  return RoadFollowingChecker(std::move(chains), std::move(route_lanelets));
+}
+
+const std::vector<LaneChain> & RoadFollowingChecker::chains() const
+{
+  return chains_;
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::road_following

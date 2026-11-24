@@ -86,6 +86,8 @@ public:
 
   [[nodiscard]] const lanelet::LaneletMap & map() const { return *map_; }
 
+  [[nodiscard]] std::shared_ptr<const lanelet::LaneletMap> map_ptr() const { return map_; }
+
   [[nodiscard]] lanelet::routing::RoutingGraphConstPtr routing_graph() const
   {
     return autoware::experimental::lanelet2_utils::instantiate_routing_graph_and_traffic_rules(map_)
@@ -144,6 +146,12 @@ LaneletRoute make_route(const IdLists & segments)
     route.segments.push_back(segment);
   }
   return route;
+}
+
+// Returns the route as the shared pointer that the validator context holds.
+LaneletRoute::ConstSharedPtr make_route_ptr(const IdLists & segments)
+{
+  return std::make_shared<const LaneletRoute>(make_route(segments));
 }
 
 // A sample map, not a real map: a lane shift at a branch point on a road with two lanes. All
@@ -585,6 +593,72 @@ TEST(FollowsChain, SkipsSamplesFromWindowEnd)
     road_following::follows_chain(chain, start_lanelet, trajectory, 1U, RoadFollowingParams{}));
   EXPECT_FALSE(
     road_following::follows_chain(chain, start_lanelet, trajectory, 2U, RoadFollowingParams{}));
+}
+
+TEST(RoadFollowingChecker, NullInputGivesErrorWithItsName)
+{
+  const auto test_map = make_lane_shift_map();
+  const auto route = make_route_ptr({{1}, {2}, {4}});
+  const auto lanelet_map = test_map.map_ptr();
+  const auto routing_graph = test_map.routing_graph();
+
+  const auto no_route =
+    road_following::RoadFollowingChecker::create(nullptr, lanelet_map, routing_graph);
+  const auto no_map = road_following::RoadFollowingChecker::create(route, nullptr, routing_graph);
+  const auto no_graph = road_following::RoadFollowingChecker::create(route, lanelet_map, nullptr);
+
+  ASSERT_FALSE(no_route.has_value());
+  EXPECT_EQ(no_route.error(), "the route is missing");
+  ASSERT_FALSE(no_map.has_value());
+  EXPECT_EQ(no_map.error(), "the lanelet map is missing");
+  ASSERT_FALSE(no_graph.has_value());
+  EXPECT_EQ(no_graph.error(), "the routing graph is missing");
+}
+
+TEST(RoadFollowingChecker, ListErrorIsPassedOn)
+{
+  // build_lanelet_lists fails for a route lanelet that is not in the map. create returns that
+  // reason as it is.
+  TestMap test_map;
+  test_map.add_straight_lanelet(1, 0.0, 10.0);
+
+  const auto result = road_following::RoadFollowingChecker::create(
+    make_route_ptr({{1}, {99}}), test_map.map_ptr(), test_map.routing_graph());
+
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), "route lanelet 99 is not in the map");
+}
+
+TEST(RoadFollowingChecker, TurnOnlyRouteGivesNoChainError)
+{
+  // A turn lanelet is in no list, so a route of turn lanelets only gives no chain.
+  TestMap test_map;
+  test_map.add_lanelet(
+    1, {{0.0, k_half_width}, {10.0, k_half_width}}, {{0.0, -k_half_width}, {10.0, -k_half_width}},
+    "right");
+
+  const auto result = road_following::RoadFollowingChecker::create(
+    make_route_ptr({{1}}), test_map.map_ptr(), test_map.routing_graph());
+
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), "the route gives no chain");
+}
+
+TEST(RoadFollowingChecker, LaneShiftRouteGivesTwoChains)
+{
+  // The route {1}, {2}, {4} gives the lists {1} and {1, 2, 4} (LaneShiftAtBranchPoint), and
+  // create makes one chain for each list.
+  const auto test_map = make_lane_shift_map();
+
+  const auto result = road_following::RoadFollowingChecker::create(
+    make_route_ptr({{1}, {2}, {4}}), test_map.map_ptr(), test_map.routing_graph());
+
+  ASSERT_TRUE(result.has_value()) << result.error();
+  std::vector<lanelet::ConstLanelets> chain_lanelets;
+  for (const auto & chain : result->chains()) {
+    chain_lanelets.push_back(chain.lanelets);
+  }
+  EXPECT_EQ(to_sorted_ids(chain_lanelets), (IdLists{{1}, {1, 2, 4}}));
 }
 }  // namespace
 }  // namespace autoware::trajectory_validator::plugin::safety
