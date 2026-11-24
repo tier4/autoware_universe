@@ -156,11 +156,9 @@ private:
   void on_timer();
 
   void subscribe_scene_inputs();
-  int64_t observe_clock(const rclcpp::Time & now);
   bool has_recent_odometry(int64_t received_ns) const;
   void discard_scene_history();
-  LaneletRoute::ConstSharedPtr resolve_scene_route(
-    t4scene::T4Scene & scene, int64_t anchor_ns, int64_t received_through_ns);
+  LaneletRoute::ConstSharedPtr resolve_scene_route(const t4scene::T4Scene & scene) const;
 
   struct SceneInput
   {
@@ -260,13 +258,10 @@ private:
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
 
   std::unique_ptr<t4scene::ros2::generation::SceneBuilder> scene_builder_;
-  std::optional<int64_t> last_observed_clock_ns_;
   Odometry::ConstSharedPtr odometry_;
   int64_t odometry_received_ns_{};
   std::deque<TrackedObjects::ConstSharedPtr> tracked_batches_;
   std::deque<LaneletRoute::ConstSharedPtr> routes_;
-  LaneletRoute::ConstSharedPtr route_before_clock_reset_;
-  std::unique_ptr<t4scene::ros2::generation::SceneBuilder> route_recovery_builder_;
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr acceleration_;
   t4scene::EgoShape ego_shape_;
 

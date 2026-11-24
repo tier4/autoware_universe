@@ -230,15 +230,6 @@ void MLPlannerCore::update_traffic_signal_debug(
   traffic_signals_history_.push_back(message);
 }
 
-void MLPlannerCore::reset_observations()
-{
-  odometry_.reset();
-  route_ptr_.reset();
-  selected_agents_.clear();
-  traffic_signals_history_.clear();
-  turn_indicator_hold_ = postprocess::TurnIndicatorHold{};
-}
-
 preprocess::TensorMapResult MLPlannerCore::create_input_data(
   const t4scene::T4Scene & scene, Odometry::ConstSharedPtr odometry,
   const TrackedObjects & tracked_objects, LaneletRoute::ConstSharedPtr route)

@@ -183,7 +183,6 @@ public:
 
   void update_traffic_signal_debug(
     const autoware_perception_msgs::msg::TrafficLightGroupArray & message);
-  void reset_observations();
 
   /**
    * @brief Set the lanelet map context.
