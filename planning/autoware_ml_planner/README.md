@@ -20,12 +20,11 @@ It is implemented as a ROS 2 component node, making it easy to integrate into Au
 
 ### (1) Prerequisites
 
-Make sure that `model.base_model_directory` in `planning/autoware_ml_planner/config/ml_planner.param.yaml` points to the correct model version. The ONNX file is resolved as `base_model_directory / onnx_model_filename`. ml_planner does not ship an args JSON.
+The node uses the official T4Scene generator to build decision windows from ROS topics.
+The [shared preprocessing library](../autoware_ml_planner_preprocessing/README.md) converts each window to model input tensors. Build the workspace with the pinned [T4Scene dependency](t4scene.repos).
 
-```bash
-$ ls ~/autoware_data/ml_models/ml_planner/v6.0/
-metadata.json ml_planner.onnx
-```
+Configure `model.base_model_directory` and `model.onnx_model_filename` in `config/ml_planner.param.yaml` to point to the deployed model.
+Place its `metadata.json` in the same directory as the ONNX file. This component expects model major version 7.
 
 This can be downloaded by following [Download artifacts](https://github.com/autowarefoundation/autoware/blob/main/ansible/roles/artifacts/README.md#download-artifacts).
 
@@ -118,7 +117,7 @@ Parameters can be set via YAML (see `config/ml_planner.param.yaml`).
 | `~/input/vector_map`      | autoware_map_msgs/msg/LaneletMapBin                 | Lanelet2 map                                                                                                           |
 | `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                                                                                      |
 | `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                                                                             |
-| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (ego history preprocessing and trajectory optimization; major version 6 models do not read it) |
+| `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle for ego history preprocessing and trajectory optimization |
 
 ## Services
 
