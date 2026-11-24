@@ -494,6 +494,36 @@ TEST(FollowsChain, FootprintCrossingBoundGivesFalse)
     road_following::follows_chain(chain, start_lanelet, over_right, 1U, RoadFollowingParams{}));
 }
 
+TEST(FollowsChain, LateralPastChainEndGivesFalse)
+{
+  // The chain ends at x = 50 m, and its end edge is not a bound. The sample is 2 m past the end,
+  // on the line of the last centerline segment, so its footprint starts at x = 50.47 m and meets
+  // no bound. The lateral distance to the closest centerline segment is the distance to its end
+  // point, 2 m, which is over the 0.5 m limit.
+  const auto test_map = make_lane_shift_map();
+  const auto chain = make_lane_shift_chain(test_map);
+  const auto trajectory = make_ego_trajectory({make_pose(52.0, -3.0, 0.0)});
+
+  EXPECT_FALSE(
+    road_following::follows_chain(
+      chain, test_map.map().laneletLayer.get(4), trajectory, 1U, RoadFollowingParams{}));
+}
+
+TEST(FollowsChain, HeadingPastChainEndGivesFalse)
+{
+  // The sample is 0.3 m past the chain end with a heading of 0.15 rad. Its footprint is inside the
+  // bounds of lanelet 4 up to x = 50 m and meets no bound after it, and the lateral distance is
+  // 0.3 m. The heading differs from the last centerline segment by 0.15 rad, which is over the
+  // 0.1 rad limit.
+  const auto test_map = make_lane_shift_map();
+  const auto chain = make_lane_shift_chain(test_map);
+  const auto trajectory = make_ego_trajectory({make_pose(50.3, -3.0, 0.15)});
+
+  EXPECT_FALSE(
+    road_following::follows_chain(
+      chain, test_map.map().laneletLayer.get(4), trajectory, 1U, RoadFollowingParams{}));
+}
+
 TEST(FollowsChain, SkipsBoundsBeforeStartLanelet)
 {
   // The base link is in lanelet 2, 0.25 m left of its centerline, with its heading. The rear left
