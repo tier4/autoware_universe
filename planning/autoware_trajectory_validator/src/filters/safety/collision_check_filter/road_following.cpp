@@ -26,6 +26,7 @@
 #include <boost/geometry/algorithms/envelope.hpp>
 #include <boost/geometry/algorithms/intersects.hpp>
 
+#include <lanelet2_core/geometry/Lanelet.h>
 #include <tf2/utils.h>
 
 #include <algorithm>
@@ -56,19 +57,53 @@ struct BoundSegment
   Polygon2d shape;
 };
 
-// The segments of the left and right bounds of the chain lanelets from `start_lanelet` to the end
-// of the chain. The line that joins the ends of the two bounds is not a bound. A segment whose box
-// does not overlap `footprints_box` cannot cross a footprint, so it is not built.
+// How far along the chain after the end of `start_lanelet` the window footprints can reach. It
+// adds the arc length to the last window sample, the largest distance from the first sample to a
+// corner of its footprint, and the distance from the first sample to the end of `start_lanelet`.
+[[nodiscard]] double compute_reach(
+  const TrajectoryData & trajectory, const size_t last, const lanelet::ConstLanelet & start_lanelet)
+{
+  const auto & first = trajectory.getPoses().front().position;
+  // Compare squared distances, and take one square root at the end.
+  double max_squared_distance = 0.0;
+  for (const auto & corner : trajectory.get_or_compute_convex(IndexRange{0U, 0U}).outer()) {
+    const double dx = corner.x() - first.x;
+    const double dy = corner.y() - first.y;
+    max_squared_distance = std::max(max_squared_distance, dx * dx + dy * dy);
+  }
+  const double footprint_reach = std::sqrt(max_squared_distance);
+  const auto start_end = start_lanelet.centerline2d().back();
+  const double to_start_end = std::hypot(start_end.x() - first.x, start_end.y() - first.y);
+  return autoware::motion_utils::calcSignedArcLength(trajectory.getPoses(), 0, last) +
+         footprint_reach + to_start_end;
+}
+
+// The lanelets of `chain` from `start_lanelet` on. The walk stops at the first of two points: the
+// lanelets after `start_lanelet` are `reach` long or more, or the chain ends.
+[[nodiscard]] lanelet::ConstLanelets select_walked_lanelets(
+  const LaneChain & chain, const lanelet::ConstLanelet & start_lanelet, const double reach)
+{
+  auto lanelet_it = std::find_if(chain.begin(), chain.end(), [&](const auto & lanelet) {
+    return lanelet.id() == start_lanelet.id();
+  });
+  lanelet::ConstLanelets walked_lanelets{*lanelet_it};
+  double length_after_start = 0.0;
+  for (++lanelet_it; lanelet_it != chain.end() && length_after_start < reach; ++lanelet_it) {
+    walked_lanelets.push_back(*lanelet_it);
+    length_after_start += lanelet::geometry::length2d(*lanelet_it);
+  }
+  return walked_lanelets;
+}
+
+// The segments of the left and right bounds of the walked lanelets. The line that joins the ends
+// of the two bounds is not a bound. A segment whose box does not overlap `footprints_box` cannot
+// cross a footprint, so it is not built.
 [[nodiscard]] std::vector<BoundSegment> collect_bound_segments(
-  const LaneChain & chain, const lanelet::ConstLanelet & start_lanelet,
-  const Box2d & footprints_box)
+  const lanelet::ConstLanelets & walked_lanelets, const Box2d & footprints_box)
 {
   std::vector<BoundSegment> segments;
-  const auto start_it = std::find_if(
-    chain.lanelets.begin(), chain.lanelets.end(),
-    [&](const auto & lanelet) { return lanelet.id() == start_lanelet.id(); });
-  for (auto lanelet_it = start_it; lanelet_it != chain.lanelets.end(); ++lanelet_it) {
-    for (const auto & bound : {lanelet_it->leftBound2d(), lanelet_it->rightBound2d()}) {
+  for (const auto & lanelet : walked_lanelets) {
+    for (const auto & bound : {lanelet.leftBound2d(), lanelet.rightBound2d()}) {
       for (size_t k = 1; k < bound.size(); ++k) {
         const Point2d start{bound[k - 1].x(), bound[k - 1].y()};
         const Point2d end{bound[k].x(), bound[k].y()};
@@ -158,15 +193,6 @@ tl::expected<std::vector<lanelet::ConstLanelets>, std::string> build_lanelet_lis
   return lists;
 }
 
-tl::expected<LaneChain, std::string> build_lane_chain(const lanelet::ConstLanelets & lanelets)
-{
-  const auto shape = autoware::experimental::lanelet2_utils::combine_lanelets_shape(lanelets);
-  if (!shape) {
-    return tl::make_unexpected("cannot combine an empty lanelet list");
-  }
-  return LaneChain{lanelets, *shape};
-}
-
 size_t find_window_end(const TrajectoryData & trajectory, const RoadFollowingParams & params)
 {
   // A TrajectoryData is never empty, so the first sample exists.
@@ -187,7 +213,7 @@ bool follows_chain(
   const TrajectoryData & trajectory, const size_t window_end, const RoadFollowingParams & params)
 {
   // Without this check, the walk finds no bound, and the bound test passes.
-  if (!contains_lanelet(chain.lanelets, start_lanelet)) {
+  if (!contains_lanelet(chain, start_lanelet)) {
     return false;
   }
   if (window_end == 0U) {
@@ -196,8 +222,10 @@ bool follows_chain(
 
   // The window is the samples [0, window_end). IndexRange of TrajectoryData is inclusive.
   const size_t last = std::min(window_end, trajectory.size()) - 1U;
+  const auto walked_lanelets =
+    select_walked_lanelets(chain, start_lanelet, compute_reach(trajectory, last, start_lanelet));
   const auto segments = collect_bound_segments(
-    chain, start_lanelet, trajectory.get_or_compute_envelope(IndexRange{0U, last}));
+    walked_lanelets, trajectory.get_or_compute_envelope(IndexRange{0U, last}));
   for (size_t i = 0; i <= last; ++i) {
     const IndexRange sample{i, i};
     if (crosses_any_segment(
@@ -207,15 +235,20 @@ bool follows_chain(
     }
 
     const auto & pose = trajectory.getPoses().at(i);
+    // walked_lanelets holds start_lanelet, so it is not empty, and get_closest_lanelet gives a
+    // lanelet. Past the end of the chain, it is the last lanelet, whose centerline ends there.
+    const auto closest_lanelet =
+      *autoware::experimental::lanelet2_utils::get_closest_lanelet(walked_lanelets, pose);
     const double lateral_distance =
-      autoware::experimental::lanelet2_utils::get_lateral_distance_to_centerline(chain.shape, pose);
+      autoware::experimental::lanelet2_utils::get_lateral_distance_to_centerline(
+        closest_lanelet, pose);
     if (std::abs(lateral_distance) > params.max_lateral_deviation) {
       return false;
     }
 
     const lanelet::BasicPoint3d position(pose.position.x, pose.position.y, pose.position.z);
     const double centerline_angle =
-      autoware::experimental::lanelet2_utils::get_lanelet_angle(chain.shape, position);
+      autoware::experimental::lanelet2_utils::get_lanelet_angle(closest_lanelet, position);
     const double heading_deviation =
       autoware_utils_math::normalize_radian(tf2::getYaw(pose.orientation) - centerline_angle);
     if (std::abs(heading_deviation) > params.max_heading_deviation) {
@@ -226,8 +259,8 @@ bool follows_chain(
 }
 
 RoadFollowingChecker::RoadFollowingChecker(
-  std::vector<LaneChain> chains, lanelet::ConstLanelets route_lanelets)
-: chains_(std::move(chains)), route_lanelets_(std::move(route_lanelets))
+  std::vector<LaneChain> chains, const lanelet::ConstLanelets & route_lanelets)
+: chains_(std::move(chains)), route_lanelet_rtree_(route_lanelets)
 {
 }
 
@@ -251,26 +284,20 @@ tl::expected<RoadFollowingChecker, std::string> RoadFollowingChecker::create(
     return tl::make_unexpected(lists.error());
   }
 
-  std::vector<LaneChain> chains;
-  chains.reserve(lists->size());
+  // Each list is one chain.
+  if (lists->empty()) {
+    return tl::make_unexpected("the route gives no chain");
+  }
+  // The lists repeat a lanelet at a branch point, so each lanelet is kept once.
   lanelet::ConstLanelets route_lanelets;
   for (const auto & list : *lists) {
-    auto chain = build_lane_chain(list);
-    if (!chain) {
-      return tl::make_unexpected(chain.error());
-    }
-    // The lists repeat a lanelet at a branch point, so each lanelet is kept once.
     for (const auto & lanelet : list) {
       if (!contains_lanelet(route_lanelets, lanelet)) {
         route_lanelets.push_back(lanelet);
       }
     }
-    chains.push_back(std::move(*chain));
   }
-  if (chains.empty()) {
-    return tl::make_unexpected("the route gives no chain");
-  }
-  return RoadFollowingChecker(std::move(chains), std::move(route_lanelets));
+  return RoadFollowingChecker(*lists, route_lanelets);
 }
 
 bool RoadFollowingChecker::is_road_following(
@@ -278,9 +305,8 @@ bool RoadFollowingChecker::is_road_following(
   const RoadFollowingParams & params) const
 {
   // With a distance limit of 0 m, a base link outside every route lanelet gives no lanelet.
-  const auto start_lanelet =
-    autoware::experimental::lanelet2_utils::get_closest_lanelet_within_constraint(
-      route_lanelets_, ego_pose, 0.0, k_route_lanelet_yaw_threshold);
+  const auto start_lanelet = route_lanelet_rtree_.get_closest_lanelet_within_constraint(
+    ego_pose, 0.0, k_route_lanelet_yaw_threshold);
   if (!start_lanelet) {
     return false;
   }
