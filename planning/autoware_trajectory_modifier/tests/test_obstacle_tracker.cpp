@@ -293,6 +293,22 @@ TEST(ObstacleTracker, PropagatesOutputToModuleTime)
   EXPECT_NEAR(
     output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 4.0, 1e-3);
 
+  // dt = 0.25 s falls between the 0.5 s samples. The next path point is the pose at 0.75 s.
+  auto off_grid = make_tracker(0.5, 2.0, 0.2);
+  confirm_stopped_car(off_grid, output);
+  auto mid = make_car(0.0, 10.0);
+  mid.kinematics.predicted_paths.push_back(make_path({0.0, 4.0, 6.0}, 0.5));
+  update(off_grid, make_objects(mid), output, time_ms(600), time_ms(600));
+  update(off_grid, PredictedObjects{}, output, time_ms(600), time_ms(850));
+  ASSERT_EQ(output.size(), 1U);
+  const auto & mid_object = output.front().object;
+  EXPECT_NEAR(mid_object.kinematics.initial_pose_with_covariance.pose.position.x, 2.0, 1e-3);
+  ASSERT_EQ(mid_object.kinematics.predicted_paths.size(), 1U);
+  const auto & mid_path = mid_object.kinematics.predicted_paths.front();
+  ASSERT_EQ(mid_path.path.size(), 2U);
+  EXPECT_NEAR(mid_path.path[1].position.x, 5.0, 1e-3);
+  EXPECT_DOUBLE_EQ(rclcpp::Duration(mid_path.time_step).seconds(), 0.5);
+
   auto coasting = make_tracker(0.5, 2.0, 0.2);
   confirm_stopped_car(coasting, output);
   update(coasting, make_objects(0.0, 10.0), output, time_ms(600), time_ms(600));

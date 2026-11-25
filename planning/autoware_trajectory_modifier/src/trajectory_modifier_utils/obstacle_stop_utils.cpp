@@ -31,6 +31,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -38,6 +39,7 @@
 
 namespace autoware::trajectory_modifier::utils::obstacle_stop
 {
+using autoware::object_recognition_utils::calcInterpolatedPose;
 
 void trim_trajectory_and_remove_duplicates(TrajectoryPoints & trajectory_points)
 {
@@ -407,6 +409,18 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
   return CollisionPoint(target_source_index, nearest_collision_point, min_arc_length, 0.0);
 }
 
+namespace {
+
+const autoware_perception_msgs::msg::PredictedPath * get_highest_confidence_path(const PredictedObject & object)
+{
+  const autoware_perception_msgs::msg::PredictedPath * best_path = nullptr;
+  for (const auto & path : object.kinematics.predicted_paths) {
+    if (path.path.size() < 2) continue;
+    if (!best_path || path.confidence > best_path->confidence) best_path = &path;
+  }
+  return best_path;
+}
+
 geometry_msgs::msg::Pose extrapolate_object_pose_from_kinematics(
   const PredictedObject & object, const double t)
 {
@@ -419,6 +433,17 @@ geometry_msgs::msg::Pose extrapolate_object_pose_from_kinematics(
   return autoware_utils::calc_offset_pose(initial_pose, dist, 0, 0);
 }
 
+geometry_msgs::msg::Pose get_predicted_object_pose(const PredictedObject & object, const double t, const double stopped_vel_th)
+{
+  if (t <= 0.0) return object.kinematics.initial_pose_with_covariance.pose;
+  const auto & linear = object.kinematics.initial_twist_with_covariance.twist.linear;
+  if (std::hypot(linear.x, linear.y) < stopped_vel_th) return object.kinematics.initial_pose_with_covariance.pose;
+  const auto best_path = get_highest_confidence_path(object);
+  if (!best_path) return extrapolate_object_pose_from_kinematics(object, t);
+  const auto interpolated = calcInterpolatedPose(*best_path, t);
+  return interpolated.value_or(best_path->path.back());
+}
+
 // Move a stored measurement forward by dt. The stored object itself is left unchanged.
 PredictedObject propagate_predicted_object(
   const PredictedObject & object, const double dt, const double stopped_vel_th)
@@ -429,11 +454,7 @@ PredictedObject propagate_predicted_object(
   const auto & linear = object.kinematics.initial_twist_with_covariance.twist.linear;
   if (std::hypot(linear.x, linear.y) < stopped_vel_th) return object;
 
-  const autoware_perception_msgs::msg::PredictedPath * best_path = nullptr;
-  for (const auto & path : object.kinematics.predicted_paths) {
-    if (path.path.size() < 2) continue;
-    if (!best_path || path.confidence > best_path->confidence) best_path = &path;
-  }
+  const auto best_path = get_highest_confidence_path(object);
 
   auto propagated = object;
   auto & pose = propagated.kinematics.initial_pose_with_covariance.pose;
@@ -442,23 +463,29 @@ PredictedObject propagate_predicted_object(
     return propagated;
   }
 
-  const auto interpolated =
-    autoware::object_recognition_utils::calcInterpolatedPose(*best_path, dt);
-  pose = interpolated ? *interpolated : best_path->path.back();
+  const auto interpolated = calcInterpolatedPose(*best_path, dt);
+  pose = interpolated.value_or(best_path->path.back());
 
   autoware_perception_msgs::msg::PredictedPath trimmed;
   trimmed.confidence = best_path->confidence;
   trimmed.time_step = best_path->time_step;
   trimmed.path.push_back(pose);
-  if (interpolated) {
-    const double time_step = rclcpp::Duration(best_path->time_step).seconds();
-    for (size_t i = 1; i < best_path->path.size(); ++i) {
-      if (time_step * static_cast<double>(i) > dt) trimmed.path.push_back(best_path->path[i]);
+  const double time_step = rclcpp::Duration(best_path->time_step).seconds();
+  if (interpolated && time_step > 1e-3) {
+    const auto horizon = (best_path->path.size() - 1) * time_step;
+    for (size_t j = 1;; ++j) {
+      const double t = dt + j * time_step;
+      if (t > horizon + 1e-6) break;
+      const auto interpolated_pose = calcInterpolatedPose(*best_path, t);
+      if (!interpolated_pose) break;
+      trimmed.path.push_back(interpolated_pose.value());
     }
   }
   propagated.kinematics.predicted_paths = {trimmed};
   return propagated;
 }
+
+}  // namespace
 
 double get_safe_distance(
   const double ego_vel, const double ego_decel, const double object_stopping_distance,
@@ -848,9 +875,7 @@ void ObstacleTracker::update_objects(
       const auto stamp_gap = (stamp - existing_object.last_stamp).seconds();
       const auto reach = existing_object.is_active ? off_time_buffer_ : grace_period_;
       if (stamp_gap > reach) continue;
-      const auto propagated =
-        propagate_predicted_object(existing_object.object, stamp_gap, stopped_vel_th_);
-      const auto & propagated_pose = propagated.kinematics.initial_pose_with_covariance.pose;
+      const auto propagated_pose = get_predicted_object_pose(existing_object.object, stamp_gap, stopped_vel_th_);
       const auto distance = autoware_utils::calc_distance2d(
         object.kinematics.initial_pose_with_covariance.pose.position, propagated_pose.position);
       if (distance > min_distance) continue;
