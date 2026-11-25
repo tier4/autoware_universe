@@ -561,6 +561,13 @@
               "default": 0.3,
               "minimum": 0.0
             },
+            "object_confirm_time_th": {
+              "type": "number",
+              "description": "Duration a target object must be seen before it can obstruct [s].",
+              "default": 0.3,
+              "minimum": 0.0,
+              "maximum": 10.0
+            },
             "distance_hysteresis_th": {
               "type": "number",
               "description": "Hysteresis threshold to consider the object as the same object [m].",
@@ -589,6 +596,13 @@
               "type": "boolean",
               "description": "Whether to use the embedded trajectory time to evaluate the stop duration.",
               "default": false
+            },
+            "max_approach_angle": {
+              "type": "number",
+              "description": "Maximum angle between object velocity and the crosswalk crossing axis for a moving object to be treated as approaching [rad].",
+              "default": 1.047,
+              "minimum": 0.0,
+              "maximum": 1.5707963267948966
             },
             "stopping_params": {
               "type": "object",
