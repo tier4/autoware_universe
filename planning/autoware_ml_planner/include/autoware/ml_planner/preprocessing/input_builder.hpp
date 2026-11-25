@@ -29,6 +29,7 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
@@ -86,6 +87,7 @@ struct FrameInputs
   rclcpp::Time frame_time;  ///< Reference time (newest sample of every history grid).
   MessageView<nav_msgs::msg::Odometry> ego_history;
   MessageView<autoware_vehicle_msgs::msg::SteeringReport> steering_history;
+  MessageView<geometry_msgs::msg::AccelWithCovarianceStamped> acceleration_history;
   MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport> turn_indicators_history;
   MessageView<autoware_perception_msgs::msg::TrackedObjects> objects_history;
   MessageView<autoware_perception_msgs::msg::TrafficLightGroupArray> traffic_signals_history;

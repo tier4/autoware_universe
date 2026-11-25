@@ -33,8 +33,10 @@ namespace autoware::ml_planner::preprocess
 
 xt::xarray<float> create_ego_history(
   const MessageView<nav_msgs::msg::Odometry> & odom_msgs,
-  const MessageView<autoware_vehicle_msgs::msg::SteeringReport> & steering_msgs, size_t num_timesteps,
-  const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & reference_time)
+  const MessageView<autoware_vehicle_msgs::msg::SteeringReport> & steering_msgs,
+  const MessageView<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration_msgs,
+  size_t num_timesteps, const Eigen::Matrix4d & map_to_ego_transform,
+  const rclcpp::Time & reference_time)
 {
   constexpr size_t features_per_timestep = EGO_HISTORY_DIM;
   xt::xarray<float> ego_agent_past = xt::zeros<float>({num_timesteps, features_per_timestep});
@@ -113,29 +115,49 @@ xt::xarray<float> create_ego_history(
     store_state(t, interpolated_pose, interpolated_velocity, interpolated_yaw_rate);
   }
 
-  // Steering is linearly interpolated on the same grid, holding the edge values outside
-  // the steering message range.
-  if (!steering_msgs.empty()) {
-    size_t steering_index = 0;
+  // Steering and acceleration are linearly interpolated on the same grid, holding the edge
+  // values outside their message range; they stay zero when no message is available.
+  const auto interpolate_scalar = [&](
+                                    const auto & msgs, const auto & msg_sec,
+                                    const auto & msg_value, const int64_t column) {
+    if (msgs.empty()) {
+      return;
+    }
+    size_t index = 0;
     for (size_t t = 0; t < num_timesteps; ++t) {
       const double target_sec = ref_sec - static_cast<double>(num_timesteps - 1 - t) * dt;
-      for (; steering_index + 1 < steering_msgs.size(); ++steering_index) {
-        if (target_sec <= stamp_to_sec(steering_msgs[steering_index + 1].stamp)) {
+      for (; index + 1 < msgs.size(); ++index) {
+        if (target_sec <= msg_sec(msgs[index + 1])) {
           break;
         }
       }
-      const auto & before = steering_msgs[steering_index];
-      double steering = before.steering_tire_angle;
-      if (steering_index + 1 < steering_msgs.size()) {
-        const auto & after = steering_msgs[steering_index + 1];
-        const double t0 = stamp_to_sec(before.stamp);
-        const double t1 = stamp_to_sec(after.stamp);
+      double value = msg_value(msgs[index]);
+      if (index + 1 < msgs.size()) {
+        const double t0 = msg_sec(msgs[index]);
+        const double t1 = msg_sec(msgs[index + 1]);
         const double ratio = (t1 > t0) ? std::clamp((target_sec - t0) / (t1 - t0), 0.0, 1.0) : 0.0;
-        steering += ratio * (after.steering_tire_angle - before.steering_tire_angle);
+        value += ratio * (msg_value(msgs[index + 1]) - msg_value(msgs[index]));
       }
-      ego_agent_past(t, EGO_AGENT_PAST_IDX_STEERING) = static_cast<float>(steering);
+      ego_agent_past(t, column) = static_cast<float>(value);
     }
-  }
+  };
+
+  interpolate_scalar(
+    steering_msgs,
+    [&](const autoware_vehicle_msgs::msg::SteeringReport & msg) { return stamp_to_sec(msg.stamp); },
+    [](const autoware_vehicle_msgs::msg::SteeringReport & msg) {
+      return static_cast<double>(msg.steering_tire_angle);
+    },
+    EGO_AGENT_PAST_IDX_STEERING);
+  interpolate_scalar(
+    acceleration_msgs,
+    [&](const geometry_msgs::msg::AccelWithCovarianceStamped & msg) {
+      return stamp_to_sec(msg.header.stamp);
+    },
+    [](const geometry_msgs::msg::AccelWithCovarianceStamped & msg) {
+      return msg.accel.accel.linear.x;
+    },
+    EGO_AGENT_PAST_IDX_ACCELERATION);
 
   return ego_agent_past;
 }

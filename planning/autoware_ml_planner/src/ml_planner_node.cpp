@@ -739,7 +739,7 @@ void MLPlanner::on_timer()
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
   auto steering_reports = sub_steering_.take_data();
-  auto acceleration_ptr = sub_acceleration_.take_data();
+  auto accelerations = sub_acceleration_.take_data();
 
   if (traffic_signals.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -749,7 +749,7 @@ void MLPlanner::on_timer()
 
   auto buffer_result = core_->update_buffer(
     ego_kinematic_state, objects, traffic_signals, turn_indicators_ptr, steering_reports,
-    temp_route_ptr);
+    accelerations, temp_route_ptr);
   if (!buffer_result) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
@@ -845,8 +845,7 @@ void MLPlanner::on_timer()
   pub_inference_time_->publish(inference_time_msg);
 
   const double current_steering_angle_rad = core_->current_steering_angle();
-  const double current_acceleration_mps2 =
-    acceleration_ptr ? acceleration_ptr->accel.accel.linear.x : 0.0;
+  const double current_acceleration_mps2 = core_->current_acceleration();
 
   PlannerOutput planner_output;
   try {

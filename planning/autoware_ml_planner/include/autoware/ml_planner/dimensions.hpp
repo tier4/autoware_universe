@@ -50,7 +50,8 @@ inline constexpr int64_t EGO_AGENT_PAST_IDX_SIN = 3;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_VELOCITY = 4;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_STEERING = 5;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_YAW_RATE = 6;
-inline constexpr int64_t EGO_HISTORY_DIM = 7;
+inline constexpr int64_t EGO_AGENT_PAST_IDX_ACCELERATION = 7;
+inline constexpr int64_t EGO_HISTORY_DIM = 8;
 
 // Index for each field
 inline constexpr int64_t X = 0;

@@ -40,6 +40,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
@@ -60,6 +61,7 @@ using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_vehicle_msgs::msg::SteeringReport;
+using geometry_msgs::msg::AccelWithCovarianceStamped;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using nav_msgs::msg::Odometry;
@@ -185,6 +187,7 @@ public:
       traffic_signals,
     const std::vector<std::shared_ptr<const TurnIndicatorsReport>> & turn_indicators,
     const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
+    const std::vector<std::shared_ptr<const AccelWithCovarianceStamped>> & accelerations,
     const LaneletRoute::ConstSharedPtr & route_ptr);
 
   /**
@@ -198,6 +201,8 @@ public:
   {
     return static_cast<double>(steering_history_.back().steering_tire_angle);
   }
+
+  double current_acceleration() const { return acceleration_history_.back().accel.accel.linear.x; }
 
   /**
    * @brief Set the lanelet map context.
@@ -239,7 +244,7 @@ public:
    * @param generator_uuid The unique identifier for the planner instance.
    * @param current_steering_angle_rad Measured steering angle used by trajectory optimization.
    * @param current_acceleration_mps2 Measured longitudinal acceleration used as the jerk-model
-   *        initial state. Zero is used when no acceleration sample is available.
+   *        initial state.
    * @return PlannerOutput containing all output messages.
    */
   PlannerOutput create_planner_output(
@@ -298,6 +303,9 @@ private:
     HISTORY_WINDOW_S, [](const Odometry & msg) { return rclcpp::Time(msg.header.stamp); }};
   utils::TimedBuffer<SteeringReport> steering_history_{
     HISTORY_WINDOW_S, [](const SteeringReport & msg) { return rclcpp::Time(msg.stamp); }};
+  utils::TimedBuffer<AccelWithCovarianceStamped> acceleration_history_{
+    HISTORY_WINDOW_S,
+    [](const AccelWithCovarianceStamped & msg) { return rclcpp::Time(msg.header.stamp); }};
   utils::TimedBuffer<TurnIndicatorsReport> turn_indicators_history_{
     HISTORY_WINDOW_S, [](const TurnIndicatorsReport & msg) { return rclcpp::Time(msg.stamp); }};
   utils::TimedBuffer<TrackedObjects> objects_history_{

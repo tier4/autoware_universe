@@ -22,6 +22,7 @@
 #include <xtensor/xarray.hpp>
 
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <cstddef>
@@ -38,16 +39,20 @@ namespace autoware::ml_planner::preprocess
  *
  * @param[in] odom_msgs Chronological deque of odometry messages
  * @param[in] steering_msgs Chronological steering reports; steering is zero when empty
+ * @param[in] acceleration_msgs Chronological acceleration estimates; acceleration is zero when
+ *            empty
  * @param[in] num_timesteps Number of timesteps to process
  * @param[in] map_to_ego_transform Transformation matrix from map to ego frame
  * @param[in] reference_time Time of the newest grid sample
- * @return Tensor with shape [num_timesteps, 7] containing
- * [x, y, cos_yaw, sin_yaw, velocity, steering_tire_angle, yaw_rate]
+ * @return Tensor with shape [num_timesteps, 8] containing
+ * [x, y, cos_yaw, sin_yaw, velocity, steering_tire_angle, yaw_rate, acceleration]
  */
 xt::xarray<float> create_ego_history(
   const MessageView<nav_msgs::msg::Odometry> & odom_msgs,
-  const MessageView<autoware_vehicle_msgs::msg::SteeringReport> & steering_msgs, size_t num_timesteps,
-  const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & reference_time);
+  const MessageView<autoware_vehicle_msgs::msg::SteeringReport> & steering_msgs,
+  const MessageView<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration_msgs,
+  size_t num_timesteps, const Eigen::Matrix4d & map_to_ego_transform,
+  const rclcpp::Time & reference_time);
 
 }  // namespace autoware::ml_planner::preprocess
 

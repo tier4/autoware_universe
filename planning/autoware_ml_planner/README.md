@@ -119,6 +119,7 @@ Parameters can be set via YAML (see `config/ml_planner.param.yaml`).
 | `~/input/route`           | autoware_planning_msgs/msg/LaneletRoute             | Route information                                                                                                      |
 | `~/input/turn_indicators` | autoware_vehicle_msgs/msg/TurnIndicatorsReport      | Turn indicator information                                                                                             |
 | `~/input/steering_status` | autoware_vehicle_msgs/msg/SteeringReport            | Measured steering angle (ego history preprocessing and trajectory optimization; major version 6 models do not read it) |
+| `~/input/acceleration`    | geometry_msgs/msg/AccelWithCovarianceStamped        | Measured longitudinal acceleration (ego history preprocessing and trajectory optimization)                             |
 
 ## Services
 
