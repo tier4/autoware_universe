@@ -1,0 +1,38 @@
+/**:
+  ros__parameters:
+    goal_footprint_margin: 0.3 # [m] uniform inflation of the vehicle footprint at the goal
+
+    # Goal candidates referenced by the triggers below.
+    # lane_ids is the lanelet ID sequence the vehicle must follow, in travel order.
+    # List road lanelets only. When the goal is on a road_shoulder, end with the road lanelet next to it.
+    # Omit the key rather than writing an empty list.
+    goals: ["slot_1", "slot_2", "slot_3"]
+    slot_1:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0 # [rad]
+      lane_ids: [0]
+
+    slot_2:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0 # [rad]
+      lane_ids: [0]
+
+    slot_3:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0 # [rad]
+      lane_ids: [0]
+
+    # Trigger areas. The next goal is selected once the ego arrives at a route goal inside one of them.
+    # NOTE: the positions are dummy values. Replace them with the real ones on the map.
+    triggers: ["station_a"]
+    station_a:
+      x: 0.0
+      y: 0.0
+      radius: 3.0 # [m]
+      goal_candidates: ["slot_1", "slot_2", "slot_3"] # in priority order
