@@ -88,6 +88,16 @@ These are the scorer's `fde_2s` / `fde_4s` / `fde_6s`, split by fleet by scene n
 reference takes one frame per second. On the 34,810 of its 35,303 frames that this evaluation also covers, this
 model gives 0.255 / 0.903 / 1.883 (taxi 0.294 / 1.034 / 2.145, X2 0.199 / 0.717 / 1.510).
 
+The scorer's full report on the same frames (`score/aggregate.json`, devkit c234eb17, version v2):
+
+| EPDMS | NC | DAC | DDC | TLC | TTC | EP | LK | comfort | EC | ADE (m) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0.962 | 0.998 | 0.999 | 0.990 | 1.000 | 0.995 | 0.981 | 0.995 | 1.000 | 0.860 | 0.689 |
+
+Each value is the mean over the frames. To score in parallel, run `--shard-index i --num-shards n` and take each
+column's mean over the shards' `per_window.csv` rows. That is the devkit's own aggregation (`aggregate_navsim_results`),
+and here it reproduced the FDE above to the sixth decimal.
+
 To rebuild the car package, run `projects/resworld/scripts/release_resworld.py --checkpoint <ckpt> --version
 <x.y.z.w> --indicator-head <indicator_head.pt> --backbone-dir
 <RELEASE_ROOT>/common/bevfusion-l-awml-2.8.2-jpntaxi --output-dir <dir>`. It exports both graphs, checks them
