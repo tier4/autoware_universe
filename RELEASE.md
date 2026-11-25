@@ -65,9 +65,15 @@ ARCH=resworld uv run python scripts/export_e2e_predictions.py \
     --bevfusion-config <RELEASE_ROOT>/common/bevfusion-l-awml-2.8.2-jpntaxi/bevfusion_lidar_voxel_second_secfpn_30e_8xb24_jpntaxi_base_120m.py \
     --bevfusion-ckpt <RELEASE_ROOT>/common/bevfusion-l-awml-2.8.2-jpntaxi/best_epoch_28.pth \
     --batch-size 8 --output predictions.jsonl
-uv run t4e2e score-manifest <T4_ROOT>/lists/20261030/golden-val.json \
-    --predictions predictions.jsonl --output-dir score --backend gpu
+PYTHONPATH=<t4-e2e-devkit checkout at c234eb17> .venv/bin/python \
+    -c 'import sys; from t4_e2e_devkit.cli import main; sys.exit(main())' score-manifest \
+    <T4_ROOT>/lists/20261030/golden-val.json --predictions predictions.jsonl --output-dir score --backend gpu
 ```
+
+Score with the devkit at c234eb17 (the pin of OnePlanner `main`) or later. At this branch's own pin, 802ae479,
+`score-manifest` keeps scenes from every batch in memory (fixed upstream in tier4/e2e-devkit#134) and runs out of memory after
+about 18,000 of the 348,124 frames. At c234eb17 it holds about 7 GB and scores about 4.4 frames per second on one
+GPU, so every frame takes about 22 hours.
 
 Reference result: golden-val, every frame (10 Hz), 348,124 frames in 775 scenes. It was run with batch 8. Another
 batch size changes the BEV backbone's float rounding, so per-frame values are then not bit-exact.
