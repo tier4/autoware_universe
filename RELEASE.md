@@ -6,10 +6,10 @@ The same file is on both branches of this model:
 |---|---|
 | Python | tier4/OnePlanner `e2e-release/1127/mlplanner-2stage-a` |
 | Node | tier4/autoware_universe `e2e-release/1127/mlplanner-2stage-a` = `feat/v0.64/e2e` at ef8d906c16, stock `autoware_ml_planner` |
-| WebAuto | project `prd_jt`, ML package `OnePlanner`, package release `20261125_mlplanner__oneplanner-mlplanner-2stage-a-test1-jpntaxi` |
-| Release | `oneplanner-mlplanner-2stage-a-test1-jpntaxi` |
+| WebAuto | project `prd_jt`, ML package `OnePlanner`, package release `20261125_mlplanner__oneplanner-mlplanner-2stage-a-jpntaxi` |
+| Release | `oneplanner-mlplanner-2stage-a-jpntaxi` |
 
-The four releases of 2026-11-27 are `resworld-1442`, `mlplanner-2stage-a`, `mlplanner-2stage-b` and
+The four releases of 2026-11-27 are `resworld-1.4.4.4`, `mlplanner-2stage-a`, `mlplanner-2stage-b` and
 `mlplanner-1p5stage-b`. Every one has a branch of that name in both repositories.
 
 ## Model
@@ -29,8 +29,8 @@ The four releases of 2026-11-27 are `resworld-1442`, `mlplanner-2stage-a`, `mlpl
 | File | sha256 |
 |---|---|
 | `<RELEASE_ROOT>/mlplanner-2stage-a/python/avg16to25-epoch_0025.pth` | `34304788b2809b027fd6a7ff9173a991cc0eb144af585d691c2d2e8d107c9dab` |
-| `<RELEASE_ROOT>/mlplanner-2stage-a/node/oneplanner-mlplanner-2stage-a-test1-jpntaxi/ml_planner_sampler.onnx` | `d42dbdf0195cddfe5329abcc5c4fe28e7e4f47d108f2975bf54335c8ac2892ee` |
-| `<RELEASE_ROOT>/mlplanner-2stage-a/node/oneplanner-mlplanner-2stage-a-test1-jpntaxi/metadata.json` | `202f013acf8f96191ca8c5cd82a3e7cf6ccb55300105d9234607a3af3822a1aa` |
+| `<RELEASE_ROOT>/mlplanner-2stage-a/node/oneplanner-mlplanner-2stage-a-jpntaxi/ml_planner_sampler.onnx` | `d42dbdf0195cddfe5329abcc5c4fe28e7e4f47d108f2975bf54335c8ac2892ee` |
+| `<RELEASE_ROOT>/mlplanner-2stage-a/node/oneplanner-mlplanner-2stage-a-jpntaxi/metadata.json` | `202f013acf8f96191ca8c5cd82a3e7cf6ccb55300105d9234607a3af3822a1aa` |
 
 The `node/` directory holds exactly the WebAuto package release. Golden-val eval inputs (the sidecar and the node's
 map tensors) are in `<RELEASE_ROOT>/common/mlplanner-golden-val-inputs/`.
