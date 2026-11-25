@@ -6,10 +6,10 @@ The same file is on both branches of this model:
 |---|---|
 | Python | tier4/OnePlanner `e2e-release/1127/mlplanner-1p5stage-b` |
 | Node | tier4/autoware_universe `e2e-release/1127/mlplanner-1p5stage-b`: `feat/e2e-mlplanner-bev-node-v064`, i.e. `feat/v0.64/e2e` at ef8d906c16 plus the `ml_planner_bev_node` in `e2e/autoware_tensorrt_e2e` |
-| WebAuto | project `prd_jt`, ML package `OnePlanner`, package release `20261125_mlplanner__oneplanner-1p5stage-b-test1-jpntaxi` (WebAuto names are at most 64 characters) |
-| Release | `oneplanner-mlplanner-1p5stage-b-test1-jpntaxi` |
+| WebAuto | project `prd_jt`, ML package `OnePlanner`, package release `20261125_mlplanner__oneplanner-mlplanner-1p5stage-b-jpntaxi` |
+| Release | `oneplanner-mlplanner-1p5stage-b-jpntaxi` |
 
-The four releases of 2026-11-27 are `resworld-1442`, `mlplanner-2stage-a`, `mlplanner-2stage-b` and
+The four releases of 2026-11-27 are `resworld-1.4.4.4`, `mlplanner-2stage-a`, `mlplanner-2stage-b` and
 `mlplanner-1p5stage-b`. Every one has a branch of that name in both repositories.
 
 ## Model
@@ -32,9 +32,9 @@ Weights are the uniform average of epochs 16-25 of run
 | File | sha256 |
 |---|---|
 | `<RELEASE_ROOT>/mlplanner-1p5stage-b/python/avg16to25-epoch_0025.pth` | `2045dcdd8de28b9814949722e34e60bbb5aef8495eea98f66e568d9ce9c27bc2` |
-| `<RELEASE_ROOT>/mlplanner-1p5stage-b/node/oneplanner-mlplanner-1p5stage-b-test1-jpntaxi/ml_planner_bev.onnx` | `aba79716c35603f96e430da558920661bf759016ea5cff4ec7e55c20fac17a37` |
-| `<RELEASE_ROOT>/mlplanner-1p5stage-b/node/oneplanner-mlplanner-1p5stage-b-test1-jpntaxi/metadata.json` | `4bf246ba529ffd149c43de15ae1bad4692219ead5424c6737535008ccbc258c3` |
-| `<RELEASE_ROOT>/mlplanner-1p5stage-b/node/oneplanner-mlplanner-1p5stage-b-test1-jpntaxi/bevfusion_lidar_feature.onnx` | `d701f6c37b44af6a04deab43535c0ff7ed81142def56126bd0df4690f4e57e8e` |
+| `<RELEASE_ROOT>/mlplanner-1p5stage-b/node/oneplanner-mlplanner-1p5stage-b-jpntaxi/ml_planner_bev.onnx` | `aba79716c35603f96e430da558920661bf759016ea5cff4ec7e55c20fac17a37` |
+| `<RELEASE_ROOT>/mlplanner-1p5stage-b/node/oneplanner-mlplanner-1p5stage-b-jpntaxi/metadata.json` | `4bf246ba529ffd149c43de15ae1bad4692219ead5424c6737535008ccbc258c3` |
+| `<RELEASE_ROOT>/mlplanner-1p5stage-b/node/oneplanner-mlplanner-1p5stage-b-jpntaxi/bevfusion_lidar_feature.onnx` | `d701f6c37b44af6a04deab43535c0ff7ed81142def56126bd0df4690f4e57e8e` |
 
 The `node/` directory holds exactly the WebAuto package release.
 
