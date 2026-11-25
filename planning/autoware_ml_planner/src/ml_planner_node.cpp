@@ -55,8 +55,8 @@ namespace
 {
 // Ego velocity [m/s] written into the model input while the start service is enabled.
 constexpr float start_service_ego_velocity_mps = 1.0F;
-// Keep 36 history rows at 100 ms and the observations that support resampling at the edge.
-constexpr int64_t scene_history_ns = 4'100'000'000;
+// Stop accepting periodic inputs after this long without receiving odometry.
+constexpr int64_t odometry_outage_ns = 4'100'000'000;
 constexpr t4scene::Transform3D map_frame_identity{1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
                                                   0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
 
@@ -143,6 +143,7 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
   ego_shape_.base_link_to_front = vehicle_info_.max_longitudinal_offset_m;
   ego_shape_.base_link_to_rear_axle = 0.0;
   scene_builder_ = std::make_unique<t4scene::ros2::generation::SceneBuilder>(scene_config_path());
+  scene_retention_ns_ = scene_builder_->window_retention_ns();
   subscribe_scene_inputs();
 
   timer_ = rclcpp::create_timer(
@@ -741,7 +742,7 @@ bool MLPlanner::ingest_periodic(
   auto & stamps = accepted_stamps_.at(static_cast<size_t>(input));
   if (
     (odometry_ &&
-     stamp_ns < rclcpp::Time(odometry_->header.stamp).nanoseconds() - scene_history_ns) ||
+     stamp_ns < rclcpp::Time(odometry_->header.stamp).nanoseconds() - scene_retention_ns_) ||
     stamps.count(stamp_ns) || !scene_builder_->ingest(msg, received_ns)) {
     return false;
   }
@@ -818,7 +819,7 @@ bool MLPlanner::has_recent_odometry(const int64_t received_ns) const
   // The measurement watermark cannot advance without odometry. Stop gathering
   // periodic observations during an outage to bound the buffered history.
   return odometry_ && received_ns >= odometry_received_ns_ &&
-         received_ns - odometry_received_ns_ <= scene_history_ns;
+         received_ns - odometry_received_ns_ <= odometry_outage_ns;
 }
 
 void MLPlanner::discard_scene_history()
@@ -829,7 +830,7 @@ void MLPlanner::discard_scene_history()
   // Keep the watermark on the measurement clock so pausing a replay never
   // evicts observations needed when measurements begin to advance again.
   const auto odometry_ns = rclcpp::Time(odometry_->header.stamp).nanoseconds();
-  const auto cutoff_ns = odometry_ns - scene_history_ns;
+  const auto cutoff_ns = odometry_ns - scene_retention_ns_;
   scene_builder_->discard_before(cutoff_ns);
   for (auto & stamps : accepted_stamps_) {
     stamps.erase(stamps.begin(), stamps.lower_bound(cutoff_ns));

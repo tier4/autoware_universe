@@ -267,6 +267,7 @@ private:
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
 
   std::unique_ptr<t4scene::ros2::generation::SceneBuilder> scene_builder_;
+  int64_t scene_retention_ns_{};
   Odometry::ConstSharedPtr odometry_;
   int64_t odometry_received_ns_{};
   int64_t latest_receipt_ns_{};

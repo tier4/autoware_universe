@@ -65,6 +65,28 @@ protected:
 
   int anchor() const { return node_->odometry_->header.stamp.sec; }
 
+  void receive_objects(int receipt, int stamp, uint32_t nanosecond)
+  {
+    ASSERT_EQ(
+      rcl_set_ros_time_override(node_->get_clock()->get_clock_handle(), receipt * second),
+      RCL_RET_OK);
+    auto msg = std::make_shared<TrackedObjects>();
+    msg->header.frame_id = "map";
+    msg->header.stamp.sec = stamp;
+    msg->header.stamp.nanosec = nanosecond;
+    std::shared_ptr<void> data = msg;
+    node_->sub_tracked_objects_->handle_message(data, rclcpp::MessageInfo{});
+  }
+
+  void prune_history() { node_->discard_scene_history(); }
+
+  std::optional<int64_t> oldest_tracking_stamp(int receipt_cutoff) const
+  {
+    const auto scene = node_->scene_builder_->build_window(
+      anchor() * second, {"tracking-test"}, receipt_cutoff * second);
+    return scene.annotations->timestamps_ns->get(0);
+  }
+
   void receive_route(int receipt, int stamp, int64_t lane_id)
   {
     ASSERT_EQ(
@@ -127,5 +149,15 @@ TEST_F(OnlineObservationTest, ReappliesTheMainRouteWithItsOriginalStamp)
   const auto & routes = restored.scene.routes.value();
   const auto & current = routes.rows.at(routes.indices.at(restored.scene.current_index));
   EXPECT_EQ(current.segments.at(0).preferred_lane_id, 101);
+}
+
+TEST_F(OnlineObservationTest, PreservesTrackingAtTheEarliestHistoryRow)
+{
+  receive_odometry(20, 10, 2.0);
+  // The first row is at 6.4 s. A 5.4 s measurement is still eligible there.
+  receive_objects(21, 5, 400'000'000);
+  EXPECT_EQ(oldest_tracking_stamp(21), 5'400'000'000);
+  prune_history();
+  EXPECT_EQ(oldest_tracking_stamp(21), 5'400'000'000);
 }
 }  // namespace autoware::ml_planner
