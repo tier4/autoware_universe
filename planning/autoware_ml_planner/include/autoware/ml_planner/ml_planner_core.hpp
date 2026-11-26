@@ -23,19 +23,20 @@
 #endif
 #include "autoware/ml_planner/postprocessing/postprocessing_utils.hpp"
 #include "autoware/ml_planner/postprocessing/road_border_avoidance.hpp"
-#include "autoware/ml_planner/preprocessing/input_builder.hpp"
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
-#include "autoware/ml_planner/preprocessing/items/traffic_signals.hpp"
 #include "autoware/ml_planner/utils/timed_buffer.hpp"
 
 #include <Eigen/Dense>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/time.hpp>
+#include <t4_scene/scene.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/tracked_object.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
@@ -56,6 +57,7 @@ namespace autoware::ml_planner
 using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_perception_msgs::msg::TrackedObject;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
@@ -172,32 +174,17 @@ public:
    */
   rclcpp::Time frame_time() const;
 
-  using BufferUpdateResult = tl::expected<preprocess::FrameInputs, std::string>;
-
   /**
-   * @brief Append newly received messages and return a snapshot of the current buffers.
+   * @brief Build inference inputs and retain the original messages used by postprocessing.
    */
-  BufferUpdateResult update_buffer(
-    const std::vector<std::shared_ptr<const Odometry>> & ego_kinematic_states,
-    const std::vector<std::shared_ptr<const TrackedObjects>> & objects,
-    const std::vector<
-      std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
-      traffic_signals,
-    const std::vector<std::shared_ptr<const TurnIndicatorsReport>> & turn_indicators,
-    const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
-    const LaneletRoute::ConstSharedPtr & route_ptr);
+  preprocess::TensorMapResult create_input_data(
+    const t4scene::T4Scene & scene, Odometry::ConstSharedPtr odometry,
+    const TrackedObjects & tracked_objects, LaneletRoute::ConstSharedPtr route);
 
-  /**
-   * @brief Build normalized-shape model inputs from a validated buffer snapshot.
-   */
-  preprocess::TensorMapResult create_input_data(const preprocess::FrameInputs & frame_inputs);
+  const Eigen::Matrix4d & ego_to_map() const { return ego_to_map_; }
 
-  const geometry_msgs::msg::Pose & ego_pose() const { return ego_history_.back().pose.pose; }
-
-  double current_steering_angle() const
-  {
-    return static_cast<double>(steering_history_.back().steering_tire_angle);
-  }
+  void update_traffic_signal_debug(
+    const autoware_perception_msgs::msg::TrafficLightGroupArray & message);
 
   /**
    * @brief Set the lanelet map context.
@@ -264,18 +251,10 @@ public:
   int64_t count_valid_elements(
     const TensorMap & input_data_map, const std::string & data_key) const;
 
-  /**
-   * @brief Get current route pointer.
-   *
-   * @return Shared pointer to current route
-   */
-  const LaneletRoute::ConstSharedPtr & get_route() const { return route_ptr_; }
-
 private:
   // Parameters
   MLPlannerParams params_;
   VehicleInfo vehicle_info_;
-  VehicleSpec vehicle_spec_;
 
   // Inference engine
   std::unique_ptr<Inference> ml_planner_inference_{nullptr};
@@ -289,19 +268,13 @@ private:
   std::unique_ptr<postprocess::RoadBorderAvoidance> road_border_avoidance_{nullptr};
 
   // Postprocessing
-  std::vector<preprocess::SelectedAgent> selected_agents_;
+  std::vector<TrackedObject> selected_agents_;
   postprocess::TurnIndicatorHold turn_indicator_hold_;
 
-  // Raw message history buffers, bounded to the model input time window.
-  // All derived history data is computed statelessly from these buffers.
-  utils::TimedBuffer<Odometry> ego_history_{
-    HISTORY_WINDOW_S, [](const Odometry & msg) { return rclcpp::Time(msg.header.stamp); }};
-  utils::TimedBuffer<SteeringReport> steering_history_{
-    HISTORY_WINDOW_S, [](const SteeringReport & msg) { return rclcpp::Time(msg.stamp); }};
-  utils::TimedBuffer<TurnIndicatorsReport> turn_indicators_history_{
-    HISTORY_WINDOW_S, [](const TurnIndicatorsReport & msg) { return rclcpp::Time(msg.stamp); }};
-  utils::TimedBuffer<TrackedObjects> objects_history_{
-    HISTORY_WINDOW_S, [](const TrackedObjects & msg) { return rclcpp::Time(msg.header.stamp); }};
+  Odometry::ConstSharedPtr odometry_;
+  Eigen::Matrix4d ego_to_map_{Eigen::Matrix4d::Identity()};
+
+  // Raw signals are only used for the route traffic light debug topic.
   utils::TimedBuffer<autoware_perception_msgs::msg::TrafficLightGroupArray>
     traffic_signals_history_{
       HISTORY_WINDOW_S, [](const autoware_perception_msgs::msg::TrafficLightGroupArray & msg) {

@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__INITIAL_NOISE_HPP_
-#define AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__INITIAL_NOISE_HPP_
+#ifndef AUTOWARE__ML_PLANNER__INFERENCE__INITIAL_NOISE_HPP_
+#define AUTOWARE__ML_PLANNER__INFERENCE__INITIAL_NOISE_HPP_
 
 #include <xtensor/xarray.hpp>
 
-namespace autoware::ml_planner::preprocess
-{
-xt::xarray<float> create_initial_noise(double noise_scale);
-}  // namespace autoware::ml_planner::preprocess
+#include <vector>
 
-#endif  // AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__INITIAL_NOISE_HPP_
+namespace autoware::ml_planner
+{
+xt::xarray<float> create_initial_noise(const std::vector<double> & noise_scales);
+}  // namespace autoware::ml_planner
+
+#endif  // AUTOWARE__ML_PLANNER__INFERENCE__INITIAL_NOISE_HPP_

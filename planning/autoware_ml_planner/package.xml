@@ -16,6 +16,7 @@
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
 
+  <depend>ament_index_cpp</depend>
   <depend>autoware_agnocast_wrapper</depend>
   <depend>autoware_cuda_dependency_meta</depend>
   <depend>autoware_cuda_utils</depend>
@@ -51,6 +52,9 @@
   <depend>rclcpp_components</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
+  <depend>t4scene</depend>
+  <depend>t4scene_generation</depend>
+  <depend>t4scene_ml_planner</depend>
   <depend>visualization_msgs</depend>
   <depend>xtensor</depend>
 

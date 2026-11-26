@@ -15,8 +15,6 @@
 #ifndef AUTOWARE__ML_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_
 #define AUTOWARE__ML_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_
 
-#include "autoware/ml_planner/preprocessing/items/agent.hpp"
-
 #include <Eigen/Dense>
 #include <rclcpp/rclcpp.hpp>
 #include <xtensor/xarray.hpp>
@@ -24,9 +22,11 @@
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/tracked_object.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <geometry_msgs/msg/point.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <cassert>
 #include <cstddef>
@@ -40,10 +40,9 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::PredictedPath;
+using autoware_perception_msgs::msg::TrackedObject;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
-using preprocess::SelectedAgent;
-using preprocess::TrackedObject;
 using unique_identifier_msgs::msg::UUID;
 
 /**
@@ -62,14 +61,14 @@ std::vector<float> denormalize_prediction(const std::vector<float> & prediction)
  * @brief Creates PredictedObjects message from parsed agent poses.
  *
  * @param agent_poses The parsed agent poses [batch][agent][timestep] -> pose matrix.
- * @param selected_agents The currently visible agents ordered by distance from ego.
+ * @param selected_agents Original tracked objects in model neighbor order.
  * @param stamp The ROS time stamp for the message.
  * @param batch_index The batch index to use.
  * @return A PredictedObjects message containing predicted paths for each agent.
  */
 PredictedObjects create_predicted_objects(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const std::vector<SelectedAgent> & selected_agents, const rclcpp::Time & stamp,
+  const std::vector<TrackedObject> & selected_agents, const rclcpp::Time & stamp,
   const int64_t batch_index);
 
 /**

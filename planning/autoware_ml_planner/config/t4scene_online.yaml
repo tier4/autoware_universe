@@ -1,0 +1,24 @@
+mode: window
+validate_scene: false
+grid: {interval_ns: 100000000, history_steps: 36, future_steps: 0}
+frames: {scene: map, body: base_link}
+# Topic remappings are controlled by the node's existing launch arguments.
+inputs:
+  odometry: /localization/kinematic_state
+  steering: /vehicle/status/steering_status
+  indicator: /vehicle/status/turn_indicators_status
+  annotations: /perception/object_recognition/tracking/objects
+  traffic_lights: /perception/traffic_light_recognition/traffic_signals
+  route: /planning/mission_planning/route
+# Each measurement timestamp uses its last eligible receipt.
+observations: {visibility: decision_snapshot, timestamp_order: sorted}
+resampling:
+  odometry: {method: interpolate_or_hold_previous, max_delta_ns: 200000000}
+  steering: {method: interpolate_or_hold_previous, max_delta_ns: 200000000}
+  indicator: {method: previous, max_age_ns: 200000000}
+  annotations: {method: previous, max_age_ns: 1000000000}
+  # Each 100 ms row takes the latest eligible traffic-light message as a whole.
+  # A group observed only in a skipped message can be lost if the chosen message
+  # omits it. The planner checks freshness using the original stamps of sampled messages.
+  traffic_lights: {method: previous}
+  route: {method: latest_received}

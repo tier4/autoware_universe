@@ -28,6 +28,7 @@ if(NOT (ML_PLANNER_CUDA_AVAIL AND ML_PLANNER_TRT_AVAIL))
   return()
 endif()
 
+find_package(xtensor REQUIRED)
 autoware_package()
 
 # Major version of the ONNX weights this node is built against.
@@ -36,25 +37,16 @@ set(ML_PLANNER_WEIGHT_MAJOR_VERSION 7)
 
 find_package(Boost REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(xtensor REQUIRED)
+find_package(t4scene_generation 0.0.0 EXACT REQUIRED)
 
 set(ML_PLANNER_SOURCES
   src/ml_planner_core.cpp
   src/ml_planner_node.cpp
+  src/inference/initial_noise.cpp
   src/inference/single_step_inference.cpp
   src/inference/utils.cpp
   src/postprocessing/postprocessing_utils.cpp
   src/postprocessing/road_border_avoidance.cpp
-  src/preprocessing/input_builder.cpp
-  src/preprocessing/items/agent.cpp
-  src/preprocessing/items/ego_history.cpp
-  src/preprocessing/items/ego_shape.cpp
-  src/preprocessing/items/goal_pose.cpp
-  src/preprocessing/items/initial_noise.cpp
-  src/preprocessing/items/map.cpp
-  src/preprocessing/items/traffic_signals.cpp
-  src/preprocessing/items/turn_indicators.cpp
-  src/preprocessing/preprocessing_utils.cpp
   src/utils/marker_utils.cpp
   src/utils/model_metadata.cpp
   src/utils/object_remap.cpp
@@ -87,9 +79,12 @@ target_include_directories(autoware_ml_planner_component PUBLIC
 target_link_libraries(autoware_ml_planner_component
   ${CUDA_LIBRARIES}
   ${ML_PLANNER_CUBLAS_LIBRARIES}
+  t4scene::ml_planner
   MLPlanner::nvinfer
   MLPlanner::nvonnxparser
   OpenSSL::Crypto
+  t4scene::data
+  t4scene::ros2::generation
   xtensor
 )
 
@@ -134,21 +129,15 @@ autoware_agnocast_wrapper_register_node(autoware_ml_planner_component
 
 if(BUILD_TESTING)
   set(ML_PLANNER_TEST_SOURCES
-    test/lane_segment_split_test.cpp
-    test/lanelet_edge_case_test.cpp
     test/lanelet_integration_test.cpp
-    test/lanelet_test.cpp
     test/marker_utils_test.cpp
     test/model_metadata_test.cpp
     test/object_remap_test.cpp
+    test/online_observation_test.cpp
     test/planning_factor_utils_test.cpp
     test/postprocessing_utils_test.cpp
     test/postprocessing_utils_edge_case_test.cpp
-    test/map_level_selection_test.cpp
     test/road_border_avoidance_test.cpp
-    test/road_border_split_test.cpp
-    test/route_segment_selection_test.cpp
-    test/route_waypoints_test.cpp
     test/turn_indicator_hold_test.cpp
     test/utils_test.cpp
   )

@@ -16,14 +16,17 @@
 
 #include "autoware/ml_planner/constants.hpp"
 #include "autoware/ml_planner/dimensions.hpp"
+#include "autoware/ml_planner/inference/initial_noise.hpp"
 #include "autoware/ml_planner/inference/single_step_inference.hpp"
 #include "autoware/ml_planner/postprocessing/postprocessing_utils.hpp"
-#include "autoware/ml_planner/preprocessing/items/initial_noise.hpp"
+#include "autoware/ml_planner/preprocessing/scene_input_builder.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
 #ifdef AUTOWARE_ML_PLANNER_USE_ONNXRUNTIME
 #include "autoware/ml_planner/inference/onnxruntime_inference.hpp"
 #endif
+
+#include <autoware_utils_uuid/uuid_helper.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/generator_info.hpp>
@@ -32,6 +35,7 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -122,7 +126,7 @@ std::string onnxruntime_execution_provider_from_backend(const std::string & back
 #endif
 
 MLPlannerCore::MLPlannerCore(const MLPlannerParams & params, const VehicleInfo & vehicle_info)
-: params_(params), vehicle_info_(vehicle_info), vehicle_spec_(vehicle_info)
+: params_(params), vehicle_info_(vehicle_info)
 {
   if (
     params_.batch_size < 1 || params_.batch_size > 2 ||
@@ -221,101 +225,49 @@ void MLPlannerCore::set_map(const std::shared_ptr<const lanelet::LaneletMap> & l
   }
 }
 
-MLPlannerCore::BufferUpdateResult MLPlannerCore::update_buffer(
-  const std::vector<std::shared_ptr<const Odometry>> & ego_kinematic_states,
-  const std::vector<std::shared_ptr<const TrackedObjects>> & objects,
-  const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
-    traffic_signals,
-  const std::vector<std::shared_ptr<const TurnIndicatorsReport>> & turn_indicators,
-  const std::vector<std::shared_ptr<const SteeringReport>> & steering_reports,
-  const LaneletRoute::ConstSharedPtr & route_ptr)
+void MLPlannerCore::update_traffic_signal_debug(
+  const autoware_perception_msgs::msg::TrafficLightGroupArray & message)
 {
-  if (route_ptr) {
-    route_ptr_ = route_ptr;
-  }
-  for (const auto & msg : ego_kinematic_states) {
-    if (msg) {
-      ego_history_.push_back(*msg);
-    }
-  }
-  for (const auto & msg : steering_reports) {
-    if (msg) {
-      steering_history_.push_back(*msg);
-    }
-  }
-  for (const auto & msg : turn_indicators) {
-    if (msg) {
-      turn_indicators_history_.push_back(*msg);
-    }
-  }
-  for (const auto & msg : objects) {
-    if (msg) {
-      objects_history_.push_back(*msg);
-    }
-  }
-  for (const auto & msg : traffic_signals) {
-    if (msg) {
-      traffic_signals_history_.push_back(*msg);
-    }
-  }
-
-  std::vector<std::string> missing_inputs;
-  if (ego_history_.empty()) {
-    missing_inputs.emplace_back("ego kinematic state");
-  }
-  if (objects_history_.empty()) {
-    missing_inputs.emplace_back("tracked objects");
-  }
-  if (!route_ptr_) {
-    missing_inputs.emplace_back("route");
-  }
-  if (turn_indicators_history_.empty()) {
-    missing_inputs.emplace_back("turn indicators");
-  }
-  if (steering_history_.empty()) {
-    missing_inputs.emplace_back("steering status");
-  }
-  if (!missing_inputs.empty()) {
-    std::string error{"Missing required input: "};
-    for (size_t index = 0; index < missing_inputs.size(); ++index) {
-      if (index > 0) {
-        error += ", ";
-      }
-      error += missing_inputs[index];
-    }
-    return tl::unexpected(std::move(error));
-  }
-
-  return preprocess::FrameInputs{
-    frame_time(),
-    preprocess::MessageView<nav_msgs::msg::Odometry>{ego_history_.msgs()},
-    preprocess::MessageView<SteeringReport>{steering_history_.msgs()},
-    preprocess::MessageView<autoware_vehicle_msgs::msg::TurnIndicatorsReport>{
-      turn_indicators_history_.msgs()},
-    preprocess::MessageView<autoware_perception_msgs::msg::TrackedObjects>{objects_history_.msgs()},
-    preprocess::MessageView<autoware_perception_msgs::msg::TrafficLightGroupArray>{
-      traffic_signals_history_.msgs()},
-    *route_ptr_};
+  traffic_signals_history_.push_back(message);
 }
 
 preprocess::TensorMapResult MLPlannerCore::create_input_data(
-  const preprocess::FrameInputs & frame_inputs)
+  const t4scene::T4Scene & scene, Odometry::ConstSharedPtr odometry,
+  const TrackedObjects & tracked_objects, LaneletRoute::ConstSharedPtr route)
 {
-  selected_agents_.clear();
   if (!lane_segment_context_) {
     return tl::unexpected(std::string{"Map context is unavailable"});
   }
 
-  const preprocess::InputBuilderParams builder_params{
-    params_.traffic_light_group_msg_timeout_seconds};
-  auto single_input_result = preprocess::create_input_data_map(
-    frame_inputs, *lane_segment_context_, vehicle_spec_, builder_params);
-  if (!single_input_result) {
-    return tl::unexpected(single_input_result.error());
+  auto input = preprocess::build_scene_input(
+    scene, *lane_segment_context_, preprocess::TrafficLightFuture::Infer,
+    params_.traffic_light_group_msg_timeout_seconds);
+  if (!input) {
+    return tl::unexpected(input.error());
   }
-  auto builder_output = std::move(single_input_result.value());
-  selected_agents_ = std::move(builder_output.selected_agents);
-  TensorMap single_input_data_map = std::move(builder_output.tensors);
+
+  // The SDK keeps the track ID but does not retain ROS covariances or existence
+  // probabilities. Use the original batch only to populate PredictedObjects.
+  std::unordered_map<std::string, const autoware_perception_msgs::msg::TrackedObject *> by_id;
+  for (const auto & object : tracked_objects.objects) {
+    by_id.emplace(autoware_utils_uuid::to_hex_string(object.object_id), &object);
+  }
+  std::vector<TrackedObject> selected;
+  selected.reserve(input->selected_track_ids.size());
+  for (auto track_id : input->selected_track_ids) {
+    track_id.erase(std::remove(track_id.begin(), track_id.end(), '-'), track_id.end());
+    const auto found = by_id.find(track_id);
+    if (found == by_id.end()) {
+      return tl::unexpected(std::string{"No source object for selected track " + track_id});
+    }
+    selected.push_back(*found->second);
+  }
+
+  odometry_ = std::move(odometry);
+  route_ptr_ = std::move(route);
+  selected_agents_ = std::move(selected);
+  ego_to_map_ = input->ego_to_map;
+  const auto & single_input_data_map = input->tensors;
 
   // Replicate for batch
   TensorMap input_data_map;
@@ -324,28 +276,14 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   }
 
   // Initial Gaussian noise for the sampler embedded in the ONNX graph.
-  std::vector<size_t> sampled_shape;
-  std::transform(
-    INITIAL_NOISE_SHAPE.begin(), INITIAL_NOISE_SHAPE.end(), std::back_inserter(sampled_shape),
-    [](const int64_t dim) { return static_cast<size_t>(dim); });
-  sampled_shape.front() = static_cast<size_t>(params_.batch_size);
-  xt::xarray<float> sampled_tensor = xt::xarray<float>::from_shape(sampled_shape);
-  const size_t single_sample_size = sampled_tensor.size() / sampled_shape.front();
-  for (int64_t b = 0; b < params_.batch_size; b++) {
-    const xt::xarray<float> initial_noise =
-      preprocess::create_initial_noise(params_.noise_scale_list[b]);
-    std::copy(
-      initial_noise.begin(), initial_noise.end(),
-      sampled_tensor.begin() + static_cast<std::ptrdiff_t>(b * single_sample_size));
-  }
-  input_data_map["initial_noise"] = std::move(sampled_tensor);
+  input_data_map["initial_noise"] = create_initial_noise(params_.noise_scale_list);
 
   return input_data_map;
 }
 
 rclcpp::Time MLPlannerCore::frame_time() const
 {
-  return rclcpp::Time(ego_history_.back().header.stamp);
+  return rclcpp::Time(odometry_->header.stamp);
 }
 
 InferenceResult MLPlannerCore::run_inference(const TensorMap & input_data_map)
@@ -361,9 +299,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const UUID & generator_uuid, const double current_steering_angle_rad,
   const double current_acceleration_mps2)
 {
-  // Derive the frame state from the raw message buffers
-  const Odometry & kinematic_state = ego_history_.back();
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(kinematic_state.pose.pose);
+  const Odometry & kinematic_state = *odometry_;
 
   const auto & raw_predictions = inference_output.trajectory;
   const auto & turn_indicator_logits = inference_output.turn_indicator_logits;
@@ -378,8 +314,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
     inference_output.is_denormalized ? raw_predictions
                                      : postprocess::denormalize_prediction(raw_predictions);
 
-  const auto agent_poses =
-    postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
+  const auto agent_poses = postprocess::parse_predictions(denormalized_predictions, ego_to_map_);
 
   PlannerOutput output;
   // Trajectory and CandidateTrajectories
@@ -505,25 +440,71 @@ PlannerOutput MLPlannerCore::create_planner_output(
 autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffic_light_on_route()
   const
 {
-  if (!lane_segment_context_ || !route_ptr_ || ego_history_.empty()) {
-    return autoware_perception_msgs::msg::TrafficLightGroup{};
+  using autoware_perception_msgs::msg::TrafficLightGroup;
+  if (!lane_segment_context_ || !route_ptr_ || !odometry_) {
+    return TrafficLightGroup{};
   }
 
-  const geometry_msgs::msg::Pose & pose_center = ego_history_.back().pose.pose;
+  const geometry_msgs::msg::Pose & pose_center = odometry_->pose.pose;
 
   const double center_x = pose_center.position.x;
   const double center_y = pose_center.position.y;
-  const double center_z = pose_center.position.z;
   const double center_yaw = utils::yaw_from_quaternion(pose_center.orientation);
 
-  const auto traffic_light_id_map = preprocess::create_traffic_signal_map(
-    traffic_signals_history_.msgs(), frame_time(), params_.traffic_light_group_msg_timeout_seconds);
+  struct StampedSignal
+  {
+    TrafficLightGroup signal;
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+  };
+
+  std::map<lanelet::Id, StampedSignal> signals_by_id;
+  const auto anchor_time = frame_time();
+  for (const auto & msg : traffic_signals_history_.msgs()) {
+    const rclcpp::Time msg_time(msg.stamp);
+    if (
+      msg_time > anchor_time ||
+      (anchor_time - msg_time).seconds() > params_.traffic_light_group_msg_timeout_seconds) {
+      continue;
+    }
+    for (const auto & signal : msg.traffic_light_groups) {
+      auto & latest = signals_by_id[signal.traffic_light_group_id];
+      if (latest.signal.elements.empty() || msg_time > latest.stamp) {
+        latest = {signal, msg_time};
+      }
+    }
+  }
 
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(utils::pose_to_matrix4d(pose_center));
 
-  return lane_segment_context_->get_first_traffic_light_on_route(
-    *route_ptr_, map_to_ego_transform, center_x, center_y, center_z, center_yaw,
-    traffic_light_id_map);
+  std::vector<lanelet::Id> preferred_lane_ids;
+  preferred_lane_ids.reserve(route_ptr_->segments.size());
+  for (const auto & segment : route_ptr_->segments) {
+    preferred_lane_ids.push_back(segment.preferred_primitive.id);
+  }
+  const auto segment_indices = lane_segment_context_->select_route_segment_indices(
+    preferred_lane_ids, map_to_ego_transform, center_x, center_y, center_yaw, NUM_SEGMENTS_IN_ROUTE);
+  for (const auto & entry : lane_segment_context_->get_traffic_light_ids(segment_indices)) {
+    const auto traffic_light_id = entry.first;
+    if (traffic_light_id == LaneSegment::TRAFFIC_LIGHT_ID_NONE) {
+      continue;
+    }
+    const auto signal = signals_by_id.find(traffic_light_id);
+    if (signal != signals_by_id.end()) {
+      return signal->second.signal;
+    }
+
+    TrafficLightGroup result;
+    result.traffic_light_group_id = traffic_light_id;
+    using autoware_perception_msgs::msg::TrafficLightElement;
+    TrafficLightElement unknown_element;
+    unknown_element.color = TrafficLightElement::UNKNOWN;
+    unknown_element.shape = TrafficLightElement::UNKNOWN;
+    unknown_element.status = TrafficLightElement::UNKNOWN;
+    unknown_element.confidence = 0.0f;
+    result.elements = {unknown_element};
+    return result;
+  }
+  return TrafficLightGroup{};
 }
 
 int64_t MLPlannerCore::count_valid_elements(

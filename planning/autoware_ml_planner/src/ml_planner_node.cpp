@@ -22,6 +22,7 @@
 #include "autoware/ml_planner/utils/object_remap.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
@@ -31,11 +32,14 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -52,6 +56,25 @@ namespace
 {
 // Ego velocity [m/s] written into the model input while the start service is enabled.
 constexpr float start_service_ego_velocity_mps = 1.0F;
+// Stop accepting periodic inputs after this long without receiving odometry.
+constexpr int64_t odometry_outage_ns = 4'100'000'000;
+constexpr t4scene::Transform3D map_frame_identity{1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+                                                  0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+
+constexpr char traffic_light_timeout_error[] =
+  "traffic_light_group_msg_timeout_seconds must be finite and non-negative";
+
+bool is_valid_traffic_light_timeout(double seconds)
+{
+  return std::isfinite(seconds) && seconds >= 0.0;
+}
+
+std::filesystem::path scene_config_path()
+{
+  return std::filesystem::path{
+           ament_index_cpp::get_package_share_directory("autoware_ml_planner")} /
+         "config/t4scene_online.yaml";
+}
 }  // namespace
 
 MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
@@ -123,6 +146,15 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     }
   }
 
+  ego_shape_.length = vehicle_info_.vehicle_length_m;
+  ego_shape_.width = vehicle_info_.vehicle_width_m;
+  ego_shape_.wheel_base = vehicle_info_.wheel_base_m;
+  ego_shape_.base_link_to_front = vehicle_info_.max_longitudinal_offset_m;
+  ego_shape_.base_link_to_rear_axle = 0.0;
+  scene_builder_ = std::make_unique<t4scene::ros2::generation::SceneBuilder>(scene_config_path());
+  scene_retention_ns_ = scene_builder_->window_retention_ns();
+  subscribe_scene_inputs();
+
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&MLPlanner::on_timer, this));
@@ -170,6 +202,9 @@ void MLPlanner::set_up_params()
     this->declare_parameter<bool>("remap_unsupported_objects_to_pedestrian", false);
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
+  if (!is_valid_traffic_light_timeout(params_.traffic_light_group_msg_timeout_seconds)) {
+    throw std::invalid_argument(traffic_light_timeout_error);
+  }
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
   params_.noise_scale_list = this->declare_parameter<std::vector<double>>("noise_scale", {1.0});
 
@@ -527,8 +562,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   if (new_params.planning_frequency_hz <= 0.0) {
     return failure("planning_frequency_hz must be greater than zero");
   }
-  if (new_params.traffic_light_group_msg_timeout_seconds < 0.0) {
-    return failure("traffic_light_group_msg_timeout_seconds must be non-negative");
+  if (!is_valid_traffic_light_timeout(new_params.traffic_light_group_msg_timeout_seconds)) {
+    return failure(traffic_light_timeout_error);
   }
 #ifndef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (opt.enable) {
@@ -696,6 +731,187 @@ void MLPlanner::publish_debug_markers(
   }
 }
 
+bool MLPlanner::advance_receipt_time(const int64_t received_ns)
+{
+  if (received_ns < latest_receipt_ns_) {
+    return false;
+  }
+  latest_receipt_ns_ = received_ns;
+  return true;
+}
+
+template <typename Msg>
+bool MLPlanner::ingest_periodic(
+  const Msg & msg, const builtin_interfaces::msg::Time & stamp, const int64_t received_ns)
+{
+  if (!advance_receipt_time(received_ns) || stamp.sec < 0 || stamp.nanosec >= 1'000'000'000U) {
+    return false;
+  }
+  const auto stamp_ns = rclcpp::Time(stamp).nanoseconds();
+  const auto odometry_ns = odometry_ ? rclcpp::Time(odometry_->header.stamp).nanoseconds() : 0;
+  const bool advances_odometry =
+    std::is_same_v<Msg, Odometry> && (!odometry_ || stamp_ns > odometry_ns);
+  if (
+    (!advances_odometry && !has_recent_odometry(received_ns)) ||
+    (odometry_ && stamp_ns < odometry_ns - scene_retention_ns_)) {
+    return false;
+  }
+  return scene_builder_->ingest(msg, received_ns);
+}
+
+void MLPlanner::subscribe_scene_inputs()
+{
+  // All callbacks and the planning timer share the node's default mutually exclusive group.
+  sub_current_odometry_ = create_subscription<Odometry>(
+    "~/input/odometry", rclcpp::QoS{1}, [this](Odometry::ConstSharedPtr msg) {
+      const auto received_ns = get_clock()->now().nanoseconds();
+      if (
+        ingest_periodic(*msg, msg->header.stamp, received_ns) &&
+        (!odometry_ || rclcpp::Time(msg->header.stamp) >= rclcpp::Time(odometry_->header.stamp))) {
+        // Keep the latest payload at this stamp. Freshness follows the advancing
+        // measurement clock, so republishing a stale stamp does not renew it.
+        if (!odometry_ || rclcpp::Time(msg->header.stamp) > rclcpp::Time(odometry_->header.stamp)) {
+          odometry_received_ns_ = received_ns;
+        }
+        odometry_ = std::move(msg);
+      }
+    });
+  sub_tracked_objects_ = create_subscription<TrackedObjects>(
+    "~/input/tracked_objects", rclcpp::QoS{1}, [this](TrackedObjects::ConstSharedPtr msg) {
+      const auto received_ns = get_clock()->now().nanoseconds();
+      if (remap_unsupported_objects_to_pedestrian_) {
+        msg = std::make_shared<const TrackedObjects>(
+          utils::remap_unsupported_objects_to_pedestrian(*msg));
+      }
+      if (ingest_periodic(*msg, msg->header.stamp, received_ns)) {
+        tracked_batches_.insert_or_assign(rclcpp::Time(msg->header.stamp).nanoseconds(), msg);
+      }
+    });
+  using TrafficSignals = autoware_perception_msgs::msg::TrafficLightGroupArray;
+  sub_traffic_signals_ = create_subscription<TrafficSignals>(
+    "~/input/traffic_signals", rclcpp::QoS{10}, [this](TrafficSignals::ConstSharedPtr msg) {
+      const auto received_ns = get_clock()->now().nanoseconds();
+      if (ingest_periodic(*msg, msg->stamp, received_ns)) {
+        core_->update_traffic_signal_debug(*msg);
+      }
+    });
+  sub_turn_indicators_ = create_subscription<TurnIndicatorsReport>(
+    "~/input/turn_indicators", rclcpp::QoS{1}, [this](TurnIndicatorsReport::ConstSharedPtr msg) {
+      const auto received_ns = get_clock()->now().nanoseconds();
+      ingest_periodic(*msg, msg->stamp, received_ns);
+    });
+  sub_steering_ = create_subscription<SteeringReport>(
+    "~/input/steering_status", rclcpp::QoS{1}, [this](SteeringReport::ConstSharedPtr msg) {
+      const auto received_ns = get_clock()->now().nanoseconds();
+      ingest_periodic(*msg, msg->stamp, received_ns);
+    });
+  using Acceleration = geometry_msgs::msg::AccelWithCovarianceStamped;
+  sub_acceleration_ = create_subscription<Acceleration>(
+    "~/input/acceleration", rclcpp::QoS{1}, [this](Acceleration::ConstSharedPtr msg) {
+      const auto received_ns = get_clock()->now().nanoseconds();
+      const auto & stamp = msg->header.stamp;
+      if (
+        !advance_receipt_time(received_ns) || !has_recent_odometry(received_ns) || stamp.sec < 0 ||
+        stamp.nanosec >= 1'000'000'000U) {
+        return;
+      }
+      const auto stamp_ns = rclcpp::Time(stamp).nanoseconds();
+      if (
+        stamp_ns < rclcpp::Time(odometry_->header.stamp).nanoseconds() - scene_retention_ns_ ||
+        (newest_acceleration_ns_ && stamp_ns < *newest_acceleration_ns_)) {
+        return;
+      }
+      // The localization acceleration input uses body axes. Keep just the raw longitudinal
+      // component for the optimizer and validate the vector as the Scene generator did.
+      const auto & linear = msg->accel.accel.linear;
+      if (std::isfinite(linear.x) && std::isfinite(linear.y) && std::isfinite(linear.z)) {
+        newest_acceleration_ns_ = stamp_ns;
+        longitudinal_acceleration_ = linear.x;
+      }
+    });
+  sub_route_ = create_subscription<LaneletRoute>(
+    "~/input/route", rclcpp::QoS{1}.transient_local(), [this](LaneletRoute::ConstSharedPtr msg) {
+      const auto received_ns = get_clock()->now().nanoseconds();
+      if (!advance_receipt_time(received_ns)) {
+        return;
+      }
+      scene_builder_->ingest(*msg, received_ns);
+    });
+}
+
+bool MLPlanner::has_recent_odometry(const int64_t received_ns) const
+{
+  // The measurement watermark cannot advance without odometry. Stop gathering
+  // periodic observations during an outage to bound the buffered history.
+  return odometry_ && received_ns >= odometry_received_ns_ &&
+         received_ns - odometry_received_ns_ <= odometry_outage_ns;
+}
+
+void MLPlanner::discard_scene_history()
+{
+  if (!odometry_) {
+    return;
+  }
+  // Keep the watermark on the measurement clock so pausing a replay never
+  // evicts observations needed when measurements begin to advance again.
+  const auto odometry_ns = rclcpp::Time(odometry_->header.stamp).nanoseconds();
+  const auto cutoff_ns = odometry_ns - scene_retention_ns_;
+  scene_builder_->discard_before(cutoff_ns);
+  tracked_batches_.erase(tracked_batches_.begin(), tracked_batches_.lower_bound(cutoff_ns));
+}
+
+tl::expected<MLPlanner::SceneInput, std::string> MLPlanner::build_scene_input(
+  const int64_t received_through_ns)
+{
+  if (!has_recent_odometry(received_through_ns)) {
+    return tl::unexpected(std::string{"Missing required input: ego kinematic state"});
+  }
+  try {
+    const auto anchor_ns = rclcpp::Time(odometry_->header.stamp).nanoseconds();
+    auto window = scene_builder_->build_window_with_route(
+      anchor_ns, {"decision-" + std::to_string(anchor_ns)}, received_through_ns);
+    auto & scene = window.scene;
+    const auto steering_angle = scene.ego && scene.ego->tire_steering_angles
+                                  ? scene.ego->tire_steering_angles->get(scene.current_index)
+                                  : std::nullopt;
+    if (!steering_angle) {
+      return tl::unexpected(std::string{"Missing required input: steering status"});
+    }
+    if (!scene.ego->turn_indicators || !scene.ego->turn_indicators->get(scene.current_index)) {
+      return tl::unexpected(std::string{"Missing required input: turn indicators"});
+    }
+
+    scene.ego->shape = ego_shape_;
+    scene.global_origin_3d = map_frame_identity;
+    scene.map.emplace();
+    scene.map->global_origin_3d = map_frame_identity;
+    scene.map->lanelet_map = lanelet_map_ptr_;
+    scene.map->scope = t4scene::MapScope::Full;
+    scene.map->has_elevation = true;
+
+    const auto tracking_stamp = scene.annotations && scene.annotations->timestamps_ns
+                                  ? scene.annotations->timestamps_ns->get(scene.current_index)
+                                  : std::nullopt;
+    const auto tracked =
+      tracking_stamp ? tracked_batches_.find(*tracking_stamp) : tracked_batches_.end();
+    if (tracked == tracked_batches_.end()) {
+      return tl::unexpected(std::string{"Missing required input: tracked objects"});
+    }
+
+    if (!window.active_route) {
+      return tl::unexpected(std::string{"Missing required input: route"});
+    }
+    auto input_data =
+      core_->create_input_data(scene, odometry_, *tracked->second, std::move(window.active_route));
+    if (!input_data) {
+      return tl::unexpected(std::move(input_data.error()));
+    }
+    return SceneInput{std::move(input_data.value()), *steering_angle};
+  } catch (const std::exception & error) {
+    return tl::unexpected(std::string{error.what()});
+  }
+}
+
 void MLPlanner::on_timer()
 {
   // Timer callback function
@@ -704,6 +920,10 @@ void MLPlanner::on_timer()
   stop_watch_ptr_->tic("processing_time");
 
   const rclcpp::Time current_time(get_clock()->now());
+  if (!advance_receipt_time(current_time.nanoseconds())) {
+    return;
+  }
+  discard_scene_history();
 
   diagnostics_inference_->clear();
   fill_model_key_values();
@@ -727,49 +947,19 @@ void MLPlanner::on_timer()
     return;
   }
 
-  // Take data from subscribers
-  auto objects = sub_tracked_objects_.take_data();
-  if (remap_unsupported_objects_to_pedestrian_) {
-    // Rewrite here, before the messages reach the core buffers, so that the preprocessing
-    // pipeline sees ordinary PEDESTRIAN objects and needs no knowledge of this feature.
-    objects = utils::remap_unsupported_objects_to_pedestrian(objects);
-  }
-  auto ego_kinematic_state = sub_current_odometry_.take_data();
-  auto traffic_signals = sub_traffic_signals_.take_data();
-  auto temp_route_ptr = route_subscriber_.take_data();
-  auto turn_indicators_ptr = sub_turn_indicators_.take_data();
-  auto steering_reports = sub_steering_.take_data();
-  auto acceleration_ptr = sub_acceleration_.take_data();
-
-  if (traffic_signals.empty()) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-      "no traffic signal received. traffic light info will not be updated");
-  }
-
-  auto buffer_result = core_->update_buffer(
-    ego_kinematic_state, objects, traffic_signals, turn_indicators_ptr, steering_reports,
-    temp_route_ptr);
-  if (!buffer_result) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-      "Failed to update input buffers: %s", buffer_result.error().c_str());
-    diagnostics_inference_->update_level_and_message(DiagnosticStatus::WARN, buffer_result.error());
-    diagnostics_inference_->publish(current_time);
-    return;
-  }
-
-  auto input_data_result = core_->create_input_data(buffer_result.value());
+  const double current_acceleration_mps2 =
+    std::exchange(longitudinal_acceleration_, std::nullopt).value_or(0.0);
+  auto input_data_result = build_scene_input(current_time.nanoseconds());
   if (!input_data_result) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-      "Failed to create input data: %s", input_data_result.error().c_str());
+      "Failed to build ML-Planner inputs from T4Scene: %s", input_data_result.error().c_str());
     diagnostics_inference_->update_level_and_message(
       DiagnosticStatus::WARN, input_data_result.error());
     diagnostics_inference_->publish(current_time);
     return;
   }
-  TensorMap input_data_map = std::move(input_data_result.value());
+  auto input_data_map = std::move(input_data_result->tensors);
   const rclcpp::Time frame_time = core_->frame_time();
 
   if (start_velocity_override_enabled_) {
@@ -795,8 +985,7 @@ void MLPlanner::on_timer()
     }
   }
 
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(core_->ego_pose());
-  publish_debug_markers(input_data_map, ego_to_map_transform, frame_time);
+  publish_debug_markers(input_data_map, core_->ego_to_map(), frame_time);
 
   publish_first_traffic_light_on_route();
 
@@ -844,10 +1033,7 @@ void MLPlanner::on_timer()
   inference_time_msg.data = inference_result->inference_time_ms;
   pub_inference_time_->publish(inference_time_msg);
 
-  const double current_steering_angle_rad = core_->current_steering_angle();
-  const double current_acceleration_mps2 =
-    acceleration_ptr ? acceleration_ptr->accel.accel.linear.x : 0.0;
-
+  const double current_steering_angle_rad = input_data_result->steering_angle_rad;
   PlannerOutput planner_output;
   try {
     planner_output = core_->create_planner_output(

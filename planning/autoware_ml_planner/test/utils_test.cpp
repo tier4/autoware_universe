@@ -14,8 +14,12 @@
 
 #include "autoware/ml_planner/utils/utils.hpp"
 
+#include "autoware/ml_planner/dimensions.hpp"
+#include "autoware/ml_planner/inference/initial_noise.hpp"
+
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -24,6 +28,23 @@
 
 namespace autoware::ml_planner::test
 {
+
+TEST(InitialNoiseTest, FillsEachBatchSampleAtItsOwnScale)
+{
+  const auto noise = create_initial_noise({0.0, 1.0});
+  EXPECT_EQ(noise.dimension(), INITIAL_NOISE_SHAPE.size());
+  auto expected_shape = INITIAL_NOISE_SHAPE;
+  expected_shape.front() = 2;
+  EXPECT_TRUE(std::equal(
+    noise.shape().begin(), noise.shape().end(), expected_shape.begin(), expected_shape.end()));
+  const auto sample_boundary = noise.begin() + noise.size() / 2;
+  EXPECT_TRUE(std::all_of(noise.begin(), sample_boundary, [](float value) {
+    return value == 0.0F && !std::signbit(value);
+  }));
+  EXPECT_TRUE(
+    std::all_of(sample_boundary, noise.end(), [](float value) { return std::isfinite(value); }));
+  EXPECT_TRUE(std::any_of(sample_boundary, noise.end(), [](float value) { return value != 0.0F; }));
+}
 
 class UtilsTest : public ::testing::Test
 {

@@ -36,9 +36,7 @@ namespace
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::Shape;
 
-// Must stay in sync with get_model_label() in src/preprocessing/items/agent.cpp, which decides
-// what the model can represent. object_remap_test.cpp checks the two agree through the public
-// select_current_agents() API.
+// Keep these ROS labels aligned with the classes accepted by T4Scene input preprocessing.
 bool is_supported_label(const uint8_t label)
 {
   switch (label) {

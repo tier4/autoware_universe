@@ -14,9 +14,11 @@
 
 #include "autoware/ml_planner/utils/object_remap.hpp"
 
-#include "autoware/ml_planner/preprocessing/items/agent.hpp"
+#include "autoware/ml_planner/preprocessing/scene_input_builder.hpp"
 
-#include <Eigen/Dense>
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <rclcpp/time.hpp>
+#include <t4scene_generation/generator.hpp>
 
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/shape.hpp>
@@ -24,8 +26,9 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
-#include <deque>
+#include <filesystem>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace autoware::ml_planner::utils::test
@@ -64,17 +67,60 @@ protected:
                                          : object.classification.front().label;
   }
 
-  // Run the fixture object through the preprocessing selection, as the node does after the remap.
-  static std::vector<preprocess::SelectedAgent> select(const TrackedObject & object)
+  // Exercise the same ROS message ingestion and T4Scene feature conversion as the node.
+  static preprocess::SceneInputBuilderResult build_input(const TrackedObject & object)
   {
-    TrackedObjects objects;
-    objects.header.stamp = rclcpp::Time(0, 0, RCL_ROS_TIME);
-    objects.objects.push_back(object);
-    std::deque<TrackedObjects> messages{objects};
+    const auto config =
+      std::filesystem::path{ament_index_cpp::get_package_share_directory("autoware_ml_planner")} /
+      "config/t4scene_online.yaml";
+    t4scene::ros2::generation::SceneBuilder builder(config);
+    constexpr int64_t anchor_ns = 4'000'000'000;
 
-    return preprocess::select_current_agents(
-      preprocess::MessageView<TrackedObjects>(messages), rclcpp::Time(0, 0, RCL_ROS_TIME),
-      Eigen::Matrix4d::Identity(), 10);
+    const auto boundary = [](const double y) {
+      return lanelet::LineString3d(
+        lanelet::utils::getId(), {lanelet::Point3d(lanelet::utils::getId(), 0.0, y, 0.0),
+                                  lanelet::Point3d(lanelet::utils::getId(), 30.0, y, 0.0)});
+    };
+    auto lane = lanelet::Lanelet(lanelet::utils::getId(), boundary(2.0), boundary(-2.0));
+    lane.setAttribute("subtype", "road");
+    auto map = std::make_shared<lanelet::LaneletMap>();
+    map->add(lane);
+
+    nav_msgs::msg::Odometry odometry;
+    odometry.header.frame_id = "map";
+    odometry.header.stamp = rclcpp::Time(anchor_ns);
+    odometry.child_frame_id = "base_link";
+    odometry.pose.pose.orientation.w = 1.0;
+    autoware_planning_msgs::msg::LaneletRoute route;
+    route.header = odometry.header;
+    route.start_pose.orientation.w = 1.0;
+    route.goal_pose.orientation.w = 1.0;
+    route.goal_pose.position.x = 20.0;
+    auto & segment = route.segments.emplace_back();
+    segment.preferred_primitive.id = lane.id();
+    segment.primitives.push_back(segment.preferred_primitive);
+    TrackedObjects objects;
+    objects.header = odometry.header;
+    objects.objects.push_back(object);
+    if (
+      !builder.ingest(odometry, anchor_ns) || !builder.ingest(route, anchor_ns) ||
+      !builder.ingest(objects, anchor_ns)) {
+      return tl::unexpected(std::string("T4Scene rejected a test observation"));
+    }
+
+    auto scene = builder.build_window(anchor_ns, {"object-remap"}, anchor_ns);
+    constexpr t4scene::Transform3D identity{1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+                                            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+    scene.global_origin_3d = identity;
+    scene.map.emplace();
+    scene.map->global_origin_3d = identity;
+    scene.map->lanelet_map = map;
+    scene.ego->shape.emplace();
+    scene.ego->shape->base_link_to_front = 3.5;
+    scene.ego->shape->length = 4.5;
+    scene.ego->shape->width = 2.0;
+    scene.ego->shape->wheel_base = 2.8;
+    return preprocess::build_scene_input(scene, *preprocess::build_map_context(map));
   }
 
   TrackedObject object_;
@@ -194,23 +240,22 @@ TEST_F(ObjectRemapTest, BatchOverloadKeepsPointersWhenNothingToRemap)
   EXPECT_EQ(label_of(unsupported->objects.front()), ObjectClassification::UNKNOWN);
 }
 
-// Guards the label list duplicated in object_remap.cpp against get_model_label() in
-// preprocessing/items/agent.cpp: an unsupported object is dropped by the preprocessing, and the
-// remapped one must survive it.
 TEST_F(ObjectRemapTest, RemappedObjectSurvivesPreprocessingSelection)
 {
   set_label(ObjectClassification::UNKNOWN);
   object_.shape.type = Shape::POLYGON;
 
-  EXPECT_TRUE(select(object_).empty());
+  const auto original = build_input(object_);
+  ASSERT_TRUE(original.has_value()) << original.error();
+  EXPECT_TRUE(original->selected_track_ids.empty());
 
-  const auto agents = select(remap_unsupported_to_pedestrian(object_));
-
-  ASSERT_EQ(agents.size(), 1u);
-  const auto labels = preprocess::create_agent_label(agents, 10);
-  EXPECT_FLOAT_EQ(labels(0, preprocess::AgentLabel::PEDESTRIAN), 1.0F);
-  EXPECT_FLOAT_EQ(labels(0, preprocess::AgentLabel::VEHICLE), 0.0F);
-  EXPECT_FLOAT_EQ(labels(0, preprocess::AgentLabel::BICYCLE), 0.0F);
+  const auto remapped = build_input(remap_unsupported_to_pedestrian(object_));
+  ASSERT_TRUE(remapped.has_value()) << remapped.error();
+  ASSERT_EQ(remapped->selected_track_ids.size(), 1u);
+  const auto & labels = remapped->tensors.at("agent_label");
+  EXPECT_FLOAT_EQ(labels(0, 0), 0.0F);  // Vehicle
+  EXPECT_FLOAT_EQ(labels(0, 1), 1.0F);  // Pedestrian
+  EXPECT_FLOAT_EQ(labels(0, 2), 0.0F);  // Bicycle
 }
 
 TEST_F(ObjectRemapTest, SupportedLabelsAreAllSelectableWithoutRemap)
@@ -222,9 +267,11 @@ TEST_F(ObjectRemapTest, SupportedLabelsAreAllSelectableWithoutRemap)
     set_label(label);
 
     EXPECT_FALSE(is_unsupported_obstacle_label(label)) << "label " << static_cast<int>(label);
-    EXPECT_EQ(select(object_).size(), 1u)
+    const auto result = build_input(object_);
+    ASSERT_TRUE(result.has_value()) << result.error();
+    EXPECT_EQ(result->selected_track_ids.size(), 1u)
       << "label " << static_cast<int>(label) << " is not selectable, so the supported-label list "
-      << "in object_remap.cpp disagrees with get_model_label()";
+      << "in object_remap.cpp disagrees with T4Scene input preprocessing";
   }
 }
 
