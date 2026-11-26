@@ -24,12 +24,16 @@ namespace autoware::ml_planner::optimization
 
 /// One sample of the smoothed solution. Index 0 is the ego sample; indices 1..N are the horizon.
 /// ``steering_rad`` is the solved steering angle, the source of the curvature.
+/// ``speed_mps`` is the speed the model wanted at this station. The retime accelerates or
+/// brakes from the measured ego speed toward this value, and never uses it as a ceiling
+/// equal to the current ego speed.
 struct PoseSample
 {
   double x{0.0};
   double y{0.0};
   double yaw{0.0};
   double steering_rad{0.0};
+  double speed_mps{0.0};
 };
 
 /**
@@ -56,12 +60,14 @@ struct ResampledSequence
  * Curvature at each sample is the bicycle curvature of the solved steering angle,
  * ``tan(steering_rad) / wheelbase``. Heading differences are not used: the smoothing
  * solve already produced a steering profile, and the raw model output's steering is
- * not what this function sees. The speed cap at a station is
- * ``sqrt(a_lat_max / |kappa|)``. The profile brakes or accelerates toward
- * ``min(cap, ego_speed)`` inside ``[min_acceleration, max_acceleration]`` and never
- * goes faster than ``ego_speed_mps``.
+ * not what this function sees. The curvature speed cap at a station is
+ * ``sqrt(a_lat_max / |kappa|)``. The profile starts at ``ego_speed_mps`` and brakes or
+ * accelerates toward ``min(cap, speed_mps)`` inside ``[min_acceleration, max_acceleration]``.
+ * ``speed_mps`` is interpolated along the polyline, so a model that is speeding up stays
+ * a speeding-up reference instead of being frozen at the current ego speed.
  *
  * @param poses ``opt_horizon + 1`` samples of the smoothed solution. Index 0 is ego.
+ *        ``speed_mps`` on each sample is the desired speed at that station [m/s].
  * @param ego_speed_mps Measured speed at index 0 [m/s].
  * @param lateral_accel_limit_mps2 Lateral-acceleration cap used for the speed limit [m/s^2].
  * @param wheelbase_m Wheelbase used to turn steering into curvature [m].

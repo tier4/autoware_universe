@@ -90,24 +90,26 @@ ResampledSequence resample_pose_sequence(
   std::array<double, opt_horizon + 1> yaw = unwrap_yaw(poses);
   std::array<double, opt_horizon + 1> x{};
   std::array<double, opt_horizon + 1> y{};
+  std::array<double, opt_horizon + 1> desired_speed{};
   for (size_t index = 0; index < poses.size(); ++index) {
     x[index] = poses[index].x;
     y[index] = poses[index].y;
+    desired_speed[index] = std::max(0.0, poses[index].speed_mps);
     if (index > 0) {
       arc[index] = arc[index - 1] + std::hypot(x[index] - x[index - 1], y[index] - y[index - 1]);
     }
   }
   const auto curvature = curvature_from_steering(poses, wheelbase_m);
   const double arc_end = arc.back();
-  const double speed_ceiling = std::max(0.0, ego_speed_mps);
+  const double speed0 = std::max(0.0, ego_speed_mps);
 
   ResampledSequence output;
   output.curvature_inv_m = curvature;
   output.poses[0] = poses[0];
   output.poses[0].yaw = yaw[0];
-  output.speed_mps[0] = speed_ceiling;
+  output.speed_mps[0] = speed0;
 
-  double speed = speed_ceiling;
+  double speed = speed0;
   double distance = 0.0;
   for (size_t step = 0; step < opt_horizon; ++step) {
     const double kappa = interpolate(arc, curvature, distance);
@@ -115,7 +117,7 @@ ResampledSequence resample_pose_sequence(
     if (std::abs(kappa) > curvature_epsilon_inv_m) {
       speed_cap = std::sqrt(std::max(lateral_accel_limit_mps2, 0.0) / std::abs(kappa));
     }
-    const double target = std::min(speed_cap, speed_ceiling);
+    const double target = std::min(speed_cap, interpolate(arc, desired_speed, distance));
     const double acceleration =
       std::clamp((target - speed) / opt_dt_s, min_acceleration_mps2, max_acceleration_mps2);
     speed = std::max(0.0, speed + acceleration * opt_dt_s);

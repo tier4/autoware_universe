@@ -30,7 +30,7 @@ std::array<PoseSample, opt_horizon + 1> straight()
 {
   std::array<PoseSample, opt_horizon + 1> poses{};
   for (size_t index = 0; index < poses.size(); ++index) {
-    poses[index] = {kStep * static_cast<double>(index), 0.0, 0.0};
+    poses[index] = {kStep * static_cast<double>(index), 0.0, 0.0, 0.0, kSpeed};
   }
   return poses;
 }
@@ -43,7 +43,7 @@ std::array<PoseSample, opt_horizon + 1> circle(const double radius_m, const doub
   double y = 0.0;
   double yaw = 0.0;
   for (size_t index = 0; index < poses.size(); ++index) {
-    poses[index] = {x, y, yaw, steering};
+    poses[index] = {x, y, yaw, steering, kSpeed};
     yaw += sign * kStep / radius_m;
     x += kStep * std::cos(yaw);
     y += kStep * std::sin(yaw);
@@ -89,6 +89,43 @@ TEST(ReferenceResample, CurvatureFollowsSteeringNotYaw)
   EXPECT_NEAR(from_yaw.speed_mps.back(), kSpeed, 0.05);
   EXPECT_LT(from_steer.speed_mps.back(), 6.2);
   EXPECT_NEAR(from_steer.curvature_inv_m[40], std::tan(steering) / kWheelbase, 1.0e-9);
+}
+
+TEST(ReferenceResample, StoppedEgoStillAcceleratesTowardTheModelSpeed)
+{
+  auto poses = straight();
+  for (auto & pose : poses) {
+    pose.speed_mps = 8.0;
+  }
+  const auto resampled = resample_pose_sequence(poses, 0.0, 0.35, kWheelbase, -4.0, 3.0);
+  EXPECT_GT(resampled.speed_mps[10], 2.5);
+  EXPECT_NEAR(resampled.speed_mps.back(), 8.0, 0.05);
+}
+
+TEST(ReferenceResample, AcceleratesTowardTheModelSpeed)
+{
+  auto poses = straight();
+  constexpr double kTarget = 10.0;
+  for (auto & pose : poses) {
+    pose.speed_mps = kTarget;
+  }
+  constexpr double kEgo = 2.0;
+  constexpr double kMaxAccel = 3.0;
+  const auto resampled = resample_pose_sequence(poses, kEgo, 0.35, kWheelbase, -4.0, kMaxAccel);
+  EXPECT_NEAR(resampled.speed_mps[10], kEgo + kMaxAccel * 1.0, 0.05);
+  EXPECT_NEAR(resampled.speed_mps.back(), kTarget, 0.05);
+  EXPECT_GT(resampled.poses.back().x, kEgo * opt_dt_s * static_cast<double>(opt_horizon));
+}
+
+TEST(ReferenceResample, CurvatureCapStillLimitsAnAcceleratingProfile)
+{
+  auto poses = circle(100.0, 1.0);
+  for (auto & pose : poses) {
+    pose.speed_mps = 30.0;
+  }
+  const auto resampled = resample_pose_sequence(poses, 2.0, 0.35, kWheelbase, -4.0, 3.0);
+  EXPECT_LT(resampled.speed_mps.back(), 6.2);
+  EXPECT_GT(resampled.speed_mps.back(), 5.4);
 }
 
 }  // namespace autoware::ml_planner::optimization

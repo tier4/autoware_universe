@@ -346,6 +346,11 @@ std::optional<TrajectoryOptimizer::ResampledTracking> TrajectoryOptimizer::smoot
     poses[index].y = smooth.states[index][kY] + base_y;
     poses[index].yaw = smooth.states[index][kPsi];
     poses[index].steering_rad = smooth.states[index][kDelta];
+    // Station 0 uses the first model speed as well. Copying the measured ego speed
+    // there makes a stopped ego target 0 at distance 0, so the integrator never
+    // advances and never sees the acceleration the model asked for further along.
+    const size_t point_index = index == 0 ? 0 : index - 1;
+    poses[index].speed_mps = raw_trajectory.points[point_index].longitudinal_velocity_mps;
   }
   const ResampledSequence resampled = resample_pose_sequence(
     poses, initial_state[kV], configured_bound, wheelbase_m_, params_.min_acceleration_mps2,
