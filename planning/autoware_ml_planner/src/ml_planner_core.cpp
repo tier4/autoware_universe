@@ -36,6 +36,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -44,6 +45,26 @@ namespace autoware::ml_planner
 {
 namespace
 {
+// autoware_internal_msgs before 1.14.0 has no CandidateTrajectory.turn_indicators_command (pilot-auto.xx1 v0.53, the
+// jpntaxi stack, pins 1856e5b); the command still goes out on the standalone turn indicator topic, which is what that
+// stack reads (/planning/turn_indicators_cmd).
+template <typename Msg, typename = void>
+struct HasTurnIndicatorsCommand : std::false_type
+{
+};
+template <typename Msg>
+struct HasTurnIndicatorsCommand<Msg, std::void_t<decltype(std::declval<Msg &>().turn_indicators_command)>>
+: std::true_type
+{
+};
+template <typename Msg, typename Command>
+void set_turn_indicators_command(Msg & msg, const Command & command)
+{
+  if constexpr (HasTurnIndicatorsCommand<Msg>::value) {
+    msg.turn_indicators_command = command;
+  }
+}
+
 #ifdef AUTOWARE_ML_PLANNER_USE_ACADOS
 bool optimization_params_changed(
   const optimization::TrajectoryOptimizationParams & lhs,
@@ -480,7 +501,7 @@ PlannerOutput MLPlannerCore::create_planner_output(
     candidate_trajectory.header = trajectory.header;
     candidate_trajectory.generator_id = generator_uuid;
     candidate_trajectory.points = trajectory.points;
-    candidate_trajectory.turn_indicators_command = turn_indicators_command;
+    set_turn_indicators_command(candidate_trajectory, turn_indicators_command);
 
     std_msgs::msg::String generator_name_msg;
     generator_name_msg.data = std::string("MLPlanner_batch_") + std::to_string(i);
