@@ -473,9 +473,36 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
 
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(utils::pose_to_matrix4d(pose_center));
 
-  return lane_segment_context_->get_first_traffic_light_on_route(
-    *route_ptr_, map_to_ego_transform, center_x, center_y, center_z, center_yaw,
-    traffic_light_id_map);
+  std::vector<lanelet::Id> preferred_lane_ids;
+  preferred_lane_ids.reserve(route_ptr_->segments.size());
+  for (const auto & segment : route_ptr_->segments) {
+    preferred_lane_ids.push_back(segment.preferred_primitive.id);
+  }
+  const auto segment_indices = lane_segment_context_->select_route_segment_indices(
+    preferred_lane_ids, map_to_ego_transform, center_x, center_y, center_z, center_yaw,
+    NUM_SEGMENTS_IN_ROUTE);
+  for (const auto & entry : lane_segment_context_->get_traffic_light_ids(segment_indices)) {
+    const auto traffic_light_id = entry.first;
+    if (traffic_light_id == LaneSegment::TRAFFIC_LIGHT_ID_NONE) {
+      continue;
+    }
+    const auto signal = traffic_light_id_map.find(traffic_light_id);
+    if (signal != traffic_light_id_map.end()) {
+      return signal->second.signal;
+    }
+
+    autoware_perception_msgs::msg::TrafficLightGroup result;
+    result.traffic_light_group_id = traffic_light_id;
+    using autoware_perception_msgs::msg::TrafficLightElement;
+    TrafficLightElement unknown_element;
+    unknown_element.color = TrafficLightElement::UNKNOWN;
+    unknown_element.shape = TrafficLightElement::UNKNOWN;
+    unknown_element.status = TrafficLightElement::UNKNOWN;
+    unknown_element.confidence = 0.0f;
+    result.elements = {unknown_element};
+    return result;
+  }
+  return autoware_perception_msgs::msg::TrafficLightGroup{};
 }
 
 int64_t MLPlannerCore::count_valid_elements(

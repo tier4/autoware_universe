@@ -21,7 +21,7 @@ It is implemented as a ROS 2 component node, making it easy to integrate into Au
 ### (1) Prerequisites
 
 The node uses the official T4Scene generator to build decision windows from ROS topics.
-The [shared preprocessing library](../autoware_ml_planner_preprocessing/README.md) converts each window to model input tensors. Build the workspace with the pinned [T4Scene dependency](t4scene.repos).
+The [shared T4Scene adapter](https://github.com/tier4/T4Scene/tree/21edcd3d995ad74d5dcf21d55bf8970d0bc94b5f/extensions/ml_planner) converts each window to model input tensors. Build the workspace with the pinned [T4Scene dependency](t4scene.repos).
 
 Configure `model.base_model_directory` and `model.onnx_model_filename` in `config/ml_planner.param.yaml` to point to the deployed model.
 Place its `metadata.json` in the same directory as the ONNX file. This component expects model major version 7.

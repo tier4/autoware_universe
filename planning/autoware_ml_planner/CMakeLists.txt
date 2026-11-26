@@ -80,7 +80,7 @@ target_include_directories(autoware_ml_planner_component PUBLIC
 target_link_libraries(autoware_ml_planner_component
   ${CUDA_LIBRARIES}
   ${ML_PLANNER_CUBLAS_LIBRARIES}
-  autoware_ml_planner_preprocessing::autoware_ml_planner_preprocessing
+  t4scene::ml_planner
   MLPlanner::nvinfer
   MLPlanner::nvonnxparser
   OpenSSL::Crypto
@@ -130,10 +130,7 @@ autoware_agnocast_wrapper_register_node(autoware_ml_planner_component
 
 if(BUILD_TESTING)
   set(ML_PLANNER_TEST_SOURCES
-    test/lane_segment_split_test.cpp
-    test/lanelet_edge_case_test.cpp
     test/lanelet_integration_test.cpp
-    test/lanelet_test.cpp
     test/marker_utils_test.cpp
     test/model_metadata_test.cpp
     test/object_remap_test.cpp
@@ -141,11 +138,7 @@ if(BUILD_TESTING)
     test/planning_factor_utils_test.cpp
     test/postprocessing_utils_test.cpp
     test/postprocessing_utils_edge_case_test.cpp
-    test/map_level_selection_test.cpp
     test/road_border_avoidance_test.cpp
-    test/road_border_split_test.cpp
-    test/route_segment_selection_test.cpp
-    test/route_waypoints_test.cpp
     test/turn_indicator_hold_test.cpp
     test/utils_test.cpp
   )

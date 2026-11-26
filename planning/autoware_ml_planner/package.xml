@@ -25,7 +25,6 @@
   <depend>autoware_lanelet2_extension</depend>
   <depend>autoware_lanelet2_utils</depend>
   <depend>autoware_map_msgs</depend>
-  <depend>autoware_ml_planner_preprocessing</depend>
   <depend>autoware_motion_utils</depend>
   <depend>autoware_object_recognition_utils</depend>
   <depend>autoware_perception_msgs</depend>
@@ -55,6 +54,7 @@
   <depend>std_srvs</depend>
   <depend>t4scene</depend>
   <depend>t4scene_generation</depend>
+  <depend>t4scene_ml_planner</depend>
   <depend>visualization_msgs</depend>
   <depend>xtensor</depend>
 
