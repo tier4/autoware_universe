@@ -25,6 +25,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -83,6 +84,36 @@ public:
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
 private:
+  /// Geometry pass plus kinematic resample. Empty when the geometry pass fails.
+  struct GuardedReference
+  {
+    Trajectory trajectory;
+    double geometry_solve_time_ms{0.0};
+  };
+
+  /// Copy the stored solution into the current ego frame when it is still fresh.
+  std::optional<SolverSolution> extract_previous_solution(
+    size_t batch_index, const rclcpp::Time & stamp, double base_x, double base_y) const;
+
+  std::optional<SolverSolution> solve_geometry_pass(
+    const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
+    double base_x, double base_y, size_t batch_index);
+
+  Trajectory resample_under_lateral_acceleration(
+    const Trajectory & raw_trajectory, const SolverSolution & geometry,
+    const std::array<double, opt_nx> & initial_state, double base_x, double base_y) const;
+
+  /**
+   * @brief Geometry pass, then resample the polyline under ``a_lat``.
+   *
+   * Does not update the goal latch or the stored warm start. The returned trajectory is
+   * the tracking reference of the second solve. ``geometry_solve_time_ms`` is written even
+   * when the geometry pass fails.
+   */
+  std::optional<GuardedReference> build_laterally_guarded_reference(
+    const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
+    double base_x, double base_y, size_t batch_index, double & geometry_solve_time_ms);
+
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;
   double max_steering_angle_rad_;

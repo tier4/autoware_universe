@@ -230,6 +230,17 @@
               "minimum": 1,
               "description": "Maximum SQP iterations per solve"
             },
+            "lateral_acceleration_guard": {
+              "type": "boolean",
+              "default": false,
+              "description": "Set true when max_lateral_acceleration_mps2 is small enough to bind. Runs a second optimizer pass and a resample (more compute). false is the original single solve."
+            },
+            "lateral_acceleration_guard_min_speed_mps": {
+              "type": "number",
+              "default": 3.0,
+              "minimum": 0.0,
+              "description": "Do not run the guard or apply the curvature speed cap while trajectory speed is below this [m/s]"
+            },
             "temporal_consistency": {
               "type": "object",
               "description": "Weakly tracks the previous cycle's own plan, shifted by the elapsed interval, so consecutive outputs stay coherent. Keep the weights clearly below the tracking weights; at comparable magnitude the term becomes a memory that stops the planner reacting to new model output",

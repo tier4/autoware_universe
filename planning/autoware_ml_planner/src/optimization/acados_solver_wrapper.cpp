@@ -183,6 +183,23 @@ AcadosSolverWrapper::AcadosSolverWrapper(
   ocp_nlp_solver_opts_set(impl_->config, impl_->opts, "max_iter", &max_iter);
 }
 
+void AcadosSolverWrapper::set_max_lateral_acceleration(const double max_lateral_acceleration_mps2)
+{
+  std::array<double, 1> lh{-max_lateral_acceleration_mps2};
+  std::array<double, 1> uh{max_lateral_acceleration_mps2};
+  for (size_t stage = 0; stage < gen_n; ++stage) {
+    const int path_constraints = ocp_nlp_dims_get_from_attr(
+      impl_->config, impl_->dims, impl_->out, static_cast<int>(stage), "nh");
+    if (path_constraints <= 0) {
+      continue;
+    }
+    ocp_nlp_constraints_model_set(
+      impl_->config, impl_->dims, impl_->in, impl_->out, static_cast<int>(stage), "lh", lh.data());
+    ocp_nlp_constraints_model_set(
+      impl_->config, impl_->dims, impl_->in, impl_->out, static_cast<int>(stage), "uh", uh.data());
+  }
+}
+
 AcadosSolverWrapper::~AcadosSolverWrapper()
 {
   if (impl_ && impl_->capsule) {
@@ -364,7 +381,8 @@ SolverSolution AcadosSolverWrapper::solve(
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "yref", yref_e.data());
 
-  // Initial guess: previous solution shifted by one stage, or the initial state.
+  // Previous-cycle warm start: this cycle's stage k is last cycle's stage k+1. Without it
+  // the nodes sit at the measured initial state.
   for (size_t stage = 0; stage <= gen_n; ++stage) {
     std::array<double, gen_nx> x_guess = x0;
     if (warm_start != nullptr) {

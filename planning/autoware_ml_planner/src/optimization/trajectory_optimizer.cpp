@@ -14,6 +14,8 @@
 
 #include "autoware/ml_planner/optimization/trajectory_optimizer.hpp"
 
+#include "autoware/ml_planner/optimization/lateral_acceleration_guard.hpp"
+
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/normalization.hpp>
 
@@ -40,6 +42,41 @@ double yaw_from_quaternion(const geometry_msgs::msg::Quaternion & q)
 {
   return std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
 }
+
+std::array<StageReference, opt_horizon> stage_references(
+  const Trajectory & trajectory, const double base_x, const double base_y, const double yaw0)
+{
+  std::array<StageReference, opt_horizon> references;
+  double previous_yaw = yaw0;
+  for (size_t k = 0; k < opt_horizon; ++k) {
+    const auto & point = trajectory.points[k];
+    StageReference & ref = references[k];
+    ref.x = point.pose.position.x - base_x;
+    ref.y = point.pose.position.y - base_y;
+    const double raw_yaw = yaw_from_quaternion(point.pose.orientation);
+    ref.yaw = previous_yaw + autoware_utils::normalize_radian(raw_yaw - previous_yaw);
+    previous_yaw = ref.yaw;
+  }
+  return references;
+}
+
+/// Restores the configured ``a_lat`` bound when the geometry pass returns.
+class RestoreLateralBound
+{
+public:
+  RestoreLateralBound(AcadosSolverWrapper & solver, const double restore_mps2)
+  : solver_(solver), restore_mps2_(restore_mps2)
+  {
+  }
+  ~RestoreLateralBound() { solver_.set_max_lateral_acceleration(restore_mps2_); }
+
+private:
+  AcadosSolverWrapper & solver_;
+  double restore_mps2_;
+};
+
+/// Large enough that |v^2 κ| never hits it. Used only to turn the bound off.
+constexpr double unrestricted_lateral_acceleration_mps2 = 1.0e6;
 }  // namespace
 
 TrajectoryOptimizer::TrajectoryOptimizer(
@@ -83,19 +120,25 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0, a0};
 
-  // References for stages 1..N from the raw 80-point sequence (t = k * 0.1 s).
-  // Yaw is unwrapped so the reference stays continuous across the +-pi boundary.
-  std::array<StageReference, opt_horizon> references;
-  double previous_yaw = yaw0;
-  for (size_t k = 0; k < opt_horizon; ++k) {
-    const auto & point = raw_trajectory.points[k];
-    StageReference & ref = references[k];
-    ref.x = point.pose.position.x - base_x;
-    ref.y = point.pose.position.y - base_y;
-    const double raw_yaw = yaw_from_quaternion(point.pose.orientation);
-    ref.yaw = previous_yaw + autoware_utils::normalize_radian(raw_yaw - previous_yaw);
-    previous_yaw = ref.yaw;
+  Trajectory tracking_trajectory = raw_trajectory;
+  double geometry_solve_time_ms = 0.0;
+  const bool trajectory_fast_enough_to_filter = std::any_of(
+    raw_trajectory.points.begin(), raw_trajectory.points.end(), [&](const TrajectoryPoint & point) {
+      return std::abs(static_cast<double>(point.longitudinal_velocity_mps)) >=
+             params_.lateral_acceleration_guard_min_speed_mps;
+    });
+  if (params_.lateral_acceleration_guard && trajectory_fast_enough_to_filter) {
+    if (
+      auto prepared = build_laterally_guarded_reference(
+        raw_trajectory, initial_state, base_x, base_y, batch_index, geometry_solve_time_ms)) {
+      tracking_trajectory = std::move(prepared->trajectory);
+    }
   }
+
+  // References for stages 1..N (t = k * 0.1 s). Yaw is unwrapped from the ego heading.
+  std::array<StageReference, opt_horizon> references =
+    stage_references(tracking_trajectory, base_x, base_y, yaw0);
+  const double unwrapped_terminal_yaw = references.back().yaw;
 
   if (goal_pose) {
     const bool goal_position_changed =
@@ -121,7 +164,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
     if (ego_too_far_from_goal) {
       latched_goal_pose_.reset();
     } else {
-      const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
+      const auto & terminal = tracking_trajectory.points[opt_horizon - 1].pose.position;
       const double distance =
         std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
       if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
@@ -138,8 +181,8 @@ OptimizationResult TrajectoryOptimizer::optimize(
     const double raw_goal_yaw = yaw_from_quaternion(goal.orientation);
     references.back().x = goal.position.x - base_x;
     references.back().y = goal.position.y - base_y;
-    references.back().yaw =
-      previous_yaw + autoware_utils::normalize_radian(raw_goal_yaw - previous_yaw);
+    references.back().yaw = unwrapped_terminal_yaw +
+                            autoware_utils::normalize_radian(raw_goal_yaw - unwrapped_terminal_yaw);
     goal_terminal_reference =
       GoalTerminalReference{references.back().x, references.back().y, references.back().yaw, 0.0};
   }
@@ -150,26 +193,15 @@ OptimizationResult TrajectoryOptimizer::optimize(
   const rclcpp::Time stamp(raw_trajectory.header.stamp);
   const bool goal_active = goal_terminal_reference.has_value();
   result.goal_snap_active = goal_active;
-  SolverSolution warm_start;
-  const SolverSolution * warm_start_ptr = nullptr;
-  bool temporal_goal_compatible = true;
   auto & previous = previous_solutions_[batch_index];
-  if (previous.has_value()) {
-    const double age_s = (stamp - previous->stamp).seconds();
-    if (age_s >= 0.0 && age_s <= max_warm_start_age_s) {
-      warm_start = previous->solution;
-      for (auto & state : warm_start.states) {
-        state[0] -= base_x;
-        state[1] -= base_y;
-      }
-      warm_start_ptr = &warm_start;
-      if (previous->goal_active != goal_active) {
-        temporal_goal_compatible = false;
-      }
-    } else {
-      previous.reset();
-    }
+  std::optional<SolverSolution> warm_start =
+    extract_previous_solution(batch_index, stamp, base_x, base_y);
+  if (!warm_start && previous.has_value()) {
+    previous.reset();
   }
+  const SolverSolution * warm_start_ptr = warm_start ? &(*warm_start) : nullptr;
+  const bool temporal_goal_compatible =
+    !(warm_start && previous.has_value() && previous->goal_active != goal_active);
 
   // Temporal consistency reference: the previous plan of this candidate, resampled onto the
   // absolute times of this cycle's stages. Current stage k sits at t_now + k * dt, which in
@@ -191,8 +223,8 @@ OptimizationResult TrajectoryOptimizer::optimize(
       const auto lower = static_cast<size_t>(std::floor(index));
       const size_t upper = std::min(lower + 1, opt_horizon);
       const double ratio = index - static_cast<double>(lower);
-      const auto & from = warm_start.states[lower];
-      const auto & to = warm_start.states[upper];
+      const auto & from = warm_start->states[lower];
+      const auto & to = warm_start->states[upper];
       const auto interpolate = [ratio](const double a, const double b) {
         return a + ratio * (b - a);
       };
@@ -213,7 +245,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
   SolverSolution solution = solver_->solve(
     initial_state, references, goal_terminal_reference, temporal_references_ptr, warm_start_ptr);
   result.solver_status = solution.status;
-  result.solve_time_ms = solution.solve_time_s * 1e3;
+  result.solve_time_ms = solution.solve_time_s * 1e3 + geometry_solve_time_ms;
 
   if (!solution.success()) {
     previous.reset();
@@ -235,7 +267,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
       static_cast<uint32_t>((time_s - point.time_from_start.sec) * 1e9);
     point.pose.position.x = state[0] + base_x;
     point.pose.position.y = state[1] + base_y;
-    point.pose.position.z = raw_trajectory.points[i - 1].pose.position.z;
+    point.pose.position.z = tracking_trajectory.points[i - 1].pose.position.z;
     point.pose.orientation =
       autoware_utils::create_quaternion_from_yaw(autoware_utils::normalize_radian(state[2]));
     point.longitudinal_velocity_mps = static_cast<float>(state[kV]);
@@ -255,6 +287,101 @@ OptimizationResult TrajectoryOptimizer::optimize(
   previous = PreviousSolution{solution, stamp, goal_active};
 
   return result;
+}
+
+std::optional<SolverSolution> TrajectoryOptimizer::extract_previous_solution(
+  const size_t batch_index, const rclcpp::Time & stamp, const double base_x,
+  const double base_y) const
+{
+  const auto & previous = previous_solutions_[batch_index];
+  if (!previous.has_value()) {
+    return std::nullopt;
+  }
+  const double age_s = (stamp - previous->stamp).seconds();
+  if (age_s < 0.0 || age_s > max_warm_start_age_s) {
+    return std::nullopt;
+  }
+  SolverSolution local = previous->solution;
+  for (auto & state : local.states) {
+    state[0] -= base_x;
+    state[1] -= base_y;
+  }
+  return local;
+}
+
+std::optional<SolverSolution> TrajectoryOptimizer::solve_geometry_pass(
+  const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
+  const double base_x, const double base_y, const size_t batch_index)
+{
+  solver_->set_max_lateral_acceleration(unrestricted_lateral_acceleration_mps2);
+  RestoreLateralBound restore_bound(*solver_, params_.max_lateral_acceleration_mps2);
+
+  const std::optional<SolverSolution> previous = extract_previous_solution(
+    batch_index, rclcpp::Time(raw_trajectory.header.stamp), base_x, base_y);
+  const auto references = stage_references(raw_trajectory, base_x, base_y, initial_state[kPsi]);
+  // No goal, no temporal term, no a_lat bound: this pass only has to follow the pose shape.
+  const SolverSolution geometry = solver_->solve(
+    initial_state, references, std::nullopt, nullptr, previous ? &(*previous) : nullptr);
+  if (!geometry.success()) {
+    return std::nullopt;
+  }
+  return geometry;
+}
+
+Trajectory TrajectoryOptimizer::resample_under_lateral_acceleration(
+  const Trajectory & raw_trajectory, const SolverSolution & geometry,
+  const std::array<double, opt_nx> & initial_state, const double base_x, const double base_y) const
+{
+  std::array<PoseSample, opt_horizon + 1> poses{};
+  for (size_t index = 0; index <= opt_horizon; ++index) {
+    poses[index].x = geometry.states[index][kX] + base_x;
+    poses[index].y = geometry.states[index][kY] + base_y;
+    poses[index].yaw = geometry.states[index][kPsi];
+    poses[index].steering_rad = geometry.states[index][kDelta];
+    // Station 0 uses the first model speed as well. Copying the measured ego speed
+    // there makes a stopped ego target 0 at distance 0, so the integrator never
+    // advances and never sees the acceleration the model asked for further along.
+    const size_t point_index = index == 0 ? 0 : index - 1;
+    poses[index].speed_mps = raw_trajectory.points[point_index].longitudinal_velocity_mps;
+  }
+  const ResampledSequence resampled = resample_pose_sequence(
+    poses, initial_state[kV], params_.max_lateral_acceleration_mps2, wheelbase_m_,
+    params_.min_acceleration_mps2, params_.max_acceleration_mps2,
+    params_.lateral_acceleration_guard_min_speed_mps);
+
+  Trajectory trajectory;
+  trajectory.header = raw_trajectory.header;
+  trajectory.points.reserve(opt_horizon);
+  for (size_t index = 1; index <= opt_horizon; ++index) {
+    const PoseSample & pose = resampled.poses[index];
+    TrajectoryPoint point = raw_trajectory.points[index - 1];
+    point.pose.position.x = pose.x;
+    point.pose.position.y = pose.y;
+    point.pose.orientation =
+      autoware_utils::create_quaternion_from_yaw(autoware_utils::normalize_radian(pose.yaw));
+    trajectory.points.push_back(point);
+  }
+  return trajectory;
+}
+
+std::optional<TrajectoryOptimizer::GuardedReference>
+TrajectoryOptimizer::build_laterally_guarded_reference(
+  const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
+  const double base_x, const double base_y, const size_t batch_index,
+  double & geometry_solve_time_ms)
+{
+  geometry_solve_time_ms = 0.0;
+  const auto geometry =
+    solve_geometry_pass(raw_trajectory, initial_state, base_x, base_y, batch_index);
+  if (!geometry) {
+    return std::nullopt;
+  }
+  geometry_solve_time_ms = geometry->solve_time_s * 1e3;
+  GuardedReference prepared;
+  prepared.geometry_solve_time_ms = geometry_solve_time_ms;
+  prepared.trajectory =
+    resample_under_lateral_acceleration(raw_trajectory, *geometry, initial_state, base_x, base_y);
+  return prepared;
 }
 
 }  // namespace autoware::ml_planner::optimization

@@ -223,6 +223,10 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
   opt.max_sqp_iterations =
     this->declare_parameter<int>("trajectory_optimization.max_sqp_iterations", 50);
+  opt.lateral_acceleration_guard =
+    this->declare_parameter<bool>("trajectory_optimization.lateral_acceleration_guard", false);
+  opt.lateral_acceleration_guard_min_speed_mps = this->declare_parameter<double>(
+    "trajectory_optimization.lateral_acceleration_guard_min_speed_mps", 3.0);
   auto & temporal = opt.temporal_consistency;
   temporal.enable =
     this->declare_parameter<bool>("trajectory_optimization.temporal_consistency.enable", false);
@@ -423,6 +427,12 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
     opt.max_lateral_acceleration_mps2);
   update_param<int>(
     parameters, "trajectory_optimization.max_sqp_iterations", opt.max_sqp_iterations);
+  update_param<bool>(
+    parameters, "trajectory_optimization.lateral_acceleration_guard",
+    opt.lateral_acceleration_guard);
+  update_param<double>(
+    parameters, "trajectory_optimization.lateral_acceleration_guard_min_speed_mps",
+    opt.lateral_acceleration_guard_min_speed_mps);
   auto & temporal = opt.temporal_consistency;
   update_param<bool>(
     parameters, "trajectory_optimization.temporal_consistency.enable", temporal.enable);
@@ -570,7 +580,7 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   }
   if (
     opt.max_steering_rate_rps < 0.0 || opt.max_lateral_acceleration_mps2 < 0.0 ||
-    opt.max_sqp_iterations < 1) {
+    opt.lateral_acceleration_guard_min_speed_mps < 0.0 || opt.max_sqp_iterations < 1) {
     return failure("trajectory optimization limits and max_sqp_iterations must be positive");
   }
   {

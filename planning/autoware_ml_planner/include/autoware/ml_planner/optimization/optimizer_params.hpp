@@ -116,6 +116,13 @@ struct TrajectoryOptimizationParams
     /// Fraction of the weight that remains at the far end of the horizon, in [0, 1].
     double far_weight_ratio{0.05};
   } temporal_consistency;
+
+  /// Set true when ``max_lateral_acceleration_mps2`` is small enough to actually bind.
+  /// Runs a second optimizer pass and a resample, so compute time goes up. False is the
+  /// original single solve.
+  bool lateral_acceleration_guard{false};
+  /// Below this trajectory speed the guard does not resample. [m/s]
+  double lateral_acceleration_guard_min_speed_mps{3.0};
 };
 
 }  // namespace autoware::ml_planner::optimization
