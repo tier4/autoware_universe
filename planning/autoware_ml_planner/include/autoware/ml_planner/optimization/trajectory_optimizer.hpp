@@ -91,9 +91,9 @@ private:
     double geometry_solve_time_ms{0.0};
   };
 
-  const SolverSolution * previous_cycle_warm_start(
-    size_t batch_index, const rclcpp::Time & stamp, double base_x, double base_y,
-    SolverSolution & storage) const;
+  /// Copy the stored solution into the current ego frame when it is still fresh.
+  std::optional<SolverSolution> extract_previous_solution(
+    size_t batch_index, const rclcpp::Time & stamp, double base_x, double base_y) const;
 
   std::optional<SolverSolution> solve_geometry_pass(
     const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,

@@ -120,8 +120,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0, a0};
 
-  // A moved route goal drops the latch and every warm start before either solve, matching
-  // the single-pass order. Snap itself is decided later, on the trajectory that is tracked.
+  // A moved route goal drops the latch and every warm start before either solve.
   if (goal_pose) {
     const bool goal_position_changed =
       !observed_goal_pose_ ||
@@ -138,6 +137,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
   }
 
   // Optional lateral-acceleration guard. A failed geometry pass leaves the raw poses.
+  // Snap below uses this endpoint, so the guard has to run first.
   Trajectory tracking_trajectory = raw_trajectory;
   double geometry_solve_time_ms = 0.0;
   if (params_.lateral_acceleration_guard) {
@@ -193,26 +193,15 @@ OptimizationResult TrajectoryOptimizer::optimize(
   const rclcpp::Time stamp(raw_trajectory.header.stamp);
   const bool goal_active = goal_terminal_reference.has_value();
   result.goal_snap_active = goal_active;
-  SolverSolution warm_start;
-  const SolverSolution * warm_start_ptr = nullptr;
-  bool temporal_goal_compatible = true;
   auto & previous = previous_solutions_[batch_index];
-  if (previous.has_value()) {
-    const double age_s = (stamp - previous->stamp).seconds();
-    if (age_s >= 0.0 && age_s <= max_warm_start_age_s) {
-      warm_start = previous->solution;
-      for (auto & state : warm_start.states) {
-        state[0] -= base_x;
-        state[1] -= base_y;
-      }
-      warm_start_ptr = &warm_start;
-      if (previous->goal_active != goal_active) {
-        temporal_goal_compatible = false;
-      }
-    } else {
-      previous.reset();
-    }
+  std::optional<SolverSolution> warm_start =
+    extract_previous_solution(batch_index, stamp, base_x, base_y);
+  if (!warm_start && previous.has_value()) {
+    previous.reset();
   }
+  const SolverSolution * warm_start_ptr = warm_start ? &(*warm_start) : nullptr;
+  const bool temporal_goal_compatible =
+    !(warm_start && previous.has_value() && previous->goal_active != goal_active);
 
   // Temporal consistency reference: the previous plan of this candidate, resampled onto the
   // absolute times of this cycle's stages. Current stage k sits at t_now + k * dt, which in
@@ -234,8 +223,8 @@ OptimizationResult TrajectoryOptimizer::optimize(
       const auto lower = static_cast<size_t>(std::floor(index));
       const size_t upper = std::min(lower + 1, opt_horizon);
       const double ratio = index - static_cast<double>(lower);
-      const auto & from = warm_start.states[lower];
-      const auto & to = warm_start.states[upper];
+      const auto & from = warm_start->states[lower];
+      const auto & to = warm_start->states[upper];
       const auto interpolate = [ratio](const double a, const double b) {
         return a + ratio * (b - a);
       };
@@ -300,24 +289,24 @@ OptimizationResult TrajectoryOptimizer::optimize(
   return result;
 }
 
-const SolverSolution * TrajectoryOptimizer::previous_cycle_warm_start(
-  const size_t batch_index, const rclcpp::Time & stamp, const double base_x, const double base_y,
-  SolverSolution & storage) const
+std::optional<SolverSolution> TrajectoryOptimizer::extract_previous_solution(
+  const size_t batch_index, const rclcpp::Time & stamp, const double base_x, const double base_y)
+  const
 {
   const auto & previous = previous_solutions_[batch_index];
   if (!previous.has_value()) {
-    return nullptr;
+    return std::nullopt;
   }
   const double age_s = (stamp - previous->stamp).seconds();
   if (age_s < 0.0 || age_s > max_warm_start_age_s) {
-    return nullptr;
+    return std::nullopt;
   }
-  storage = previous->solution;
-  for (auto & state : storage.states) {
+  SolverSolution local = previous->solution;
+  for (auto & state : local.states) {
     state[0] -= base_x;
     state[1] -= base_y;
   }
-  return &storage;
+  return local;
 }
 
 std::optional<SolverSolution> TrajectoryOptimizer::solve_geometry_pass(
@@ -327,13 +316,12 @@ std::optional<SolverSolution> TrajectoryOptimizer::solve_geometry_pass(
   solver_->set_max_lateral_acceleration(unrestricted_lateral_acceleration_mps2);
   RestoreLateralBound restore_bound(*solver_, params_.max_lateral_acceleration_mps2);
 
-  SolverSolution warm_start_storage;
-  const SolverSolution * warm_start_ptr = previous_cycle_warm_start(
-    batch_index, rclcpp::Time(raw_trajectory.header.stamp), base_x, base_y, warm_start_storage);
+  const std::optional<SolverSolution> previous = extract_previous_solution(
+    batch_index, rclcpp::Time(raw_trajectory.header.stamp), base_x, base_y);
   const auto references = stage_references(raw_trajectory, base_x, base_y, initial_state[kPsi]);
   // No goal, no temporal term, no a_lat bound: this pass only has to follow the pose shape.
-  const SolverSolution geometry =
-    solver_->solve(initial_state, references, std::nullopt, nullptr, warm_start_ptr);
+  const SolverSolution geometry = solver_->solve(
+    initial_state, references, std::nullopt, nullptr, previous ? &(*previous) : nullptr);
   if (!geometry.success()) {
     return std::nullopt;
   }
