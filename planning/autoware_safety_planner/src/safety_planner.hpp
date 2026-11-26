@@ -73,11 +73,16 @@ private:
   void load_constraint_generator_plugins();
 
   std::map<std::string, ConstraintGeneratorOutput> calculate_constraints(
-    const PlannerContext & context);
+    const PlannerContext & context,
+    const std::vector<std::shared_ptr<ConstraintGeneratorInterface>> & plugins);
 
   using ConstraintGeneratorLoader = pluginlib::ClassLoader<ConstraintGeneratorInterface>;
   //! Must outlive the loaded instances: destroying the loader unloads them
   std::unique_ptr<ConstraintGeneratorLoader> constraint_generator_loader_;
+  //! Evaluated on the reference_path
+  std::vector<std::shared_ptr<ConstraintGeneratorInterface>>
+    path_optimization_constraint_generator_plugins_;
+  //! Evaluated on the optimized path
   std::vector<std::shared_ptr<ConstraintGeneratorInterface>> constraint_generator_plugins_;
 
   /** @* */

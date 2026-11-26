@@ -37,13 +37,18 @@ public:
     const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
     const Params & params) override;
 
+  PathOptimizationResult optimize_path(
+    const PlannerContext & context, const std::vector<Constraint> & constraints,
+    TrajectoryPlannerDebug & debug) override;
+
   TrajectoryPlannerResult plan_trajectories(const TrajectoryPlannerInput & input) override;
 
 private:
   std::pair<PlannedTrajectory, PlanningFactorData> plan_one_side(
     TurnIndicatorDecider & turn_indicator_decider, const PlannerContext & context,
-    const std::vector<Constraint> & constraints, std::optional<Trajectory> & previous_trajectory,
-    std::optional<PathPointTrajectory> & previous_path, TrajectoryPlannerDebug & debug) const;
+    const std::vector<Constraint> & constraints,
+    const std::optional<std::string> & path_optimization_failure,
+    std::optional<Trajectory> & previous_trajectory, TrajectoryPlannerDebug & debug) const;
 
   //! The reference_path shifted along its normal from the ego's offset and heading, so that the
   //! footprint keeps clear of the HARD lateral bounds ahead of the ego and the curvature within the
@@ -59,9 +64,7 @@ private:
   //! Output of the previous cycle, one per side, where the initial acceleration is read from
   std::optional<Trajectory> normal_previous_trajectory_;
   std::optional<Trajectory> cautious_previous_trajectory_;
-  //! The shifted path of the previous cycle, one per side, which the lateral QP is held near
-  std::optional<PathPointTrajectory> normal_previous_path_;
-  std::optional<PathPointTrajectory> cautious_previous_path_;
+  std::optional<PathPointTrajectory> previous_path_;
 };
 
 }  // namespace autoware::safety_planner::experimental
