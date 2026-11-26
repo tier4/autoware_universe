@@ -665,6 +665,7 @@ private:
     rclcpp::Time last_arrival;
     // Perception stamp of the stored measurement. Association uses stamp - last_stamp.
     rclcpp::Time last_stamp;
+    size_t missed_count{0};
     bool is_active{false};
 
     PersistentObstacle(const rclcpp::Time & now, const rclcpp::Time & stamp)

@@ -873,8 +873,7 @@ void ObstacleTracker::update_objects(
           : autoware::object_recognition_utils::getHighestProbLabel(object.classification);
       if (existing_obj_label != obj_label) continue;
       const auto stamp_gap = (stamp - existing_object.last_stamp).seconds();
-      const auto reach = existing_object.is_active ? off_time_buffer_ : grace_period_;
-      if (stamp_gap > reach) continue;
+      if (stamp_gap > off_time_buffer_) continue;
       const auto propagated_pose = get_predicted_object_pose(existing_object.object, stamp_gap, stopped_vel_th_);
       const auto distance = autoware_utils::calc_distance2d(
         object.kinematics.initial_pose_with_covariance.pose.position, propagated_pose.position);
@@ -905,6 +904,7 @@ void ObstacleTracker::update_objects(
       auto & closest_object = persistent_objects_map_.at(closest_uuid.value());
       closest_object.last_arrival = now;
       closest_object.last_stamp = stamp;
+      closest_object.missed_count = 0;
       closest_object.object = object;
       const auto duration = (now - closest_object.first_arrival).seconds();
       closest_object.is_active = duration >= on_time_buffer_;
@@ -914,9 +914,9 @@ void ObstacleTracker::update_objects(
 
   // A returning detection refreshes last_arrival before this check, so the track survives.
   for (auto it = persistent_objects_map_.begin(); it != persistent_objects_map_.end();) {
+    if (is_new_stamp && it->second.last_stamp != stamp) it->second.missed_count++;
     const auto idle_time = (now - it->second.last_arrival).seconds();
-    const bool is_erase =
-      !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
+    const bool is_erase = idle_time > off_time_buffer_ || (!it->second.is_active && it->second.missed_count > 1);
     if (is_erase)
       it = persistent_objects_map_.erase(it);
     else

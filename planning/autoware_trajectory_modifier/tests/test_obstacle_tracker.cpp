@@ -200,17 +200,21 @@ TEST(ObstacleTracker, ReplayedMessageDoesNotConfirm)
   EXPECT_EQ(output.size(), 1U);
 }
 
-TEST(ObstacleTracker, ReplayedMessageAgesOut)
+TEST(ObstacleTracker, ReplayedMessageKeepsUnconfirmedTrack)
 {
   auto tracker = make_tracker();
   TargetObjects output;
   const auto car = make_objects(0.0, 0.0);
   const auto stamp = time_ms(0);
 
+  // A repeated stamp is not a miss and does not refresh arrival time. Idle time stays
+  // under off_time_buffer_, so the unconfirmed track survives. The next stamp is inside
+  // that buffer, and the span from first_arrival reaches on_time_buffer_, so it confirms.
   update(tracker, car, output, stamp, time_ms(0));
   update(tracker, car, output, stamp, time_ms(250));
-  update(tracker, car, output, time_ms(500), time_ms(500));
   EXPECT_TRUE(output.empty());
+  update(tracker, car, output, time_ms(500), time_ms(500));
+  EXPECT_EQ(output.size(), 1U);
 }
 
 TEST(ObstacleTracker, AssociatesAcrossOneSecondStampGap)
@@ -240,9 +244,17 @@ TEST(ObstacleTracker, RejectsMatchWhenStampGapExceedsBuffer)
   TargetObjects output;
   const auto car = make_objects(0.0, 0.0);
 
-  // 0.5 s is past grace_period_, so the unconfirmed track does not match or confirm.
+  // 0.5 s is inside off_time_buffer_, so the unconfirmed track matches. The span from
+  // first_arrival reaches on_time_buffer_, so it confirms.
   update(tracker, car, output, time_ms(0), time_ms(0));
   update(tracker, car, output, time_ms(500), time_ms(500));
+  EXPECT_EQ(output.size(), 1U);
+
+  // 0.8 s is past off_time_buffer_ for an unconfirmed track as well. The old track is not
+  // matched, and the new sighting has not been present long enough to confirm.
+  auto unconfirmed = make_tracker();
+  update(unconfirmed, car, output, time_ms(0), time_ms(0));
+  update(unconfirmed, car, output, time_ms(800), time_ms(800));
   EXPECT_TRUE(output.empty());
 
   // 0.8 s from the last confirmation is past off_time_buffer_.
