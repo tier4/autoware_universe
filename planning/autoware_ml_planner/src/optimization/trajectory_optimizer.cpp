@@ -120,6 +120,21 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0, a0};
 
+  Trajectory tracking_trajectory = raw_trajectory;
+  double geometry_solve_time_ms = 0.0;
+  if (params_.lateral_acceleration_guard) {
+    if (
+      auto prepared = build_laterally_guarded_reference(
+        raw_trajectory, initial_state, base_x, base_y, batch_index, geometry_solve_time_ms)) {
+      tracking_trajectory = std::move(prepared->trajectory);
+    }
+  }
+
+  // References for stages 1..N (t = k * 0.1 s). Yaw is unwrapped from the ego heading.
+  std::array<StageReference, opt_horizon> references =
+    stage_references(tracking_trajectory, base_x, base_y, yaw0);
+  const double unwrapped_terminal_yaw = references.back().yaw;
+
   if (goal_pose) {
     const bool goal_position_changed =
       !observed_goal_pose_ ||
@@ -144,7 +159,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
     if (ego_too_far_from_goal) {
       latched_goal_pose_.reset();
     } else {
-      const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
+      const auto & terminal = tracking_trajectory.points[opt_horizon - 1].pose.position;
       const double distance =
         std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
       if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
@@ -154,21 +169,6 @@ OptimizationResult TrajectoryOptimizer::optimize(
       }
     }
   }
-
-  Trajectory tracking_trajectory = raw_trajectory;
-  double geometry_solve_time_ms = 0.0;
-  if (params_.lateral_acceleration_guard) {
-    if (
-      auto prepared = build_laterally_guarded_reference(
-        raw_trajectory, initial_state, base_x, base_y, batch_index, geometry_solve_time_ms)) {
-      tracking_trajectory = std::move(prepared->trajectory);
-    }
-  }
-
-  // References for stages 1..N (t = k * 0.1 s). Yaw is unwrapped from the ego heading.
-  std::array<StageReference, opt_horizon> references =
-    stage_references(tracking_trajectory, base_x, base_y, yaw0);
-  const double unwrapped_terminal_yaw = references.back().yaw;
 
   std::optional<GoalTerminalReference> goal_terminal_reference;
   if (latched_goal_pose_) {
