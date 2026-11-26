@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_adapter/trajectory_adapter_wrapper.hpp"
 
+#include <memory>
 #include <utility>
 
 namespace autoware::trajectory_adapter
@@ -42,7 +43,9 @@ std::optional<TrajectoryAdapterResult> TrajectoryAdapterWrapper::get_trajectory(
 
   const auto result = adapter_ptr_->process(scored_trajectories);
   if (!result) {
-    RCLCPP_ERROR(logger_, "Failed to get adapted trajectory: %s", result.error().c_str());
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *node_ptr_->get_clock(), 5000, "Failed to get adapted trajectory: %s",
+      result.error().c_str());
     return std::nullopt;
   }
 
