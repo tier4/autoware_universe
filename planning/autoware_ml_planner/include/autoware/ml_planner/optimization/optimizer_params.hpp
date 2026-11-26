@@ -117,17 +117,9 @@ struct TrajectoryOptimizationParams
     double far_weight_ratio{0.05};
   } temporal_consistency;
 
-  /**
-   * @brief Lateral-acceleration guard: geometry pass, kinematic resample, then optimize.
-   *
-   * Weights cannot enforce ``a_lat`` while the optimizer still tracks the same timed points.
-   * This pass first solves the raw poses with no temporal term, no road-border term, and no
-   * lateral-acceleration bound, so curvature can be read from the solved steering. New target
-   * times are then placed on that polyline under ``max_lateral_acceleration_mps2``. The second
-   * solve is the ordinary constrained problem on those points.
-   *
-   * Disabled by default. The extra cost is one SQP solve per candidate.
-   */
+  /// Set true when ``max_lateral_acceleration_mps2`` is small enough to actually bind.
+  /// Runs a second optimizer pass and a resample, so compute time goes up. False is the
+  /// original single solve.
   bool lateral_acceleration_guard{false};
 };
 

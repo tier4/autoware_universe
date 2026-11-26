@@ -40,8 +40,8 @@
       max_steering_rate_rps: 1.0     # [rad/s]
       max_lateral_acceleration_mps2: 3.0  # soft constraint bound [m/s^2]
       max_sqp_iterations: 50
-      # Geometry pass (no a_lat bound), then resample targets under
-      # max_lateral_acceleration_mps2, then the ordinary constrained solve.
+      # Needed when max_lateral_acceleration_mps2 is small enough to bind.
+      # Runs a second optimizer pass and a resample (more compute). false = original single solve.
       lateral_acceleration_guard: false
       temporal_consistency:
         # Track this candidate's own previous plan so consecutive outputs stay coherent.

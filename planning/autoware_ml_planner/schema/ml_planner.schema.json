@@ -233,7 +233,7 @@
             "lateral_acceleration_guard": {
               "type": "boolean",
               "default": false,
-              "description": "Geometry pass with no a_lat bound, then kinematic resample of the target points under max_lateral_acceleration_mps2, then the ordinary constrained solve"
+              "description": "Set true when max_lateral_acceleration_mps2 is small enough to bind. Runs a second optimizer pass and a resample (more compute). false is the original single solve."
             },
             "temporal_consistency": {
               "type": "object",
