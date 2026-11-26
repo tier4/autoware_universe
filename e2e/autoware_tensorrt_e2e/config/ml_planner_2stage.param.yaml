@@ -1,0 +1,7 @@
+# The 2-stage ML-Planner under launch/e2e_planner.launch.xml (model:=mlplanner_2stage): loaded after
+# autoware_ml_planner's own ml_planner.param.yaml, it overrides only where the artifacts are. Every model of
+# e2e_planner.launch.xml takes data_path = its release directory (the stock default adds /ml_planner).
+/**:
+  ros__parameters:
+    model:
+      base_model_directory: $(var data_path)
