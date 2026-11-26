@@ -106,10 +106,9 @@ DepartureType assign_departure_type(
 
 Side<std::optional<DeparturePointPair>> evaluate_projections_severity(
   const Side<ProjectionsToBound> & projections_to_bound,
-  const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state,
-  const vehicle_info_utils::VehicleInfo & vehicle_info)
+  const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state)
 {
-  const auto min_braking_dist = calc_minimum_braking_distance(ego_state, param, vehicle_info);
+  const auto min_braking_dist = calc_minimum_braking_distance(ego_state, param);
 
   return projections_to_bound.transform_each_side(
     [&](const auto & side_value) -> std::optional<DeparturePointPair> {
@@ -164,14 +163,13 @@ double get_min_lateral_distance_to_bound(
 }
 
 double calc_minimum_braking_distance(
-  const EgoDynamicState & ego_state, const UncrossableBoundaryDepartureParam & param,
-  const vehicle_info_utils::VehicleInfo & vehicle_info)
+  const EgoDynamicState & ego_state, const UncrossableBoundaryDepartureParam & param)
 {
   const auto kinematic_stop_dist = motion_utils::calculate_stop_distance(
     ego_state.velocity, ego_state.acceleration, param.max_deceleration_mps2, param.max_jerk_mps3,
     param.brake_delay_s);
 
-  return vehicle_info.front_overhang_m +
+  return param.longitudinal_margin_m +
          (kinematic_stop_dist ? std::max(0.0, *kinematic_stop_dist) : 0.0);
 }
 

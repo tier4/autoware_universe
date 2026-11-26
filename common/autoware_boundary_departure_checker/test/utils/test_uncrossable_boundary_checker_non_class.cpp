@@ -19,7 +19,6 @@
 #include "autoware/boundary_departure_checker/detail/uncrossable_boundaries_rtree.hpp"
 
 #include <autoware/motion_utils/distance/distance.hpp>
-#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <gtest/gtest.h>
 
@@ -357,10 +356,6 @@ TEST(UncrossableBoundaryUtilsTest, TestEvaluateProjectionsSeverityNearBoundary)
 {
   // Verifies that a footprint that stays outside the critical margin is reported as
   // NEAR_BOUNDARY at its closest projection.
-
-  // Arrange:
-  const auto vehicle_info = autoware::vehicle_info_utils::createVehicleInfo(
-    0.383, 0.235, 2.79, 1.64, 1.0, 1.1, 2.5, 0.128, 0.128, 0.70);
 
   UncrossableBoundaryDepartureParam param;
   param.critical_departure_lateral_th_m = 0.01;

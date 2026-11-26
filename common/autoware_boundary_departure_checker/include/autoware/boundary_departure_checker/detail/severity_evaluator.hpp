@@ -58,13 +58,11 @@ DepartureType assign_departure_type(
  * @param[in] projections_to_bound projections for both sides
  * @param[in] param checker parameters
  * @param[in] ego_state current ego dynamic state
- * @param[in] vehicle_info vehicle information
  * @return evaluated critical point pairs for both sides
  */
 Side<std::optional<DeparturePointPair>> evaluate_projections_severity(
   const Side<ProjectionsToBound> & projections_to_bound,
-  const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state,
-  const vehicle_info_utils::VehicleInfo & vehicle_info);
+  const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state);
 
 /**
  * @brief Check if any side has a critical departure.
@@ -92,12 +90,10 @@ double get_min_lateral_distance_to_bound(
  * @brief Calculate minimum braking distance.
  * @param[in] ego_state current ego dynamic state
  * @param[in] param checker parameters
- * @param[in] vehicle_info vehicle information
  * @return minimum braking distance [m]
  */
 double calc_minimum_braking_distance(
-  const EgoDynamicState & ego_state, const UncrossableBoundaryDepartureParam & param,
-  const vehicle_info_utils::VehicleInfo & vehicle_info);
+  const EgoDynamicState & ego_state, const UncrossableBoundaryDepartureParam & param);
 
 }  // namespace autoware::boundary_departure_checker::severity_evaluator
 
