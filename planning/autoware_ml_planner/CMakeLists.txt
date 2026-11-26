@@ -60,7 +60,7 @@ set(ML_PLANNER_SOURCES
   src/utils/object_remap.cpp
   src/utils/planning_factor_utils.cpp
   src/utils/utils.cpp
-  src/optimization/reference_resample.cpp
+  src/optimization/lateral_acceleration_guard.cpp
 )
 
 if(ML_PLANNER_HAS_ONNXRUNTIME)
@@ -152,7 +152,7 @@ if(BUILD_TESTING)
     test/route_waypoints_test.cpp
     test/turn_indicator_hold_test.cpp
     test/utils_test.cpp
-    test/reference_resample_test.cpp
+    test/lateral_acceleration_guard_test.cpp
   )
 
   # Keep the optimizer test conditional because its public API is only available with acados.

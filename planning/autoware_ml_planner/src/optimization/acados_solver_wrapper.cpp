@@ -381,8 +381,8 @@ SolverSolution AcadosSolverWrapper::solve(
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "yref", yref_e.data());
 
-  // Shooting-node guess. A previous-cycle warm start is one stage ahead, because time has
-  // moved by one step. With no warm start the nodes sit at the measured initial state.
+  // Previous-cycle warm start: this cycle's stage k is last cycle's stage k+1. Without it
+  // the nodes sit at the measured initial state.
   for (size_t stage = 0; stage <= gen_n; ++stage) {
     std::array<double, gen_nx> x_guess = x0;
     if (warm_start != nullptr) {

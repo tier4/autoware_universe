@@ -25,6 +25,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -83,23 +84,35 @@ public:
     const std::optional<geometry_msgs::msg::Pose> & goal_pose = std::nullopt);
 
 private:
-  /// Smoothing solve plus a retimed reference. Empty when the smoothing solve fails.
-  struct ResampledTracking
+  /// Geometry pass plus kinematic resample. Empty when the geometry pass fails.
+  struct GuardedReference
   {
     Trajectory trajectory;
-    double smooth_solve_time_ms{0.0};
+    double geometry_solve_time_ms{0.0};
   };
 
+  const SolverSolution * previous_cycle_warm_start(
+    size_t batch_index, const rclcpp::Time & stamp, double base_x, double base_y,
+    SolverSolution & storage) const;
+
+  std::optional<SolverSolution> solve_geometry_pass(
+    const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
+    double base_x, double base_y, size_t batch_index);
+
+  Trajectory resample_under_lateral_acceleration(
+    const Trajectory & raw_trajectory, const SolverSolution & geometry,
+    const std::array<double, opt_nx> & initial_state, double base_x, double base_y) const;
+
   /**
-   * @brief Smooth the raw poses, estimate curvature there, and retime the polyline.
+   * @brief Geometry pass, then resample the polyline under ``a_lat``.
    *
    * Does not update the goal latch or the stored warm start. The returned trajectory is
-   * the tracking reference of the second solve. ``smooth_solve_time_ms`` is written even
-   * when the smoothing solve fails.
+   * the tracking reference of the second solve. ``geometry_solve_time_ms`` is written even
+   * when the geometry pass fails.
    */
-  std::optional<ResampledTracking> smooth_and_resample(
+  std::optional<GuardedReference> build_laterally_guarded_reference(
     const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
-    double base_x, double base_y, size_t batch_index, double & smooth_solve_time_ms);
+    double base_x, double base_y, size_t batch_index, double & geometry_solve_time_ms);
 
   TrajectoryOptimizationParams params_;
   double wheelbase_m_;

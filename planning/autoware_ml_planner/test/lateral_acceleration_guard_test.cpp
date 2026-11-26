@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/ml_planner/optimization/reference_resample.hpp"
+#include "autoware/ml_planner/optimization/lateral_acceleration_guard.hpp"
 
 #include <gtest/gtest.h>
 
@@ -52,14 +52,14 @@ std::array<PoseSample, opt_horizon + 1> circle(const double radius_m, const doub
 }
 }  // namespace
 
-TEST(ReferenceResample, StraightKeepsEgoSpeed)
+TEST(LateralAccelerationGuard, StraightKeepsEgoSpeed)
 {
   const auto resampled = resample_pose_sequence(straight(), kSpeed, 0.35, kWheelbase, -4.0, 3.0);
   EXPECT_NEAR(resampled.speed_mps.back(), kSpeed, 0.05);
   EXPECT_NEAR(resampled.curvature_inv_m[40], 0.0, 1.0e-3);
 }
 
-TEST(ReferenceResample, LeftAndRightTurnsShareTheSpeedCap)
+TEST(LateralAccelerationGuard, LeftAndRightTurnsShareTheSpeedCap)
 {
   const auto right =
     resample_pose_sequence(circle(100.0, 1.0), kSpeed, 0.35, kWheelbase, -4.0, 3.0);
@@ -72,7 +72,7 @@ TEST(ReferenceResample, LeftAndRightTurnsShareTheSpeedCap)
   EXPECT_GT(right.speed_mps.back(), 5.4);
 }
 
-TEST(ReferenceResample, CurvatureFollowsSteeringNotYaw)
+TEST(LateralAccelerationGuard, CurvatureFollowsSteeringNotYaw)
 {
   auto yaw_noise_only = straight();
   for (size_t index = 0; index < yaw_noise_only.size(); ++index) {
@@ -91,7 +91,7 @@ TEST(ReferenceResample, CurvatureFollowsSteeringNotYaw)
   EXPECT_NEAR(from_steer.curvature_inv_m[40], std::tan(steering) / kWheelbase, 1.0e-9);
 }
 
-TEST(ReferenceResample, StoppedEgoStillAcceleratesTowardTheModelSpeed)
+TEST(LateralAccelerationGuard, StoppedEgoStillAcceleratesTowardTheModelSpeed)
 {
   auto poses = straight();
   for (auto & pose : poses) {
@@ -102,7 +102,7 @@ TEST(ReferenceResample, StoppedEgoStillAcceleratesTowardTheModelSpeed)
   EXPECT_NEAR(resampled.speed_mps.back(), 8.0, 0.05);
 }
 
-TEST(ReferenceResample, AcceleratesTowardTheModelSpeed)
+TEST(LateralAccelerationGuard, AcceleratesTowardTheModelSpeed)
 {
   auto poses = straight();
   constexpr double kTarget = 10.0;
@@ -117,7 +117,7 @@ TEST(ReferenceResample, AcceleratesTowardTheModelSpeed)
   EXPECT_GT(resampled.poses.back().x, kEgo * opt_dt_s * static_cast<double>(opt_horizon));
 }
 
-TEST(ReferenceResample, CurvatureCapStillLimitsAnAcceleratingProfile)
+TEST(LateralAccelerationGuard, CurvatureCapStillLimitsAnAcceleratingProfile)
 {
   auto poses = circle(100.0, 1.0);
   for (auto & pose : poses) {

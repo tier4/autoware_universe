@@ -118,22 +118,20 @@ struct TrajectoryOptimizationParams
   } temporal_consistency;
 
   /**
-   * @brief Two-pass reference: smooth the poses, then retime them, then optimize.
+   * @brief Lateral-acceleration guard: geometry pass, kinematic resample, then optimize.
    *
-   * The first solve tracks the raw poses with a loose lateral-acceleration bound and
-   * without the goal or the temporal term, so it is free to take the kinks out of the
-   * heading. Curvature is then ``tan(steering) / wheelbase`` of that solution, the polyline is
-   * retimed under ``max_lateral_acceleration_mps2``, and the second solve is the normal
-   * constrained problem on those resampled points.
+   * Weights cannot enforce ``a_lat`` while the optimizer still tracks the same timed points.
+   * This pass first solves the raw poses with no temporal term, no road-border term, and no
+   * lateral-acceleration bound, so curvature can be read from the solved steering. New target
+   * times are then placed on that polyline under ``max_lateral_acceleration_mps2``. The second
+   * solve is the ordinary constrained problem on those points.
    *
    * Disabled by default. The extra cost is one SQP solve per candidate.
    */
-  struct ReferenceResampleParams
+  struct LateralAccelerationGuardParams
   {
     bool enable{false};
-    /// Lateral-acceleration bound of the smoothing solve only [m/s^2].
-    double smoothing_lateral_acceleration_mps2{10.0};
-  } reference_resample;
+  } lateral_acceleration_guard;
 };
 
 }  // namespace autoware::ml_planner::optimization

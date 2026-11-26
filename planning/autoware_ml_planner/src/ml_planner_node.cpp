@@ -223,10 +223,8 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
   opt.max_sqp_iterations =
     this->declare_parameter<int>("trajectory_optimization.max_sqp_iterations", 50);
-  opt.reference_resample.enable =
-    this->declare_parameter<bool>("trajectory_optimization.reference_resample.enable", false);
-  opt.reference_resample.smoothing_lateral_acceleration_mps2 = this->declare_parameter<double>(
-    "trajectory_optimization.reference_resample.smoothing_lateral_acceleration_mps2", 10.0);
+  opt.lateral_acceleration_guard.enable = this->declare_parameter<bool>(
+    "trajectory_optimization.lateral_acceleration_guard.enable", false);
   auto & temporal = opt.temporal_consistency;
   temporal.enable =
     this->declare_parameter<bool>("trajectory_optimization.temporal_consistency.enable", false);
@@ -428,10 +426,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<int>(
     parameters, "trajectory_optimization.max_sqp_iterations", opt.max_sqp_iterations);
   update_param<bool>(
-    parameters, "trajectory_optimization.reference_resample.enable", opt.reference_resample.enable);
-  update_param<double>(
-    parameters, "trajectory_optimization.reference_resample.smoothing_lateral_acceleration_mps2",
-    opt.reference_resample.smoothing_lateral_acceleration_mps2);
+    parameters, "trajectory_optimization.lateral_acceleration_guard.enable",
+    opt.lateral_acceleration_guard.enable);
   auto & temporal = opt.temporal_consistency;
   update_param<bool>(
     parameters, "trajectory_optimization.temporal_consistency.enable", temporal.enable);
@@ -579,7 +575,6 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   }
   if (
     opt.max_steering_rate_rps < 0.0 || opt.max_lateral_acceleration_mps2 < 0.0 ||
-    opt.reference_resample.smoothing_lateral_acceleration_mps2 < 0.0 ||
     opt.max_sqp_iterations < 1) {
     return failure("trajectory optimization limits and max_sqp_iterations must be positive");
   }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/ml_planner/optimization/reference_resample.hpp"
+#include "autoware/ml_planner/optimization/lateral_acceleration_guard.hpp"
 
 #include <autoware_utils/math/normalization.hpp>
 

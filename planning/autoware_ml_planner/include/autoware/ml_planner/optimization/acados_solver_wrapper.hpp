@@ -111,8 +111,7 @@ public:
   /**
    * @brief Replace the soft lateral-acceleration bound on every stage that has one.
    *
-   * The smoothing pass of reference resampling uses a loose bound and the following
-   * constrained pass restores the configured one. Stages with no path constraint are skipped.
+   * Stages with no path constraint are skipped.
    */
   void set_max_lateral_acceleration(double max_lateral_acceleration_mps2);
 
@@ -127,8 +126,9 @@ public:
    *                            without the temporal consistency term. Same frame as
    *                            initial_state. Yaw must be on the same branch as the
    *                            corresponding entry of `references`.
-   * @param warm_start Previous solution in the same frame, or nullptr for a cold start.
-   *                   Applied with a one-stage shift, because it comes from the previous cycle.
+   * @param warm_start Previous-cycle solution in the same frame, or nullptr. Stage ``k`` of
+   *                   this cycle is seeded from stage ``k + 1`` of that solution, because one
+   *                   ``dt`` has elapsed. Unrelated to the lateral-acceleration guard.
    */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,

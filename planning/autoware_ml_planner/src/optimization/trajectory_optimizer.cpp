@@ -14,7 +14,7 @@
 
 #include "autoware/ml_planner/optimization/trajectory_optimizer.hpp"
 
-#include "autoware/ml_planner/optimization/reference_resample.hpp"
+#include "autoware/ml_planner/optimization/lateral_acceleration_guard.hpp"
 
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/normalization.hpp>
@@ -60,20 +60,23 @@ std::array<StageReference, opt_horizon> stage_references(
   return references;
 }
 
-/// Puts the configured lateral bound back when the smoothing pass returns.
-class LateralBoundGuard
+/// Restores the configured ``a_lat`` bound when the geometry pass returns.
+class RestoreLateralBound
 {
 public:
-  LateralBoundGuard(AcadosSolverWrapper & solver, const double restore_mps2)
+  RestoreLateralBound(AcadosSolverWrapper & solver, const double restore_mps2)
   : solver_(solver), restore_mps2_(restore_mps2)
   {
   }
-  ~LateralBoundGuard() { solver_.set_max_lateral_acceleration(restore_mps2_); }
+  ~RestoreLateralBound() { solver_.set_max_lateral_acceleration(restore_mps2_); }
 
 private:
   AcadosSolverWrapper & solver_;
   double restore_mps2_;
 };
+
+/// Large enough that |v^2 κ| never hits it. Used only to turn the bound off.
+constexpr double unrestricted_lateral_acceleration_mps2 = 1.0e6;
 }  // namespace
 
 TrajectoryOptimizer::TrajectoryOptimizer(
@@ -134,23 +137,20 @@ OptimizationResult TrajectoryOptimizer::optimize(
     observed_goal_pose_ = goal_pose;
   }
 
-  // Optional first pass: smooth the raw poses, take curvature from that result, and
-  // replace the tracked poses with the retimed polyline. The goal latch below then
-  // sees the retimed endpoint. A failed smoothing solve leaves the raw poses in place.
+  // Optional lateral-acceleration guard. A failed geometry pass leaves the raw poses.
   Trajectory tracking_trajectory = raw_trajectory;
-  double smooth_solve_time_ms = 0.0;
-  if (params_.reference_resample.enable) {
+  double geometry_solve_time_ms = 0.0;
+  if (params_.lateral_acceleration_guard.enable) {
     if (
-      auto prepared = smooth_and_resample(
-        raw_trajectory, initial_state, base_x, base_y, batch_index, smooth_solve_time_ms)) {
+      auto prepared = build_laterally_guarded_reference(
+        raw_trajectory, initial_state, base_x, base_y, batch_index, geometry_solve_time_ms)) {
       tracking_trajectory = std::move(prepared->trajectory);
     }
   }
 
   // References for stages 1..N (t = k * 0.1 s). Yaw is unwrapped from the ego heading.
-  const std::array<StageReference, opt_horizon> built_references =
+  std::array<StageReference, opt_horizon> references =
     stage_references(tracking_trajectory, base_x, base_y, yaw0);
-  std::array<StageReference, opt_horizon> references = built_references;
   const double unwrapped_terminal_yaw = references.back().yaw;
 
   if (goal_pose) {
@@ -256,7 +256,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
   SolverSolution solution = solver_->solve(
     initial_state, references, goal_terminal_reference, temporal_references_ptr, warm_start_ptr);
   result.solver_status = solution.status;
-  result.solve_time_ms = solution.solve_time_s * 1e3 + smooth_solve_time_ms;
+  result.solve_time_ms = solution.solve_time_s * 1e3 + geometry_solve_time_ms;
 
   if (!solution.success()) {
     previous.reset();
@@ -300,47 +300,56 @@ OptimizationResult TrajectoryOptimizer::optimize(
   return result;
 }
 
-std::optional<TrajectoryOptimizer::ResampledTracking> TrajectoryOptimizer::smooth_and_resample(
-  const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
-  const double base_x, const double base_y, const size_t batch_index, double & smooth_solve_time_ms)
+const SolverSolution * TrajectoryOptimizer::previous_cycle_warm_start(
+  const size_t batch_index, const rclcpp::Time & stamp, const double base_x, const double base_y,
+  SolverSolution & storage) const
 {
-  const double configured_bound = params_.max_lateral_acceleration_mps2;
-  const double smoothing_bound =
-    std::max(configured_bound, params_.reference_resample.smoothing_lateral_acceleration_mps2);
-  solver_->set_max_lateral_acceleration(smoothing_bound);
-  LateralBoundGuard restore_bound(*solver_, configured_bound);
-
-  const rclcpp::Time stamp(raw_trajectory.header.stamp);
-  SolverSolution warm_start;
-  const SolverSolution * warm_start_ptr = nullptr;
   const auto & previous = previous_solutions_[batch_index];
-  if (previous.has_value()) {
-    const double age_s = (stamp - previous->stamp).seconds();
-    if (age_s >= 0.0 && age_s <= max_warm_start_age_s) {
-      warm_start = previous->solution;
-      for (auto & state : warm_start.states) {
-        state[0] -= base_x;
-        state[1] -= base_y;
-      }
-      warm_start_ptr = &warm_start;
-    }
+  if (!previous.has_value()) {
+    return nullptr;
   }
+  const double age_s = (stamp - previous->stamp).seconds();
+  if (age_s < 0.0 || age_s > max_warm_start_age_s) {
+    return nullptr;
+  }
+  storage = previous->solution;
+  for (auto & state : storage.states) {
+    state[0] -= base_x;
+    state[1] -= base_y;
+  }
+  return &storage;
+}
 
+std::optional<SolverSolution> TrajectoryOptimizer::solve_geometry_pass(
+  const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
+  const double base_x, const double base_y, const size_t batch_index)
+{
+  solver_->set_max_lateral_acceleration(unrestricted_lateral_acceleration_mps2);
+  RestoreLateralBound restore_bound(*solver_, params_.max_lateral_acceleration_mps2);
+
+  SolverSolution warm_start_storage;
+  const SolverSolution * warm_start_ptr = previous_cycle_warm_start(
+    batch_index, rclcpp::Time(raw_trajectory.header.stamp), base_x, base_y, warm_start_storage);
   const auto references = stage_references(raw_trajectory, base_x, base_y, initial_state[kPsi]);
-  // No goal and no temporal term: this pass only has to follow the pose shape.
-  const SolverSolution smooth =
+  // No goal, no temporal term, no a_lat bound: this pass only has to follow the pose shape.
+  const SolverSolution geometry =
     solver_->solve(initial_state, references, std::nullopt, nullptr, warm_start_ptr);
-  smooth_solve_time_ms = smooth.solve_time_s * 1e3;
-  if (!smooth.success()) {
+  if (!geometry.success()) {
     return std::nullopt;
   }
+  return geometry;
+}
 
+Trajectory TrajectoryOptimizer::resample_under_lateral_acceleration(
+  const Trajectory & raw_trajectory, const SolverSolution & geometry,
+  const std::array<double, opt_nx> & initial_state, const double base_x, const double base_y) const
+{
   std::array<PoseSample, opt_horizon + 1> poses{};
   for (size_t index = 0; index <= opt_horizon; ++index) {
-    poses[index].x = smooth.states[index][kX] + base_x;
-    poses[index].y = smooth.states[index][kY] + base_y;
-    poses[index].yaw = smooth.states[index][kPsi];
-    poses[index].steering_rad = smooth.states[index][kDelta];
+    poses[index].x = geometry.states[index][kX] + base_x;
+    poses[index].y = geometry.states[index][kY] + base_y;
+    poses[index].yaw = geometry.states[index][kPsi];
+    poses[index].steering_rad = geometry.states[index][kDelta];
     // Station 0 uses the first model speed as well. Copying the measured ego speed
     // there makes a stopped ego target 0 at distance 0, so the integrator never
     // advances and never sees the acceleration the model asked for further along.
@@ -348,13 +357,12 @@ std::optional<TrajectoryOptimizer::ResampledTracking> TrajectoryOptimizer::smoot
     poses[index].speed_mps = raw_trajectory.points[point_index].longitudinal_velocity_mps;
   }
   const ResampledSequence resampled = resample_pose_sequence(
-    poses, initial_state[kV], configured_bound, wheelbase_m_, params_.min_acceleration_mps2,
-    params_.max_acceleration_mps2);
+    poses, initial_state[kV], params_.max_lateral_acceleration_mps2, wheelbase_m_,
+    params_.min_acceleration_mps2, params_.max_acceleration_mps2);
 
-  ResampledTracking prepared;
-  prepared.smooth_solve_time_ms = smooth_solve_time_ms;
-  prepared.trajectory.header = raw_trajectory.header;
-  prepared.trajectory.points.reserve(opt_horizon);
+  Trajectory trajectory;
+  trajectory.header = raw_trajectory.header;
+  trajectory.points.reserve(opt_horizon);
   for (size_t index = 1; index <= opt_horizon; ++index) {
     const PoseSample & pose = resampled.poses[index];
     TrajectoryPoint point = raw_trajectory.points[index - 1];
@@ -362,8 +370,28 @@ std::optional<TrajectoryOptimizer::ResampledTracking> TrajectoryOptimizer::smoot
     point.pose.position.y = pose.y;
     point.pose.orientation =
       autoware_utils::create_quaternion_from_yaw(autoware_utils::normalize_radian(pose.yaw));
-    prepared.trajectory.points.push_back(point);
+    trajectory.points.push_back(point);
   }
+  return trajectory;
+}
+
+std::optional<TrajectoryOptimizer::GuardedReference>
+TrajectoryOptimizer::build_laterally_guarded_reference(
+  const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,
+  const double base_x, const double base_y, const size_t batch_index,
+  double & geometry_solve_time_ms)
+{
+  geometry_solve_time_ms = 0.0;
+  const auto geometry =
+    solve_geometry_pass(raw_trajectory, initial_state, base_x, base_y, batch_index);
+  if (!geometry) {
+    return std::nullopt;
+  }
+  geometry_solve_time_ms = geometry->solve_time_s * 1e3;
+  GuardedReference prepared;
+  prepared.geometry_solve_time_ms = geometry_solve_time_ms;
+  prepared.trajectory = resample_under_lateral_acceleration(
+    raw_trajectory, *geometry, initial_state, base_x, base_y);
   return prepared;
 }
 

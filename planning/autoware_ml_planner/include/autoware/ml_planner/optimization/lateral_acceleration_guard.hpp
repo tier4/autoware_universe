@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__ML_PLANNER__OPTIMIZATION__REFERENCE_RESAMPLE_HPP_
-#define AUTOWARE__ML_PLANNER__OPTIMIZATION__REFERENCE_RESAMPLE_HPP_
+#ifndef AUTOWARE__ML_PLANNER__OPTIMIZATION__LATERAL_ACCELERATION_GUARD_HPP_
+#define AUTOWARE__ML_PLANNER__OPTIMIZATION__LATERAL_ACCELERATION_GUARD_HPP_
 
 #include "autoware/ml_planner/optimization/acados_solver_wrapper.hpp"
 
@@ -22,11 +22,9 @@
 namespace autoware::ml_planner::optimization
 {
 
-/// One sample of the smoothed solution. Index 0 is the ego sample; indices 1..N are the horizon.
-/// ``steering_rad`` is the solved steering angle, the source of the curvature.
-/// ``speed_mps`` is the speed the model wanted at this station. The retime accelerates or
-/// brakes from the measured ego speed toward this value, and never uses it as a ceiling
-/// equal to the current ego speed.
+/// One sample of the geometry-pass solution. Index 0 is the ego sample; indices 1..N are
+/// the horizon. ``steering_rad`` is the solved steering, the source of curvature.
+/// ``speed_mps`` is the speed the model wanted at this station.
 struct PoseSample
 {
   double x{0.0};
@@ -37,12 +35,10 @@ struct PoseSample
 };
 
 /**
- * @brief A polyline reparameterized in time under a lateral-acceleration cap.
+ * @brief A polyline placed in time under a lateral-acceleration cap.
  *
- * ``poses[k]`` is where stage ``k`` should sit. ``speed_mps``, ``steering_rad`` and
- * ``acceleration_mps2`` are the feasible profile used to place those poses. The following
- * constrained solve tracks the poses. ``curvature_inv_m`` is ``tan(steering) / wheelbase``
- * of the smoothed solution, one value per sample.
+ * ``poses[k]`` is where stage ``k`` should sit. The following constrained solve tracks those
+ * poses. ``curvature_inv_m`` is ``tan(steering) / wheelbase`` of the geometry-pass solution.
  */
 struct ResampledSequence
 {
@@ -54,18 +50,13 @@ struct ResampledSequence
 };
 
 /**
- * @brief Retime the smoothed solution without leaving its polyline.
+ * @brief Place new target times on the geometry-pass polyline under ``a_lat``.
  *
- * Curvature at each sample is the bicycle curvature of the solved steering angle,
- * ``tan(steering_rad) / wheelbase``. Heading differences are not used: the smoothing
- * solve already produced a steering profile, and the raw model output's steering is
- * not what this function sees. The curvature speed cap at a station is
+ * Curvature is ``tan(steering_rad) / wheelbase``. The speed cap at a station is
  * ``sqrt(a_lat_max / |kappa|)``. The profile starts at ``ego_speed_mps`` and brakes or
- * accelerates toward ``min(cap, speed_mps)`` inside ``[min_acceleration, max_acceleration]``.
- * ``speed_mps`` is interpolated along the polyline, so a model that is speeding up stays
- * a speeding-up reference instead of being frozen at the current ego speed.
+ * accelerates toward ``min(cap, speed_mps)`` inside the longitudinal acceleration bounds.
  *
- * @param poses ``opt_horizon + 1`` samples of the smoothed solution. Index 0 is ego.
+ * @param poses ``opt_horizon + 1`` samples of the geometry-pass solution. Index 0 is ego.
  *        ``speed_mps`` on each sample is the desired speed at that station [m/s].
  * @param ego_speed_mps Measured speed at index 0 [m/s].
  * @param lateral_accel_limit_mps2 Lateral-acceleration cap used for the speed limit [m/s^2].
@@ -80,4 +71,4 @@ ResampledSequence resample_pose_sequence(
 
 }  // namespace autoware::ml_planner::optimization
 
-#endif  // AUTOWARE__ML_PLANNER__OPTIMIZATION__REFERENCE_RESAMPLE_HPP_
+#endif  // AUTOWARE__ML_PLANNER__OPTIMIZATION__LATERAL_ACCELERATION_GUARD_HPP_
