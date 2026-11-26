@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     # marker_size
-    marker_size: 0.6
+    marker_size: 0.4
 
     # target_tag_ids
     target_tag_ids: ['0','1','2','3','4','5','6']
@@ -19,7 +19,7 @@
     distance_threshold: 13.0  # [m]
 
     # consider_orientation
-    consider_orientation: false
+    consider_orientation: true
 
     # Detector parameters
     # See https://github.com/pal-robotics/aruco_ros/blob/7787a6794d30c248bc546d1582e65dd47bc40c12/aruco/include/aruco/markerdetector.h#L106-L126

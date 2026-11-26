@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    # Period of the retry loop that calls /localization/initialize until the localization is initialized.
+    retry_period: 1.0 # [s]
+    # A pose received from the ar_tag_based_localizer older than this is not used for initialization.
+    # The ar_tag_based_localizer publishes a pose only while it sees a tag. Set 0.0 or less to disable.
+    pose_timeout: 5.0 # [s]
