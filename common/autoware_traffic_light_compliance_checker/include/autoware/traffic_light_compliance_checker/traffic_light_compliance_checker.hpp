@@ -37,6 +37,7 @@
 
 namespace autoware::traffic_light_compliance_checker
 {
+
 /// @brief class to check if a trajectory complies with traffic lights
 class TrafficLightComplianceChecker
 {
@@ -54,6 +55,8 @@ public:
   /**
    * @brief check if the trajectory complies with traffic lights
    * @param input input data for compliance check (raw signals are filtered internally)
+   * @param use_v2i_remaining_time also reject crossings of non-stop lights that V2I predicts to
+   * turn red before ego can pass
    * @return result of compliance check, or error message if check fails
    */
   [[nodiscard]] tl::expected<ComplianceResult, std::string> check(
@@ -75,7 +78,6 @@ private:
   [[nodiscard]] ComplianceResult check_with_filtered_signals(
     const Inputs & input,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
-    const RouteTrafficLightIndex & route_traffic_light_index,
     const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
     const bool check_amber_lights, const bool is_ego_stopped) const;
 
@@ -95,7 +97,7 @@ private:
   /// @brief return the red and amber stop lines related to the given traffic light groups
   [[nodiscard]] std::pair<std::vector<StopLineInfo>, std::vector<StopLineInfo>> get_stop_lines(
     const lanelet::LaneletMap & lanelet_map,
-    const RouteTrafficLightIndex & route_traffic_light_index,
+    const autoware_planning_msgs::msg::LaneletRoute & route,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & traffic_lights) const;
 
   /// @brief return true if there is a stop point and it is within margin distance of the stop line
@@ -105,24 +107,29 @@ private:
 
   /// @brief return true if ego can safely pass an amber traffic light
   [[nodiscard]] bool can_pass_amber_light(
-    const int64_t traffic_light_id, const double distance_to_stop_line,
+    const int64_t traffic_light_id, const double distance_from_ego_front,
     const double current_velocity, const double current_acceleration,
     const double time_to_cross_stop_line) const;
 
-  bool is_allow_if_cannot_stop(const double distance_to_cross_point) const;
+  bool is_allow_if_cannot_stop(const double distance_from_ego_front) const;
 
-  /// @brief return the stop lines that will turn red before ego can pass them, based on the V2I
-  /// signal predictions
-  [[nodiscard]] ComplianceResult handle_v2i(
+  /// @brief return violations for the stop lines of non-stop lights that will turn red before ego
+  /// can pass them, based on the V2I signal predictions. Defined in v2i_handling.cpp.
+  [[nodiscard]] Violations get_v2i_violations(
     const Inputs & input,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
-    const RouteTrafficLightIndex & route_traffic_light_index,
-    const bool use_v2i_remaining_time, const bool is_ego_stopped) const;
+    const bool is_ego_stopped) const;
+
+  void cleanup_violation_distance_history(
+    const std::vector<StopLineInfo> & red_stop_lines,
+    const std::vector<StopLineInfo> & amber_stop_lines, const bool check_red_lights,
+    const bool check_amber_lights) const;
 
   Parameters params_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
   std::unique_ptr<TrafficLightStatusTracker> status_tracker_;
   mutable std::unordered_map<int64_t, rclcpp::Time> amber_rejection_history_;
+  mutable std::unordered_map<int64_t, double> violation_distance_history_;
   std::optional<double> ego_stopping_distance_;
 };
 

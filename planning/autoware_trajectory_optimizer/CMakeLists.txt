@@ -5,6 +5,17 @@ find_package(autoware_cmake REQUIRED)
 
 autoware_package()
 
+# Only the shared velocity-limit utilities are needed from the modifier. Its
+# exported optimizer plugins and acados interface have the same library names
+# as ours, but use a different solver model and must not be linked here.
+find_library(_trajectory_modifier_utils
+  NAMES autoware_trajectory_modifier_utils
+  PATHS "${autoware_trajectory_modifier_DIR}/../../../lib"
+  NO_DEFAULT_PATH
+  REQUIRED
+)
+set(autoware_trajectory_modifier_LIBRARIES "${_trajectory_modifier_utils}")
+
 find_package(acados REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 

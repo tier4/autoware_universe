@@ -42,7 +42,8 @@ bool is_ego_vehicle_moving(
 
 double clamp_stop_point_arc_length(
   const double stop_point_arc_length, const double max_length, const double ego_vel,
-  const double ego_accel, const double decel_limit, const double jerk_limit);
+  const double ego_accel, const double decel_limit, const double jerk_limit,
+  const double time_delay = 0.0);
 
 bool stop_point_exists(
   const TrajectoryPoints & traj_points, const double stop_point_arc_length,

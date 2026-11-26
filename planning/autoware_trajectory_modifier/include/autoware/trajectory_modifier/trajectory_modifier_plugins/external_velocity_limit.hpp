@@ -41,11 +41,10 @@ double get_external_velocity_limit_min_jerk(
   const autoware_internal_planning_msgs::msg::VelocityLimit & velocity_limit, double default_jerk);
 }  // namespace detail
 
-class ExternalVelocityLimit : public VelocityLimitPluginBase
+class ExternalVelocityLimit : public TrajectoryModifierPluginBase
 {
 public:
-  ProcessingResult process(
-    TrajectoryPoints & traj_points, const TrajectoryModifierData & input) override;
+  ProcessingResult process(TrajectoryPoints & traj_points, TrajectoryModifierData & input) override;
 
   void update_params(const TrajectoryModifierParams & params) override;
 

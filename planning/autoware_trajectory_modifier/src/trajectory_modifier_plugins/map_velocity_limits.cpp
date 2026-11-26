@@ -104,7 +104,7 @@ bool MapVelocityLimits::is_trajectory_modification_required(
 }
 
 ProcessingResult MapVelocityLimits::process(
-  TrajectoryPoints & traj_points, const TrajectoryModifierData & input)
+  TrajectoryPoints & traj_points, TrajectoryModifierData & input)
 {
   last_profile_start_ = detail::ProfileStart::Measured;
   if (!enabled_ || traj_points.empty() || !input.current_odometry) {

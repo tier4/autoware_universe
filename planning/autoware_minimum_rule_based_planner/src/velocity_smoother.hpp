@@ -53,9 +53,13 @@ public:
     rclcpp::Clock::SharedPtr clock, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
     std::shared_ptr<autoware::velocity_smoother::JerkFilteredSmoother> jerk_filtered_smoother);
 
+  //! @param update_prev_output whether to save the result as the reference for the next cycle's
+  //! initial motion. Only one trajectory stream (the always-published go trajectory) may update
+  //! it; secondary streams (the stop trajectory) must pass false, otherwise their decelerating
+  //! profile leaks into the other stream's initial speed on the next cycle.
   void optimize(
     TrajectoryPoints & traj_points, const nav_msgs::msg::Odometry & current_odometry,
-    double current_acceleration);
+    double current_acceleration, bool update_prev_output = true);
 
 private:
   static void clamp_velocities(
