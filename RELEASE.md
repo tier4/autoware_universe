@@ -5,7 +5,7 @@ models; switching models is one launch argument, `e2e_model`, with no rebuild.
 
 The same file is on both branches:
 
-| Repository | Branch | Head | Base |
+| Repository | Branch | Code at (only this RELEASE.md follows) | Base |
 |---|---|---|---|
 | tier4/autoware_universe | `e2e-release/1127/jpntaxi-unified` | `6cb4cec182` | `e2e-release/1127/resworld-1.4.4.4` (the ResWorld node unchanged) |
 | tier4/autoware_launch.xx1 | `e2e-release/1127/jpntaxi-unified` | `fa209c9051` | `dev/v0.53/e2e-resworld` at `fbff3706` (#2206-#2209 included) |
