@@ -1,0 +1,12 @@
+<launch>
+  <arg name="input_state" default="/localization/initialization_state"/>
+  <arg name="input_pose" default="/ar_tag_based_localizer/output/pose_with_covariance"/>
+  <arg name="param_file" default="$(find-pkg-share autoware_initial_pose_setter)/config/initial_pose_setter.param.yaml"/>
+
+  <node pkg="autoware_initial_pose_setter" exec="autoware_initial_pose_setter_node" name="initial_pose_setter" output="screen">
+    <remap from="/localization/initialization_state" to="$(var input_state)"/>
+    <remap from="~/input/pose_with_covariance" to="$(var input_pose)"/>
+    <remap from="~/initialize" to="/ar_tag_based_localizer/initialize"/>
+    <param from="$(var param_file)"/>
+  </node>
+</launch>
