@@ -15,9 +15,11 @@
 #ifndef AUTOWARE__CONTROL_VALIDATOR__UTILS_HPP_
 #define AUTOWARE__CONTROL_VALIDATOR__UTILS_HPP_
 
+#include <autoware_utils_geometry/boost_geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 #include <vector>
 
@@ -55,6 +57,15 @@ void shift_pose(geometry_msgs::msg::Pose & pose, double longitudinal);
 double calc_max_lateral_distance(
   const autoware_planning_msgs::msg::Trajectory & reference_trajectory,
   const autoware_planning_msgs::msg::Trajectory & predicted_trajectory);
+
+/**
+ * @brief Express a map polygon in the frame whose origin is ego_pose (base_link of that pose)
+ * @param polygon_map polygon in the map frame
+ * @param ego_pose ego pose in the map frame
+ */
+autoware_utils_geometry::Polygon2d transform_polygon_to_base_link(
+  const autoware_utils_geometry::Polygon2d & polygon_map,
+  const geometry_msgs::msg::Pose & ego_pose);
 
 }  // namespace autoware::control_validator
 

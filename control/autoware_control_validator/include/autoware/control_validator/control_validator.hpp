@@ -15,24 +15,33 @@
 #ifndef AUTOWARE__CONTROL_VALIDATOR__CONTROL_VALIDATOR_HPP_
 #define AUTOWARE__CONTROL_VALIDATOR__CONTROL_VALIDATOR_HPP_
 
+#include "autoware/control_validator/collision_validator/collision_validator.hpp"
 #include "autoware/control_validator/debug_marker.hpp"
+#include "autoware/control_validator/hazard_warning/hazard_warning.hpp"
+#include "autoware/control_validator/hazard_warning/hazard_warning_sources.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info.hpp"
 #include "diagnostic_updater/diagnostic_updater.hpp"
 
+#include <autoware/boundary_departure_checker/uncrossable_boundary_checker.hpp>
 #include <autoware/signal_processing/lowpass_filter_1d.hpp>
+#include <autoware_control_validator/control_validator_parameters.hpp>
 #include <autoware_control_validator/msg/control_validator_status.hpp>
-#include <autoware_utils/ros/parameter.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_control_msgs/msg/control.hpp>
+#include <autoware_internal_control_msgs/msg/hazard_alert.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -43,16 +52,23 @@
 
 namespace autoware::control_validator
 {
+namespace boundary_departure_checker = autoware::boundary_departure_checker;
+
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_control_msgs::msg::Control;
 using autoware_control_validator::msg::ControlValidatorStatus;
+using autoware_internal_control_msgs::msg::HazardAlert;
+using autoware_internal_control_msgs::msg::HazardSector;
+using autoware_map_msgs::msg::LaneletMapBin;
+using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
-using autoware_utils::get_or_declare_parameter;
 using diagnostic_updater::DiagnosticStatusWrapper;
 using diagnostic_updater::Updater;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
+using sensor_msgs::msg::PointCloud2;
+using Params = ::control_validator::Params;
 
 /**
  * @class LatencyValidator
@@ -61,15 +77,15 @@ using nav_msgs::msg::Odometry;
 class LatencyValidator
 {
 public:
-  explicit LatencyValidator(rclcpp::Node & node)
-  : nominal_latency_threshold{
-      get_or_declare_parameter<double>(node, "thresholds.nominal_latency")} {};
+  explicit LatencyValidator(const Params & params) : params_(params.latency_validator) {}
+
+  void update_parameters(const Params & params) { params_ = params.latency_validator; }
 
   void validate(
     ControlValidatorStatus & res, const Control & control_cmd, rclcpp::Node & node) const;
 
 private:
-  const double nominal_latency_threshold;
+  Params::LatencyValidator params_;
 };
 
 /**
@@ -80,16 +96,16 @@ private:
 class TrajectoryValidator
 {
 public:
-  explicit TrajectoryValidator(rclcpp::Node & node)
-  : max_distance_deviation_threshold{
-      get_or_declare_parameter<double>(node, "thresholds.max_distance_deviation")} {};
+  explicit TrajectoryValidator(const Params & params) : params_(params.trajectory_validator) {}
+
+  void update_parameters(const Params & params) { params_ = params.trajectory_validator; }
 
   void validate(
     ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
     const Trajectory & reference_trajectory);
 
 private:
-  const double max_distance_deviation_threshold;
+  Params::TrajectoryValidator params_;
   std::optional<Trajectory> prev_reference_trajectory_;
 };
 
@@ -100,18 +116,24 @@ private:
 class LateralJerkValidator
 {
 public:
-  explicit LateralJerkValidator(rclcpp::Node & node)
-  : lateral_jerk_threshold_{get_or_declare_parameter<double>(node, "thresholds.lateral_jerk")},
-    logger_{node.get_logger()},
-    measured_vel_lpf{get_or_declare_parameter<double>(node, "vel_lpf_gain")} {};
+  LateralJerkValidator(const rclcpp::Logger & logger, const Params & params)
+  : logger_{logger}, params_{params.lateral_jerk_validator}, measured_vel_lpf{params.vel_lpf_gain}
+  {
+  }
+
+  void update_parameters(const Params & params)
+  {
+    params_ = params.lateral_jerk_validator;
+    measured_vel_lpf.setGain(params.vel_lpf_gain);
+  }
 
   void validate(
     ControlValidatorStatus & res, const Odometry & kinematic_state, const Control & control_cmd,
     const double wheel_base);
 
 private:
-  double lateral_jerk_threshold_{};  // m/s^3
   rclcpp::Logger logger_;
+  Params::LateralJerkValidator params_;
   std::unique_ptr<Control> prev_control_cmd_{};
   autoware::signal_processing::LowpassFilter1d measured_vel_lpf;
 };
@@ -124,11 +146,19 @@ class AccelerationValidator
 {
 public:
   friend class AccelerationValidatorTest;
-  explicit AccelerationValidator(rclcpp::Node & node)
-  : e_offset{get_or_declare_parameter<double>(node, "thresholds.acc_error_offset")},
-    e_scale{get_or_declare_parameter<double>(node, "thresholds.acc_error_scale")},
-    desired_acc_lpf{get_or_declare_parameter<double>(node, "acc_lpf_gain")},
-    measured_acc_lpf{get_or_declare_parameter<double>(node, "acc_lpf_gain")} {};
+  explicit AccelerationValidator(const Params & params)
+  : params_{params.acceleration_validator},
+    desired_acc_lpf{params.acceleration_validator.acc_lpf_gain},
+    measured_acc_lpf{params.acceleration_validator.acc_lpf_gain}
+  {
+  }
+
+  void update_parameters(const Params & params)
+  {
+    params_ = params.acceleration_validator;
+    desired_acc_lpf.setGain(params_.acc_lpf_gain);
+    measured_acc_lpf.setGain(params_.acc_lpf_gain);
+  }
 
   void validate(
     ControlValidatorStatus & res, const Odometry & kinematic_state, const Control & control_cmd,
@@ -136,8 +166,8 @@ public:
 
 private:
   bool is_in_error_range() const;
-  const double e_offset;
-  const double e_scale;
+
+  Params::AccelerationValidator params_;
   autoware::signal_processing::LowpassFilter1d desired_acc_lpf;
   autoware::signal_processing::LowpassFilter1d measured_acc_lpf;
 };
@@ -149,31 +179,30 @@ private:
 class VelocityValidator
 {
 public:
-  explicit VelocityValidator(rclcpp::Node & node)
-  : rolling_back_velocity_th{get_or_declare_parameter<double>(
-      node, "thresholds.rolling_back_velocity")},
-    over_velocity_ratio_th{
-      get_or_declare_parameter<double>(node, "thresholds.over_velocity_ratio")},
-    over_velocity_offset_th{
-      get_or_declare_parameter<double>(node, "thresholds.over_velocity_offset")},
-    hold_velocity_error_until_stop{
-      get_or_declare_parameter<bool>(node, "hold_velocity_error_until_stop")},
-    vehicle_vel_lpf{get_or_declare_parameter<double>(node, "vel_lpf_gain")},
-    target_vel_lpf{get_or_declare_parameter<double>(node, "vel_lpf_gain")},
-    over_velocity_vehicle_vel_lpf{
-      get_or_declare_parameter<double>(node, "over_velocity.vel_lpf_gain")},
-    over_velocity_target_vel_lpf{
-      get_or_declare_parameter<double>(node, "over_velocity.vel_lpf_gain")} {};
+  explicit VelocityValidator(const Params & params)
+  : params_{params.velocity_validator},
+    vehicle_vel_lpf{params.vel_lpf_gain},
+    target_vel_lpf{params.vel_lpf_gain},
+    over_velocity_vehicle_vel_lpf{params.velocity_validator.vel_lpf_gain},
+    over_velocity_target_vel_lpf{params.velocity_validator.vel_lpf_gain}
+  {
+  }
+
+  void update_parameters(const Params & params)
+  {
+    params_ = params.velocity_validator;
+    vehicle_vel_lpf.setGain(params.vel_lpf_gain);
+    target_vel_lpf.setGain(params.vel_lpf_gain);
+    over_velocity_vehicle_vel_lpf.setGain(params_.vel_lpf_gain);
+    over_velocity_target_vel_lpf.setGain(params_.vel_lpf_gain);
+  }
 
   void validate(
     ControlValidatorStatus & res, const Trajectory & reference_trajectory,
     const Odometry & kinematics);
 
 private:
-  const double rolling_back_velocity_th;
-  const double over_velocity_ratio_th;
-  const double over_velocity_offset_th;
-  const bool hold_velocity_error_until_stop;
+  Params::VelocityValidator params_;
   autoware::signal_processing::LowpassFilter1d vehicle_vel_lpf;
   autoware::signal_processing::LowpassFilter1d target_vel_lpf;
   autoware::signal_processing::LowpassFilter1d over_velocity_vehicle_vel_lpf;
@@ -187,24 +216,23 @@ private:
 class OverrunValidator
 {
 public:
-  explicit OverrunValidator(rclcpp::Node & node)
-  : overrun_stop_point_dist_th{get_or_declare_parameter<double>(
-      node, "thresholds.overrun_stop_point_dist")},
-    will_overrun_stop_point_dist_th{
-      get_or_declare_parameter<double>(node, "thresholds.will_overrun_stop_point_dist")},
-    assumed_limit_acc{get_or_declare_parameter<double>(node, "thresholds.assumed_limit_acc")},
-    assumed_delay_time{get_or_declare_parameter<double>(node, "thresholds.assumed_delay_time")},
-    vehicle_vel_lpf{get_or_declare_parameter<double>(node, "vel_lpf_gain")} {};
+  explicit OverrunValidator(const Params & params)
+  : params_{params.overrun_validator}, vehicle_vel_lpf{params.vel_lpf_gain}
+  {
+  }
+
+  void update_parameters(const Params & params)
+  {
+    params_ = params.overrun_validator;
+    vehicle_vel_lpf.setGain(params.vel_lpf_gain);
+  }
 
   void validate(
     ControlValidatorStatus & res, const Trajectory & reference_trajectory,
     const Odometry & kinematics);
 
 private:
-  const double overrun_stop_point_dist_th;
-  const double will_overrun_stop_point_dist_th;
-  const double assumed_limit_acc;
-  const double assumed_delay_time;
+  Params::OverrunValidator params_;
   autoware::signal_processing::LowpassFilter1d vehicle_vel_lpf;
 };
 
@@ -215,19 +243,91 @@ private:
 class YawValidator
 {
 public:
-  explicit YawValidator(rclcpp::Node & node)
-  : yaw_deviation_error_th_{get_or_declare_parameter<double>(
-      node, "thresholds.yaw_deviation_error")},
-    yaw_deviation_warn_th_{
-      get_or_declare_parameter<double>(node, "thresholds.yaw_deviation_warn")} {};
+  explicit YawValidator(const Params & params) : params_(params.yaw_validator) {}
+
+  void update_parameters(const Params & params) { params_ = params.yaw_validator; }
 
   void validate(
     ControlValidatorStatus & res, const Trajectory & reference_trajectory,
     const Odometry & kinematics) const;
 
 private:
-  const double yaw_deviation_error_th_;
-  const double yaw_deviation_warn_th_;
+  Params::YawValidator params_;
+};
+
+/**
+ * @class UncrossableBoundDepartureValidator
+ * @brief Validates that the control predicted trajectory does not critically depart an uncrossable
+ * map boundary (e.g. road_border), reusing the shared boundary departure checker library.
+ */
+class UncrossableBoundDepartureValidator
+{
+public:
+  UncrossableBoundDepartureValidator(
+    const rclcpp::Logger & logger, const ::control_validator::Params & params)
+  : logger_{logger}
+  {
+    update_parameters(params);
+  }
+
+  void update_parameters(const ::control_validator::Params & params)
+  {
+    enable_ = params.uncrossable_bound_departure_validator.enable;
+    params_.critical_departure_lateral_th_m =
+      params.uncrossable_bound_departure_validator.lateral_margin_m;
+    params_.longitudinal_margin_m =
+      params.uncrossable_bound_departure_validator.longitudinal_margin_m;
+    params_.max_deceleration_mps2 =
+      params.uncrossable_bound_departure_validator.max_deceleration_mps2;
+    params_.max_jerk_mps3 = params.uncrossable_bound_departure_validator.max_jerk_mps3;
+    params_.brake_delay_s = params.uncrossable_bound_departure_validator.brake_delay_s;
+    params_.time_to_departure_cutoff_s =
+      params.uncrossable_bound_departure_validator.time_to_departure_cutoff_s;
+    params_.on_time_buffer_s = params.uncrossable_bound_departure_validator.on_time_buffer_s;
+    params_.off_time_buffer_s = params.uncrossable_bound_departure_validator.off_time_buffer_s;
+    params_.enable_developer_marker =
+      params.uncrossable_bound_departure_validator.enable_developer_marker;
+    params_.boundary_types_to_detect = params.uncrossable_bound_departure_validator.boundary_types;
+    const auto & p = params.uncrossable_bound_departure_validator;
+    enable_warning_ = p.enable_warning;
+    warning_params_ = params_;
+    warning_params_.critical_departure_lateral_th_m = p.warning_lateral_th_m;
+    warning_params_.time_to_departure_cutoff_s = p.warning_time_to_departure_cutoff_s;
+    warning_params_.brake_delay_s = p.warning_brake_delay_s;
+    warning_params_.on_time_buffer_s = p.warning_on_time_buffer_s;
+    warning_params_.off_time_buffer_s = p.warning_off_time_buffer_s;
+    departure_risk_level_ = static_cast<uint8_t>(p.departure_risk_level);
+    if (checker_) {
+      checker_->update_parameters(params_);
+    }
+    if (warning_checker_) {
+      warning_checker_->update_parameters(warning_params_);
+    }
+  }
+
+  /**
+   * @brief Validate the predicted trajectory against uncrossable boundaries.
+   * @param hazard_sources departure positions of the warning checker's hysteresis are written to
+   *   its departure field when the check ran and the departure warning is enabled
+   */
+  void validate(
+    ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
+    const Odometry & kinematics, const AccelWithCovarianceStamped & acceleration,
+    const lanelet::LaneletMapPtr & lanelet_map,
+    const vehicle_info_utils::VehicleInfo & vehicle_info,
+    visualization_msgs::msg::MarkerArray & debug_markers, HazardWarningSources & hazard_sources);
+
+private:
+  bool enable_{true};
+  rclcpp::Logger logger_;
+  boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
+  std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
+  boundary_departure_checker::HysteresisState hysteresis_state_;
+  bool enable_warning_{true};
+  boundary_departure_checker::UncrossableBoundaryDepartureParam warning_params_;
+  std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> warning_checker_;
+  boundary_departure_checker::HysteresisState warning_hysteresis_state_;
+  uint8_t departure_risk_level_{HazardSector::NONE};
 };
 
 /**
@@ -250,6 +350,12 @@ public:
    */
   void on_control_cmd(const Control::ConstSharedPtr msg);
 
+  /**
+   * @brief Callback storing the lanelet map used by the boundary departure check.
+   * @param msg Lanelet map binary message
+   */
+  void on_lanelet_map(const LaneletMapBin::ConstSharedPtr msg);
+
 private:
   /**
    * @brief Setup diagnostic updater
@@ -265,6 +371,12 @@ private:
    * @brief Publish debug information
    */
   void publish_debug_info(const geometry_msgs::msg::Pose & ego_pose);
+
+  /**
+   * @brief Publish the boundary departure debug markers, clearing stale markers first.
+   * @param markers Markers produced by the boundary departure validator this cycle
+   */
+  void publish_boundary_departure_markers(visualization_msgs::msg::MarkerArray markers);
 
   /**
    * @brief Generate error message based on validation status
@@ -304,10 +416,26 @@ private:
   autoware_utils::InterProcessPollingSubscriber<Trajectory>::SharedPtr sub_predicted_traj_;
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>::SharedPtr
     sub_measured_acc_;
+  rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_lanelet_map_;
+  autoware_utils::InterProcessPollingSubscriber<PredictedObjects>::SharedPtr sub_objects_;
+  autoware_utils::InterProcessPollingSubscriber<PointCloud2>::SharedPtr sub_pointcloud_;
   rclcpp::Publisher<ControlValidatorStatus>::SharedPtr pub_status_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
+  rclcpp::Publisher<HazardAlert>::SharedPtr pub_hazard_alert_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    pub_hazard_processing_time_;
+  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+    pub_hazard_processing_time_detail_;
+
+  autoware_utils::StopWatch<std::chrono::milliseconds> hazard_stop_watch_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> hazard_time_keeper_ =
+    std::make_shared<autoware_utils_debug::TimeKeeper>();
+
+  // parameters (generated by generate_parameter_library)
+  ::control_validator::ParamListener param_listener_;
+  ::control_validator::Params params_;
 
   // system parameters
   int64_t diag_error_count_threshold_ = 0;
@@ -315,6 +443,7 @@ private:
   Updater diag_updater_{this};
   ControlValidatorStatus validation_status_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
+  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   bool flag_autonomous_control_enabled_ = false;
   /**
    * @brief Check if all validation criteria are met
@@ -328,13 +457,16 @@ private:
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch;
 
   // individual validators
-  LatencyValidator latency_validator{*this};
-  LateralJerkValidator lateral_jerk_validator{*this};
-  TrajectoryValidator trajectory_validator{*this};
-  AccelerationValidator acceleration_validator{*this};
-  VelocityValidator velocity_validator{*this};
-  OverrunValidator overrun_validator{*this};
-  YawValidator yaw_validator{*this};
+  LatencyValidator latency_validator;
+  LateralJerkValidator lateral_jerk_validator;
+  TrajectoryValidator trajectory_validator;
+  AccelerationValidator acceleration_validator;
+  VelocityValidator velocity_validator;
+  OverrunValidator overrun_validator;
+  YawValidator yaw_validator;
+  UncrossableBoundDepartureValidator uncrossable_bound_departure_validator;
+  CollisionValidator collision_validator;
+  HazardWarning hazard_warning;
 };
 }  // namespace autoware::control_validator
 
