@@ -253,6 +253,12 @@ ProcessingResult ObstacleStop::process(
 
   if (!enabled_ || traj_points.size() < 2) return ProcessingResult::Unchanged;
 
+  const auto current_time = rclcpp::Time(input.current_odometry->header.stamp, get_clock()->get_clock_type());
+  if (!last_frame_time_ || *last_frame_time_ != current_time) {
+    objects_cache_.reset();
+    last_frame_time_ = current_time;
+  }
+
   auto trajectory = traj_points;
   utils::obstacle_stop::trim_trajectory_and_remove_duplicates(trajectory);
   if (trajectory.size() < 2) return ProcessingResult::Unchanged;
@@ -495,15 +501,17 @@ void ObstacleStop::detect_objects(const TrajectoryModifierData & input)
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::detect_objects", *get_time_keeper());
   if (!params_.use_objects || !input.predicted_objects) return;
 
-  debug_data_.filtered_objects = *input.predicted_objects;
-
-  object_filter_->filter_objects(debug_data_.filtered_objects);
-
-  const auto now = get_clock()->now();
-  const auto stamp =
-    rclcpp::Time(input.predicted_objects->header.stamp, now.get_clock_type());
-  obstacle_tracker_->update_objects(
-    debug_data_.filtered_objects, debug_data_.target_objects, stamp, now);
+  if (!objects_cache_ || objects_cache_->objects_ptr != input.predicted_objects) {
+    objects_cache_ = ObjectCache{input.predicted_objects, *input.predicted_objects, {}};
+    object_filter_->filter_objects(objects_cache_->filtered_objects);
+    const auto now = last_frame_time_ ? *last_frame_time_ : get_clock()->now();
+    const auto stamp =
+      rclcpp::Time(input.predicted_objects->header.stamp, now.get_clock_type());
+    obstacle_tracker_->update_objects(
+      objects_cache_->filtered_objects, objects_cache_->tracked_objects, stamp, now);
+  }
+  debug_data_.filtered_objects = objects_cache_->filtered_objects;
+  debug_data_.target_objects = objects_cache_->tracked_objects;
 
   object_filter_->filter_by_target_area(
     debug_data_.target_objects, context_->vehicle_info, debug_data_.trajectory_shape,

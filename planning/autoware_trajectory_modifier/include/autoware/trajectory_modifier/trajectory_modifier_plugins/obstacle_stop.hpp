@@ -87,6 +87,15 @@ private:
 
   std::unique_ptr<utils::obstacle_stop::ObstacleTracker> obstacle_tracker_;
 
+  std::optional<rclcpp::Time> last_frame_time_;
+  
+  struct ObjectCache{
+    PredictedObjects::ConstSharedPtr objects_ptr;
+    PredictedObjects filtered_objects;
+    utils::obstacle_stop::TargetObjects tracked_objects;
+  };
+  std::optional<ObjectCache> objects_cache_;
+
   struct CruiseReport
   {
     TargetObject target;

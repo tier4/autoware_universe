@@ -688,24 +688,24 @@ TEST_F(ObstacleStopIntegrationTest, CruiseLeavesAlreadySlowerInputUnchanged)
 TEST_F(ObstacleStopIntegrationTest, RepeatedObjectStampDoesNotActivateThenAgesOut)
 {
   auto trajectory = create_straight_trajectory(30.0, 8.0);
-  auto objects = std::make_shared<PredictedObjects>(*make_blocking_car(20.0, 0.0));
+  const auto input = create_input_data(
+    make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), make_blocking_car(20.0, 0.0));
   const auto stamp = node_->now();
-  objects->header.stamp = stamp;
-  const auto input =
-    create_input_data(make_odometry(0.0, 0.0, 8.0), make_acceleration(0.0), objects);
+  // Each call is a new message. A repeated stamp still must not refresh the track.
+  auto at = [&](const rclcpp::Time & object_stamp) {
+    return with_object_stamp(input, object_stamp);
+  };
 
-  EXPECT_FALSE(process_plugin(*plugin_, trajectory, input));
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, at(stamp)));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  EXPECT_FALSE(process_plugin(*plugin_, trajectory, input));
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, at(stamp)));
 
   // The repeated stamp does not refresh the track, so this idle passes grace_period_.
   std::this_thread::sleep_for(std::chrono::milliseconds(600));
-  EXPECT_FALSE(process_plugin(*plugin_, trajectory, input));
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, at(stamp)));
 
-  objects->header.stamp = stamp + rclcpp::Duration::from_seconds(0.1);
-  EXPECT_FALSE(process_plugin(*plugin_, trajectory, input));
+  EXPECT_FALSE(process_plugin(*plugin_, trajectory, at(stamp + rclcpp::Duration::from_seconds(0.1))));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  objects->header.stamp = stamp + rclcpp::Duration::from_seconds(0.2);
-  EXPECT_TRUE(process_plugin(*plugin_, trajectory, input));
+  EXPECT_TRUE(process_plugin(*plugin_, trajectory, at(stamp + rclcpp::Duration::from_seconds(0.2))));
 }
