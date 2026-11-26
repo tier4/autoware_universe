@@ -122,7 +122,12 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   Trajectory tracking_trajectory = raw_trajectory;
   double geometry_solve_time_ms = 0.0;
-  if (params_.lateral_acceleration_guard) {
+  const bool trajectory_fast_enough_to_filter = std::any_of(
+    raw_trajectory.points.begin(), raw_trajectory.points.end(), [&](const TrajectoryPoint & point) {
+      return std::abs(static_cast<double>(point.longitudinal_velocity_mps)) >=
+             params_.lateral_acceleration_guard_min_speed_mps;
+    });
+  if (params_.lateral_acceleration_guard && trajectory_fast_enough_to_filter) {
     if (
       auto prepared = build_laterally_guarded_reference(
         raw_trajectory, initial_state, base_x, base_y, batch_index, geometry_solve_time_ms)) {
@@ -285,8 +290,8 @@ OptimizationResult TrajectoryOptimizer::optimize(
 }
 
 std::optional<SolverSolution> TrajectoryOptimizer::extract_previous_solution(
-  const size_t batch_index, const rclcpp::Time & stamp, const double base_x, const double base_y)
-  const
+  const size_t batch_index, const rclcpp::Time & stamp, const double base_x,
+  const double base_y) const
 {
   const auto & previous = previous_solutions_[batch_index];
   if (!previous.has_value()) {
@@ -341,7 +346,8 @@ Trajectory TrajectoryOptimizer::resample_under_lateral_acceleration(
   }
   const ResampledSequence resampled = resample_pose_sequence(
     poses, initial_state[kV], params_.max_lateral_acceleration_mps2, wheelbase_m_,
-    params_.min_acceleration_mps2, params_.max_acceleration_mps2);
+    params_.min_acceleration_mps2, params_.max_acceleration_mps2,
+    params_.lateral_acceleration_guard_min_speed_mps);
 
   Trajectory trajectory;
   trajectory.header = raw_trajectory.header;
@@ -373,8 +379,8 @@ TrajectoryOptimizer::build_laterally_guarded_reference(
   geometry_solve_time_ms = geometry->solve_time_s * 1e3;
   GuardedReference prepared;
   prepared.geometry_solve_time_ms = geometry_solve_time_ms;
-  prepared.trajectory = resample_under_lateral_acceleration(
-    raw_trajectory, *geometry, initial_state, base_x, base_y);
+  prepared.trajectory =
+    resample_under_lateral_acceleration(raw_trajectory, *geometry, initial_state, base_x, base_y);
   return prepared;
 }
 

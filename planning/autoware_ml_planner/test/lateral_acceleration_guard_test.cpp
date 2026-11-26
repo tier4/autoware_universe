@@ -128,4 +128,15 @@ TEST(LateralAccelerationGuard, CurvatureCapStillLimitsAnAcceleratingProfile)
   EXPECT_GT(resampled.speed_mps.back(), 5.4);
 }
 
+TEST(LateralAccelerationGuard, SlowTrajectoryIsNotCapped)
+{
+  auto poses = circle(100.0, 1.0);
+  constexpr double kSlow = 2.5;
+  for (auto & pose : poses) {
+    pose.speed_mps = kSlow;
+  }
+  const auto resampled = resample_pose_sequence(poses, kSlow, 0.35, kWheelbase, -4.0, 3.0, 3.0);
+  EXPECT_NEAR(resampled.speed_mps.back(), kSlow, 0.05);
+}
+
 }  // namespace autoware::ml_planner::optimization

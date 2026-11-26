@@ -55,6 +55,7 @@ struct ResampledSequence
  * Curvature is ``tan(steering_rad) / wheelbase``. The speed cap at a station is
  * ``sqrt(a_lat_max / |kappa|)``. The profile starts at ``ego_speed_mps`` and brakes or
  * accelerates toward ``min(cap, speed_mps)`` inside the longitudinal acceleration bounds.
+ * Stations slower than ``min_filter_speed_mps`` are not capped.
  *
  * @param poses ``opt_horizon + 1`` samples of the geometry-pass solution. Index 0 is ego.
  *        ``speed_mps`` on each sample is the desired speed at that station [m/s].
@@ -63,11 +64,12 @@ struct ResampledSequence
  * @param wheelbase_m Wheelbase used to turn steering into curvature [m].
  * @param min_acceleration_mps2 Most negative acceleration of one step [m/s^2].
  * @param max_acceleration_mps2 Most positive acceleration of one step [m/s^2].
+ * @param min_filter_speed_mps Do not apply the curvature cap below this speed [m/s].
  */
 ResampledSequence resample_pose_sequence(
   const std::array<PoseSample, opt_horizon + 1> & poses, double ego_speed_mps,
   double lateral_accel_limit_mps2, double wheelbase_m, double min_acceleration_mps2,
-  double max_acceleration_mps2);
+  double max_acceleration_mps2, double min_filter_speed_mps = 0.0);
 
 }  // namespace autoware::ml_planner::optimization
 

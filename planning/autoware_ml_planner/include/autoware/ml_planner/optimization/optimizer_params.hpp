@@ -121,6 +121,8 @@ struct TrajectoryOptimizationParams
   /// Runs a second optimizer pass and a resample, so compute time goes up. False is the
   /// original single solve.
   bool lateral_acceleration_guard{false};
+  /// Below this trajectory speed the guard does not resample. [m/s]
+  double lateral_acceleration_guard_min_speed_mps{3.0};
 };
 
 }  // namespace autoware::ml_planner::optimization

@@ -77,7 +77,8 @@ double interpolate(
 ResampledSequence resample_pose_sequence(
   const std::array<PoseSample, opt_horizon + 1> & poses, const double ego_speed_mps,
   const double lateral_accel_limit_mps2, const double wheelbase_m,
-  const double min_acceleration_mps2, const double max_acceleration_mps2)
+  const double min_acceleration_mps2, const double max_acceleration_mps2,
+  const double min_filter_speed_mps)
 {
   if (wheelbase_m <= 0.0) {
     throw std::invalid_argument("resample_pose_sequence: wheelbase must be positive");
@@ -117,7 +118,8 @@ ResampledSequence resample_pose_sequence(
     if (std::abs(kappa) > curvature_epsilon_inv_m) {
       speed_cap = std::sqrt(std::max(lateral_accel_limit_mps2, 0.0) / std::abs(kappa));
     }
-    const double target = std::min(speed_cap, interpolate(arc, desired_speed, distance));
+    const double desired = interpolate(arc, desired_speed, distance);
+    const double target = desired < min_filter_speed_mps ? desired : std::min(speed_cap, desired);
     const double acceleration =
       std::clamp((target - speed) / opt_dt_s, min_acceleration_mps2, max_acceleration_mps2);
     speed = std::max(0.0, speed + acceleration * opt_dt_s);
