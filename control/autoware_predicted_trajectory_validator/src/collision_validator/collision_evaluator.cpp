@@ -14,7 +14,7 @@
 
 // Ported from autoware_trajectory_validator (autoware.universe 3eb3290355). See the header.
 
-#include "autoware/control_validator/collision_validator/collision_evaluator.hpp"
+#include "autoware/predicted_trajectory_validator/collision_validator/collision_evaluator.hpp"
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -39,7 +39,7 @@
 #include <variant>
 #include <vector>
 
-namespace autoware::control_validator::collision_validator
+namespace autoware::predicted_trajectory_validator::collision_validator
 {
 namespace detail
 {
@@ -80,32 +80,6 @@ std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
   append_sample(end_time);
 
   return {times, distances};
-}
-
-geometry_msgs::msg::Pose interpolate_pose(
-  const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & end_pose,
-  const double ratio)
-{
-  geometry_msgs::msg::Pose interpolated_pose;
-  interpolated_pose.position.x =
-    start_pose.position.x + ratio * (end_pose.position.x - start_pose.position.x);
-  interpolated_pose.position.y =
-    start_pose.position.y + ratio * (end_pose.position.y - start_pose.position.y);
-  interpolated_pose.position.z =
-    start_pose.position.z + ratio * (end_pose.position.z - start_pose.position.z);
-
-  const Eigen::Quaterniond start_q(
-    start_pose.orientation.w, start_pose.orientation.x, start_pose.orientation.y,
-    start_pose.orientation.z);
-  const Eigen::Quaterniond end_q(
-    end_pose.orientation.w, end_pose.orientation.x, end_pose.orientation.y, end_pose.orientation.z);
-  const Eigen::Quaterniond q = start_q.slerp(ratio, end_q);
-  interpolated_pose.orientation.w = q.w();
-  interpolated_pose.orientation.x = q.x();
-  interpolated_pose.orientation.y = q.y();
-  interpolated_pose.orientation.z = q.z();
-
-  return interpolated_pose;
 }
 
 template <class T>
@@ -191,10 +165,9 @@ namespace
 {
 std::vector<Point2d> create_base_polygon(const EgoDimensions & ego)
 {
-  const double half_width = ego.vehicle_width / 2.0;
   return {
-    Point2d{ego.front_offset, half_width}, Point2d{ego.front_offset, -half_width},
-    Point2d{-ego.rear_overhang, -half_width}, Point2d{-ego.rear_overhang, half_width}};
+    Point2d{ego.front_offset, ego.left_width}, Point2d{ego.front_offset, -ego.right_width},
+    Point2d{-ego.rear_overhang, -ego.right_width}, Point2d{-ego.rear_overhang, ego.left_width}};
 }
 }  // namespace
 
@@ -370,8 +343,8 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_time(
     resolve_interpolation(time_from_refs_, target_time_from_ref);
 
   const auto lerp = [](const double a, const double b, const double r) { return a + r * (b - a); };
-  const auto pose = interpolate_pose(
-    trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio);
+  const auto pose = autoware_utils_geometry::calc_interpolated_pose(
+    trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio, false);
 
   return InterpolatedState{
     lerp(dist_from_fronts_.at(lower_idx), dist_from_fronts_.at(upper_idx), ratio), pose,
@@ -391,8 +364,8 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_dist(
   const auto [lower_idx, upper_idx, ratio] = resolve_interpolation(dist_from_fronts_, target_dist);
 
   const auto lerp = [](const double a, const double b, const double r) { return a + r * (b - a); };
-  const auto pose = interpolate_pose(
-    trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio);
+  const auto pose = autoware_utils_geometry::calc_interpolated_pose(
+    trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio, false);
 
   return InterpolatedState{
     lerp(dist_from_fronts_.at(lower_idx), dist_from_fronts_.at(upper_idx), ratio), pose,
@@ -792,7 +765,7 @@ EgoSweep CollisionEvaluator::build_ego_sweep(
   }
   const detail::EgoDimensions ego_dimensions{
     vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
-    vehicle_info.vehicle_width_m};
+    vehicle_info.max_lateral_offset_m, -vehicle_info.min_lateral_offset_m};
   const auto ego_footprints = detail::compute_footprint_trajectory(ego_poses, ego_dimensions);
   return EgoSweep(
     std::move(ego_times), std::move(ego_poses), ego_footprints, std::move(ego_stopped),
@@ -976,4 +949,4 @@ std::vector<CollisionCandidate> CollisionEvaluator::evaluate(
 
   return candidates;
 }
-}  // namespace autoware::control_validator::collision_validator
+}  // namespace autoware::predicted_trajectory_validator::collision_validator

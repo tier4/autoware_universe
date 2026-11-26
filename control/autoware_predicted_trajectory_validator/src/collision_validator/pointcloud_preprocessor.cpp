@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/control_validator/collision_validator/pointcloud_preprocessor.hpp"
+#include "autoware/predicted_trajectory_validator/collision_validator/pointcloud_preprocessor.hpp"
 
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/logging.hpp>
@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator::collision_validator
+namespace autoware::predicted_trajectory_validator::collision_validator
 {
 namespace
 {
@@ -261,4 +261,4 @@ const std::optional<PointCloudClusters> & PointCloudPreprocessor::process_frame(
   result_ = PointCloudClusters{std::move(clusters), stamp};
   return result_;
 }
-}  // namespace autoware::control_validator::collision_validator
+}  // namespace autoware::predicted_trajectory_validator::collision_validator

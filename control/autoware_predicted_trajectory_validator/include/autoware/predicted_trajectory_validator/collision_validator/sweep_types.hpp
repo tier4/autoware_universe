@@ -19,8 +19,8 @@
 // Changes from the source: namespace; TrajectoryIdentification removed. This copy does not follow
 // later changes of the source.
 
-#ifndef AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__SWEEP_TYPES_HPP_
-#define AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__SWEEP_TYPES_HPP_
+#ifndef AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__SWEEP_TYPES_HPP_
+#define AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__SWEEP_TYPES_HPP_
 
 #include <autoware_utils_geometry/boost_geometry.hpp>
 
@@ -38,7 +38,7 @@
 #include <variant>
 #include <vector>
 
-namespace autoware::control_validator::collision_validator
+namespace autoware::predicted_trajectory_validator::collision_validator
 {
 using autoware_utils_geometry::Box2d;
 using autoware_utils_geometry::MultiPoint2d;
@@ -204,6 +204,6 @@ struct EgoSweep
 
   const Polygon2d & now() const { return polygons.front(); }
 };
-}  // namespace autoware::control_validator::collision_validator
+}  // namespace autoware::predicted_trajectory_validator::collision_validator
 
-#endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__SWEEP_TYPES_HPP_
+#endif  // AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__SWEEP_TYPES_HPP_

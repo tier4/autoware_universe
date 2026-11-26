@@ -24,11 +24,11 @@
 // the ego DRAC iterates over braking delays instead of decelerations. This copy does not follow
 // later changes of the source.
 
-#ifndef AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_
-#define AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_
+#ifndef AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_
+#define AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_
 
-#include "autoware/control_validator/collision_validator/pointcloud_preprocessor.hpp"
-#include "autoware/control_validator/collision_validator/sweep_types.hpp"
+#include "autoware/predicted_trajectory_validator/collision_validator/pointcloud_preprocessor.hpp"
+#include "autoware/predicted_trajectory_validator/collision_validator/sweep_types.hpp"
 
 #include <Eigen/Geometry>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
@@ -49,7 +49,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator::collision_validator
+namespace autoware::predicted_trajectory_validator::collision_validator
 {
 namespace detail
 {
@@ -127,7 +127,8 @@ struct EgoDimensions
 {
   double front_offset{0.0};
   double rear_overhang{0.0};
-  double vehicle_width{0.0};
+  double left_width{0.0};
+  double right_width{0.0};
 };
 
 FootprintTrajectory compute_footprint_trajectory(
@@ -284,6 +285,6 @@ private:
 
   CollisionEvaluatorParam param_;
 };
-}  // namespace autoware::control_validator::collision_validator
+}  // namespace autoware::predicted_trajectory_validator::collision_validator
 
-#endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_
+#endif  // AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__COLLISION_EVALUATOR_HPP_

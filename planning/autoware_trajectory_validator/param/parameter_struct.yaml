@@ -430,6 +430,13 @@ validator:
       default_value: 0.3
       description: duration threshold to clear target object when no longer seen
       read_only: false
+    object_confirm_time_th:
+      type: double
+      default_value: 0.3
+      description: duration a target object must be seen before it can obstruct (s)
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
     distance_hysteresis_th:
       type: double
       default_value: 0.3
@@ -454,6 +461,13 @@ validator:
       type: bool
       default_value: false
       description: whether to use the embedded trajectory time to evaluate the stop duration
+      read_only: false
+    max_approach_angle:
+      type: double
+      default_value: 1.047
+      description: maximum angle between object velocity and the crosswalk crossing axis for a moving object to be treated as approaching (rad)
+      validation:
+        bounds<>: [0.0, 1.5707963267948966]
       read_only: false
     stopping_params:
       nominal_decel:

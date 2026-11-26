@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_HPP_
-#define AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_HPP_
+#ifndef AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_HPP_
+#define AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_HPP_
 
-#include "autoware/control_validator/hazard_warning/alert_latch.hpp"
-#include "autoware/control_validator/hazard_warning/hazard_warning_sources.hpp"
+#include "autoware/predicted_trajectory_validator/hazard_warning/alert_latch.hpp"
+#include "autoware/predicted_trajectory_validator/hazard_warning/hazard_warning_sources.hpp"
 
-#include <autoware_control_validator/control_validator_parameters.hpp>
+#include <autoware_predicted_trajectory_validator/predicted_trajectory_validator_parameters.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
@@ -36,7 +36,7 @@
 #include <optional>
 #include <vector>
 
-namespace autoware::control_validator
+namespace autoware::predicted_trajectory_validator
 {
 namespace hazard_warning
 {
@@ -59,12 +59,12 @@ public:
    * @param pub_markers debug marker publisher; null publishes nothing
    */
   HazardWarning(
-    const rclcpp::Logger & logger, const ::control_validator::Params & params,
+    const rclcpp::Logger & logger, const ::predicted_trajectory_validator::Params & params,
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers = nullptr,
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper =
       std::make_shared<autoware_utils_debug::TimeKeeper>());
 
-  void update_parameters(const ::control_validator::Params & params);
+  void update_parameters(const ::predicted_trajectory_validator::Params & params);
 
   /**
    * @param vehicle_info footprint whose centroid is the origin of the sector bearings
@@ -97,6 +97,6 @@ private:
   std::array<HazardWarningSources, hazard_warning::kNumSectors> last_on_sources_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
 };
-}  // namespace autoware::control_validator
+}  // namespace autoware::predicted_trajectory_validator
 
-#endif  // AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_HPP_
+#endif  // AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_HPP_

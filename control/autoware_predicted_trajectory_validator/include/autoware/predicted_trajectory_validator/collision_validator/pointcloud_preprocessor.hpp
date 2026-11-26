@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__POINTCLOUD_PREPROCESSOR_HPP_
-#define AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__POINTCLOUD_PREPROCESSOR_HPP_
+#ifndef AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__POINTCLOUD_PREPROCESSOR_HPP_
+#define AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__POINTCLOUD_PREPROCESSOR_HPP_
 
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
@@ -30,7 +30,7 @@
 #include <optional>
 #include <vector>
 
-namespace autoware::control_validator::collision_validator
+namespace autoware::predicted_trajectory_validator::collision_validator
 {
 using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
@@ -112,6 +112,8 @@ private:
   PointCloudParam param_;
   std::optional<PointCloudClusters> result_;
 };
-}  // namespace autoware::control_validator::collision_validator
+}  // namespace autoware::predicted_trajectory_validator::collision_validator
 
-#endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__POINTCLOUD_PREPROCESSOR_HPP_
+// clang-format off
+#endif  // AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__POINTCLOUD_PREPROCESSOR_HPP_  // NOLINT
+// clang-format on

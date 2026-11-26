@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_
-#define AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_
+#ifndef AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_
+#define AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_
 
 #include <rclcpp/time.hpp>
 
@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace autoware::control_validator::hazard_warning
+namespace autoware::predicted_trajectory_validator::hazard_warning
 {
 struct SectorState
 {
@@ -67,6 +67,6 @@ private:
   std::optional<rclcpp::Time> last_on_time_;
   SectorState last_state_;
 };
-}  // namespace autoware::control_validator::hazard_warning
+}  // namespace autoware::predicted_trajectory_validator::hazard_warning
 
-#endif  // AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_
+#endif  // AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__ALERT_LATCH_HPP_

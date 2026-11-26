@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_VALIDATOR_HPP_
-#define AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_VALIDATOR_HPP_
+#ifndef AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__COLLISION_VALIDATOR_HPP_
+#define AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__COLLISION_VALIDATOR_HPP_
 
-#include "autoware/control_validator/collision_validator/collision_evaluator.hpp"
-#include "autoware/control_validator/collision_validator/pointcloud_preprocessor.hpp"
-#include "autoware/control_validator/hazard_warning/hazard_warning_sources.hpp"
+#include "autoware/predicted_trajectory_validator/collision_validator/collision_evaluator.hpp"
+#include "autoware/predicted_trajectory_validator/collision_validator/pointcloud_preprocessor.hpp"
+#include "autoware/predicted_trajectory_validator/hazard_warning/hazard_warning_sources.hpp"
 
-#include <autoware_control_validator/control_validator_parameters.hpp>
+#include <autoware_predicted_trajectory_validator/predicted_trajectory_validator_parameters.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/clock.hpp>
@@ -37,7 +37,7 @@
 #include <optional>
 #include <vector>
 
-namespace autoware::control_validator
+namespace autoware::predicted_trajectory_validator
 {
 /**
  * @brief Entry of the collision warning: odometry history, pointcloud preprocessing,
@@ -47,11 +47,11 @@ class CollisionValidator
 {
 public:
   CollisionValidator(
-    const rclcpp::Logger & logger, const ::control_validator::Params & params,
+    const rclcpp::Logger & logger, const ::predicted_trajectory_validator::Params & params,
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper =
       std::make_shared<autoware_utils_debug::TimeKeeper>());
 
-  void update_parameters(const ::control_validator::Params & params);
+  void update_parameters(const ::predicted_trajectory_validator::Params & params);
 
   /**
    * @brief Evaluate one cycle with whichever of objects / pointcloud is available and write
@@ -80,11 +80,11 @@ private:
   rclcpp::Logger logger_;
   rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
-  ::control_validator::Params::CollisionValidator params_;
+  ::predicted_trajectory_validator::Params::CollisionValidator params_;
   std::deque<nav_msgs::msg::Odometry> odometry_history_;
   collision_validator::PointCloudPreprocessor pointcloud_preprocessor_;
   collision_validator::CollisionEvaluator collision_evaluator_;
 };
-}  // namespace autoware::control_validator
+}  // namespace autoware::predicted_trajectory_validator
 
-#endif  // AUTOWARE__CONTROL_VALIDATOR__COLLISION_VALIDATOR__COLLISION_VALIDATOR_HPP_
+#endif  // AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__COLLISION_VALIDATOR__COLLISION_VALIDATOR_HPP_

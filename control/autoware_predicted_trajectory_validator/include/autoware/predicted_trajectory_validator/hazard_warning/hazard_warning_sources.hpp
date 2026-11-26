@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_SOURCES_HPP_
-#define AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_SOURCES_HPP_
+#ifndef AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_SOURCES_HPP_
+#define AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_SOURCES_HPP_
 
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <builtin_interfaces/msg/time.hpp>
@@ -24,7 +24,7 @@
 #include <optional>
 #include <vector>
 
-namespace autoware::control_validator
+namespace autoware::predicted_trajectory_validator
 {
 struct HazardSource
 {
@@ -38,12 +38,7 @@ struct HazardWarningSources
 {
   std::optional<std::vector<HazardSource>> collision;  // nullopt when not evaluated this cycle
   std::optional<std::vector<HazardSource>> departure;
-
-  static HazardWarningSources empty()
-  {
-    return {std::vector<HazardSource>{}, std::vector<HazardSource>{}};
-  }
 };
-}  // namespace autoware::control_validator
+}  // namespace autoware::predicted_trajectory_validator
 
-#endif  // AUTOWARE__CONTROL_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_SOURCES_HPP_
+#endif  // AUTOWARE__PREDICTED_TRAJECTORY_VALIDATOR__HAZARD_WARNING__HAZARD_WARNING_SOURCES_HPP_

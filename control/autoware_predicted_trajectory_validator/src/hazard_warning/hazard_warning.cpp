@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/control_validator/hazard_warning/hazard_warning.hpp"
+#include "autoware/predicted_trajectory_validator/hazard_warning/hazard_warning.hpp"
 
+#include <autoware_utils/math/normalization.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 
@@ -26,12 +28,15 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator
+namespace autoware::predicted_trajectory_validator
 {
 namespace
 {
 using autoware_internal_control_msgs::msg::HazardAlert;
 using autoware_internal_control_msgs::msg::HazardSector;
+using autoware_utils::deg2rad;
+using autoware_utils::normalize_degree;
+using autoware_utils::rad2deg;
 using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
 using hazard_warning::HazardWarningParam;
@@ -54,17 +59,6 @@ constexpr std::array<std::array<double, 2>, kNumSectors> kSectorRanges{{
   {10.0, 30.0},
 }};
 
-double deg2rad(const double deg)
-{
-  return deg * M_PI / 180.0;
-}
-
-double normalize_deg(const double deg)
-{
-  const double normalized = std::fmod(deg, 360.0);
-  return normalized < 0.0 ? normalized + 360.0 : normalized;
-}
-
 struct BearingArc
 {
   double start_deg;
@@ -73,8 +67,8 @@ struct BearingArc
 
 bool overlaps(const BearingArc & a, const BearingArc & b)
 {
-  return normalize_deg(b.start_deg - a.start_deg) <= a.length_deg ||
-         normalize_deg(a.start_deg - b.start_deg) <= b.length_deg;
+  return normalize_degree(b.start_deg - a.start_deg, 0.0) <= a.length_deg ||
+         normalize_degree(a.start_deg - b.start_deg, 0.0) <= b.length_deg;
 }
 
 std::optional<BearingArc> bearing_arc(const Polygon2d & shape, const Point2d & apex)
@@ -87,7 +81,7 @@ std::optional<BearingArc> bearing_arc(const Polygon2d & shape, const Point2d & a
   bearings.reserve(ring.size());
   for (const auto & vertex : ring) {
     bearings.push_back(
-      normalize_deg(std::atan2(vertex.y() - apex.y(), vertex.x() - apex.x()) * 180.0 / M_PI));
+      normalize_degree(rad2deg(std::atan2(vertex.y() - apex.y(), vertex.x() - apex.x())), 0.0));
   }
   std::sort(bearings.begin(), bearings.end());
   double max_gap = 360.0 - (bearings.back() - bearings.front());
@@ -109,11 +103,11 @@ BearingArc sector_arc(const size_t sector)
   while (to_deg <= from_deg) {
     to_deg += 360.0;
   }
-  return BearingArc{normalize_deg(from_deg), std::min(to_deg - from_deg, 360.0)};
+  return BearingArc{normalize_degree(from_deg, 0.0), std::min(to_deg - from_deg, 360.0)};
 }
 
 HazardWarningParam to_hazard_warning_param(
-  const ::control_validator::Params::HazardWarning & params)
+  const ::predicted_trajectory_validator::Params::HazardWarning & params)
 {
   HazardWarningParam out;
   out.min_alert_duration = params.min_alert_duration;
@@ -213,7 +207,7 @@ Marker make_risk_level_marker(
 }  // namespace
 
 HazardWarning::HazardWarning(
-  const rclcpp::Logger & logger, const ::control_validator::Params & params,
+  const rclcpp::Logger & logger, const ::predicted_trajectory_validator::Params & params,
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_markers,
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 : logger_(logger), time_keeper_(std::move(time_keeper)), pub_markers_(std::move(pub_markers))
@@ -221,7 +215,7 @@ HazardWarning::HazardWarning(
   update_parameters(params);
 }
 
-void HazardWarning::update_parameters(const ::control_validator::Params & params)
+void HazardWarning::update_parameters(const ::predicted_trajectory_validator::Params & params)
 {
   param_ = to_hazard_warning_param(params.hazard_warning);
 }
@@ -375,4 +369,4 @@ void HazardWarning::publish_debug(const HazardAlert & alert) const
   }
   pub_markers_->publish(markers);
 }
-}  // namespace autoware::control_validator
+}  // namespace autoware::predicted_trajectory_validator

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/control_validator/collision_validator/collision_validator.hpp"
+#include "autoware/predicted_trajectory_validator/collision_validator/collision_validator.hpp"
 
-#include "autoware/control_validator/utils.hpp"
+#include "autoware/predicted_trajectory_validator/utils.hpp"
 
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
@@ -32,7 +32,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::control_validator
+namespace autoware::predicted_trajectory_validator
 {
 namespace
 {
@@ -60,7 +60,8 @@ std::optional<uint8_t> label_from_name(const std::string & name)
   return std::nullopt;
 }
 
-PointCloudParam to_pointcloud_param(const ::control_validator::Params::CollisionValidator & params)
+PointCloudParam to_pointcloud_param(
+  const ::predicted_trajectory_validator::Params::CollisionValidator & params)
 {
   const auto & pointcloud = params.pointcloud;
   PointCloudParam out;
@@ -77,7 +78,7 @@ PointCloudParam to_pointcloud_param(const ::control_validator::Params::Collision
 }
 
 CollisionEvaluatorParam to_collision_evaluator_param(
-  const ::control_validator::Params::CollisionValidator & params)
+  const ::predicted_trajectory_validator::Params::CollisionValidator & params)
 {
   CollisionEvaluatorParam out;
   out.max_time = params.prediction_horizon;
@@ -114,7 +115,7 @@ uint8_t sources_of(const CollisionCandidate & candidate)
 }  // namespace
 
 CollisionValidator::CollisionValidator(
-  const rclcpp::Logger & logger, const ::control_validator::Params & params,
+  const rclcpp::Logger & logger, const ::predicted_trajectory_validator::Params & params,
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 : logger_(logger),
   time_keeper_(time_keeper),
@@ -124,7 +125,7 @@ CollisionValidator::CollisionValidator(
 {
 }
 
-void CollisionValidator::update_parameters(const ::control_validator::Params & params)
+void CollisionValidator::update_parameters(const ::predicted_trajectory_validator::Params & params)
 {
   params_ = params.collision_validator;
   pointcloud_preprocessor_.update_parameters(to_pointcloud_param(params_));
@@ -186,6 +187,7 @@ void CollisionValidator::validate(
   }
   update_history(odom);
   if (predicted_trajectory.points.size() < 2) {
+    hazard_sources.collision.emplace();
     return;
   }
   const auto & points = predicted_trajectory.points;
@@ -230,4 +232,4 @@ void CollisionValidator::validate(
 
   hazard_sources.collision = to_hazard_sources(candidates, odom);
 }
-}  // namespace autoware::control_validator
+}  // namespace autoware::predicted_trajectory_validator
