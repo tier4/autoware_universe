@@ -33,9 +33,7 @@ std::vector<SegmentWithIdx> create_local_segments(const lanelet::ConstLineString
   const auto basic_ls = linestring.basicLineString();
   for (size_t i = 0; i + 1 < basic_ls.size(); ++i) {
     const auto segment = utils::to_segment_2d(basic_ls.at(i), basic_ls.at(i + 1));
-    local_segments.emplace_back(
-      boost::geometry::return_envelope<Segment2d>(segment),
-      IdxForRTreeSegment(linestring.id(), i, i + 1));
+    local_segments.emplace_back(segment, IdxForRTreeSegment(linestring.id(), i, i + 1));
   }
   return local_segments;
 }
