@@ -1,125 +1,177 @@
-# Release 2026-11-27: ResWorld 1.4.4.4 (jpntaxi)
+# Release 2026-11-27: four jpntaxi models, one build (pilot-auto.xx1 v0.53)
 
-The same file is on both branches of this model:
+Hand-over for the agent deploying on the Japan taxi. One build of the two branches below runs all four 2026-11-27
+models; switching models is one launch argument, `e2e_model`, with no rebuild.
 
-| | |
-|---|---|
-| Python | tier4/OnePlanner `e2e-release/1127/resworld-1.4.4.4` |
-| Node | tier4/autoware_universe `e2e-release/1127/resworld-1.4.4.4` = `dev/e2e-resworld-full` at 368a6d97b2, the `autoware_tensorrt_e2e` ResWorld node |
-| WebAuto | project `prd_jt`, ML package `OnePlanner`, package release `20261125_resworld__oneplanner-1.4.4.4-jpntaxi` |
-| Release | `oneplanner-1.4.4.4-jpntaxi` |
+The same file is on both branches:
 
-The four releases of 2026-11-27 are `resworld-1.4.4.4`, `mlplanner-2stage-a`, `mlplanner-2stage-b` and
-`mlplanner-1p5stage-b`. Every one has a branch of that name in both repositories.
+| Repository | Branch | Head | Base |
+|---|---|---|---|
+| tier4/autoware_universe | `e2e-release/1127/jpntaxi-unified` | `6cb4cec182` | `e2e-release/1127/resworld-1.4.4.4` (the ResWorld node unchanged) |
+| tier4/autoware_launch.xx1 | `e2e-release/1127/jpntaxi-unified` | `fa209c9051` | `dev/v0.53/e2e-resworld` at `fbff3706` (#2206-#2209 included) |
 
-## Model
+Every other repository stays at the car's stack, pilot-auto.xx1 `beta/v0.53` (`autoware.repos`; tested at `7f39680f`).
+No OTA, no other version change.
 
-ResWorld (this repository, `ARCH=resworld`) on the frozen BEVFusion-L backbone (awml-2.8.2-jpntaxi):
+## The four models
 
-- A 6 s displacement head with the measured crab angle. This is the recipe of 1.4.4.2, the winner of the
-  11-13 car test.
-- Launch labels: every clear launch that is not at a red light is shifted, and the start decision comes after a
-  departing lead vehicle.
-- Closed-loop DAgger rows: states the planner reached when it drove itself, longitudinal only, 8 % of the batch.
+All four are WebAuto package releases in project `prd_jt`, ML package `OnePlanner`.
 
-Run: `resworld-6s-disp-lat-crabm-noegohist-launchclear-lead-dagger4nolatcl08-big-d8-ffn1024-tok128-2node-bs1024-lr1.41e-4-ep10-seed32-v12data-20261123`.
+| `e2e_model` | Model | WebAuto package release (id) | Files in the directory |
+|---|---|---|---|
+| `OnePlanner` (default) | ResWorld / OnePlanner, whichever version is in `<data_path>/OnePlanner` (now 1.4.4.4) | `20261125_resworld__oneplanner-1.4.4.4-jpntaxi` (`5db45bcf`) | `resworld_planner.simplified.onnx`, `bevfusion_lidar_feature.onnx`, `ml_package_resworld.param.yaml`, `deployment_manifest.json` |
+| `oneplanner-mlplanner-1p5stage-b-jpntaxi` | ML-Planner 1.5-stage B | `20261125_mlplanner__oneplanner-mlplanner-1p5stage-b-jpntaxi` (`33ed57d8`) | `ml_planner_bev.onnx`, `metadata.json`, `bevfusion_lidar_feature.onnx` |
+| `oneplanner-mlplanner-2stage-a-jpntaxi` | ML-Planner 2-stage A | `20261125_mlplanner__oneplanner-mlplanner-2stage-a-jpntaxi` (`6c701579`) | `ml_planner_sampler.onnx`, `metadata.json` |
+| `oneplanner-mlplanner-2stage-b-jpntaxi` | ML-Planner 2-stage B | `20261125_mlplanner__oneplanner-mlplanner-2stage-b-jpntaxi` (`87efa0a9`) | `ml_planner_sampler.onnx`, `metadata.json` |
 
-- W&B: `b1e95a767001d32b`.
-- Checkpoint: step 33,250, whose deployable weights are the EMA.
-- Training list: `<T4_ROOT>/lists/20261030/prdjt-x2dev-train-s1-6s.json`.
-
-The turn-indicator head is a separate classifier on the frozen planner's features
-(`projects/resworld/scripts/train_indicator_head.py`, 8 GPUs, every training row). The release graph runs it:
-output `turn_indicator_logits`. Its golden-val result, on 20,000 rows: accuracy 0.910, macro F1 0.896, NLL 0.381
-(recall: none 0.941 / left 0.858 / right 0.871).
-
-## Files
-
-`<RELEASE_ROOT>` is the cluster's shared release store; the hand-over note gives its path.
+sha256 of the files (check them after copying):
 
 | File | sha256 |
 |---|---|
-| `<RELEASE_ROOT>/resworld-1.4.4.4/python/late-0033250.ckpt` | `d6d97002cadcf08bbf88b6f310e498fcc90b5b5a2d3f4c024b11956bab6524eb` |
-| `<RELEASE_ROOT>/resworld-1.4.4.4/python/indicator_head.pt` | `30318e04f2ecf832352f66dc1477a70c70ee7d5a6ca552abace5d939d8196611` |
-| `<RELEASE_ROOT>/resworld-1.4.4.4/node/oneplanner-1.4.4.4-jpntaxi/` | the four files' sha256 are in its `deployment_manifest.json` |
+| OnePlanner 1.4.4.4 `resworld_planner.simplified.onnx` | `4b5e9f4f64c5aa5b156ae10c31ca0d75169ac6e033e15e7d5dbff1703d8dbb92` |
+| OnePlanner 1.4.4.4 `bevfusion_lidar_feature.onnx` (the same file in 1.5-stage B) | `d701f6c37b44af6a04deab43535c0ff7ed81142def56126bd0df4690f4e57e8e` |
+| OnePlanner 1.4.4.4 `ml_package_resworld.param.yaml` | `df55e869bed3ea3387653a3806cd6a0e56f6b78f5e9e5b39c20cd4d6c0b87432` |
+| OnePlanner 1.4.4.4 `deployment_manifest.json` | `50054e7014f9e3a425e51615de788b893771652b4e41df52ac19429c2fb5f4bf` |
+| 1.5-stage B `ml_planner_bev.onnx` | `aba79716c35603f96e430da558920661bf759016ea5cff4ec7e55c20fac17a37` |
+| 1.5-stage B `metadata.json` | `4bf246ba529ffd149c43de15ae1bad4692219ead5424c6737535008ccbc258c3` |
+| 2-stage A `ml_planner_sampler.onnx` | `d42dbdf0195cddfe5329abcc5c4fe28e7e4f47d108f2975bf54335c8ac2892ee` |
+| 2-stage A `metadata.json` | `202f013acf8f96191ca8c5cd82a3e7cf6ccb55300105d9234607a3af3822a1aa` |
+| 2-stage B `ml_planner_sampler.onnx` | `8b33591904a1d6a5958ff7cfa1cd434d900af291dda4ee3b58aa3f28b56dbe86` |
+| 2-stage B `metadata.json` | `b5e95a6bed8353ae8fd6add1bc92c35b23d316b099b05498fba642f517456016` |
 
-The `node/` directory holds exactly the WebAuto package release:
+Per-model details (training run, offline metrics, how the graphs were exported) are in each model's own release
+branch, `e2e-release/1127/<model>`, in this repository and in tier4/OnePlanner.
 
-- `resworld_planner.simplified.onnx`
-- `bevfusion_lidar_feature.onnx`
-- `ml_package_resworld.param.yaml`
-- `deployment_manifest.json`
+## Step 1: build once
 
-BEVFusion-L checkpoint and config: `<RELEASE_ROOT>/common/bevfusion-l-awml-2.8.2-jpntaxi/`.
+1. Take the car's workspace (pilot-auto.xx1 `beta/v0.53`). Point two entries at the branches above: `universe` to
+   tier4/autoware_universe and `launcher` to tier4/autoware_launch.xx1, both `e2e-release/1127/jpntaxi-unified`.
+   Leave every other entry alone.
+2. Build as usual (Release). New packages that get built: `autoware_ml_planner`, plus the 1.5-stage node inside
+   `autoware_tensorrt_e2e`.
+3. **Check that acados is found for ML-Planner.** `autoware_ml_planner` generates its trajectory-optimizer solver at
+   build time from `$ACADOS_SOURCE_DIR` (default `/opt/acados`). It needs `lib/libacados.so`, `lib/libblasfeo.so`,
+   `lib/libhpipm.so` and `.venv/bin/python3` with `interfaces/acados_template` there. If one is missing, the build
+   still **succeeds**, prints `acados was not found under ...; trajectory optimization support will be disabled`, and
+   the ML-Planner models then run **without** their internal optimizer. Search the build log for that line. If it is
+   there, fix `ACADOS_SOURCE_DIR` and rebuild `autoware_ml_planner` and `autoware_tensorrt_e2e`. The v0.53 chain's
+   own `autoware_trajectory_optimizer` already needs acados (`find_package(acados REQUIRED)`), so the libraries are
+   on the car; the Python template is what to check.
+4. If an ML-Planner node fails at start with `libacados.so: cannot open shared object file`, add the acados `lib`
+   directory to `LD_LIBRARY_PATH` for the Autoware process.
 
-## Python: open-loop evaluation
+## Step 2: put the models in place
 
-The devkit is installed by `uv sync` at the pinned commit (`devkit.pin`, 802ae479). `ARCH=resworld` selects
-the project.
+Under the launch's `data_path` (autoware.launch.xml defaults to `$HOME/autoware_data`; use whatever the car passes):
 
-```bash
-uv sync
-ARCH=resworld uv run python scripts/export_e2e_predictions.py \
-    --checkpoint <RELEASE_ROOT>/resworld-1.4.4.4/python/late-0033250.ckpt \
-    --data-list <T4_ROOT>/lists/20261030/golden-val.json \
-    --bevfusion-config <RELEASE_ROOT>/common/bevfusion-l-awml-2.8.2-jpntaxi/bevfusion_lidar_voxel_second_secfpn_30e_8xb24_jpntaxi_base_120m.py \
-    --bevfusion-ckpt <RELEASE_ROOT>/common/bevfusion-l-awml-2.8.2-jpntaxi/best_epoch_28.pth \
-    --batch-size 8 --output predictions.jsonl
-PYTHONPATH=<t4-e2e-devkit checkout at c234eb17> .venv/bin/python \
-    -c 'import sys; from t4_e2e_devkit.cli import main; sys.exit(main())' score-manifest \
-    <T4_ROOT>/lists/20261030/golden-val.json --predictions predictions.jsonl --output-dir score --backend gpu
+```
+<data_path>/OnePlanner/                                  ResWorld, as today (replace its four files to change version)
+<data_path>/oneplanner-mlplanner-1p5stage-b-jpntaxi/     1.5-stage B
+<data_path>/oneplanner-mlplanner-2stage-a-jpntaxi/       2-stage A
+<data_path>/oneplanner-mlplanner-2stage-b-jpntaxi/       2-stage B
 ```
 
-Score with the devkit at c234eb17 (the pin of OnePlanner `main`) or later. At this branch's own pin, 802ae479,
-`score-manifest` keeps scenes from every batch in memory (fixed upstream in tier4/e2e-devkit#134) and runs out of memory after
-about 18,000 of the 348,124 frames. At c234eb17 it holds about 7 GB and scores 2.5-4 frames per second on one GPU: about 1.5 days for every
-frame, or about 2 hours in 16 shards (see below).
+Copy the package releases as they are; their file names are what the nodes read.
 
-Reference result: golden-val, every frame (10 Hz), 348,124 frames in 775 scenes. It was run with batch 8. Another
-batch size changes the BEV backbone's float rounding, so per-frame values are then not bit-exact.
+- **`<data_path>/OnePlanner` must exist even when testing a 2-stage model.** The 2-stage models' detections come from
+  a ResWorld node that reads the ResWorld model there (see "What runs").
+- **Keep every model directory writable.** The first start of each model builds its TensorRT engines beside the ONNX
+  files (`*.engine`, `*.trt.engine` and an `.identity` file) and takes a few minutes. Later starts load them in
+  seconds. An engine whose graph, precision or bytes changed is rebuilt by itself.
 
-| FDE (m) | 2 s | 4 s | 6 s |
+## Step 3: launch, switch with `e2e_model`
+
+Same command as the current ResWorld test (`planning_setting:=resworld`), plus `e2e_model`:
+
+```
+ros2 launch autoware_launch autoware.launch.xml ... planning_setting:=resworld e2e_model:=<directory name>
+```
+
+Leaving `e2e_model` out is the current ResWorld behaviour exactly. To change model, change `e2e_model`; to change the
+ResWorld version, replace the files in `<data_path>/OnePlanner`. Nothing else, and no rebuild.
+
+## What runs
+
+Perception's own detection stage, including the original BEVFusion node, is **never** launched under
+`planning_setting:=resworld`, for any `e2e_model`. `launch_detection` defaults to `auto`, which is false for
+resworld. That cuts the only include path to `autoware_bevfusion`:
+`perception.launch.xml` `<group if="$(var launch_detection)">` → `detection.launch.xml` →
+`lidar_dnn_detector.launch.xml`. Tracking, prediction and traffic lights run as before. The detections come from the
+OnePlanner BEV backbone and its detection head in the E2E node, published to
+`/perception/object_recognition/detection/bevfusion/objects`, the topic the tracker reads.
+
+BEVFusion starts only if someone passes `launch_detection:=true` explicitly or uses another `planning_setting`.
+
+All nodes are under `/planning/trajectory_generator/neural_network_based_planner/`:
+
+| `e2e_model` | Drives | Detections from | Nodes |
 |---|---|---|---|
-| all | 0.256 | 0.909 | 1.890 |
-| taxi (prd_jt, 450 scenes) | 0.295 | 1.040 | 2.153 |
-| X2 (x2_dev, 325 scenes) | 0.200 | 0.720 | 1.511 |
+| `OnePlanner` | ResWorld | the ResWorld node | `tensorrt_e2e` |
+| `...-1p5stage-...` | 1.5-stage (BEVFusion-L extractor and detection head in its own node) | that node | `ml_planner_node` (`autoware_tensorrt_e2e` `MLPlannerBev`) |
+| `...-2stage-...` | 2-stage (`autoware_ml_planner`, on the tracked objects) | a ResWorld node beside it, reading `<data_path>/OnePlanner` | `ml_planner_node` + `tensorrt_e2e` |
 
-These are the scorer's `fde_2s` / `fde_4s` / `fde_6s`, split by fleet by scene name. The ML-Planner releases'
-reference takes one frame per second. On the 34,810 of its 35,303 frames that this evaluation also covers, this
-model gives 0.255 / 0.903 / 1.883 (taxi 0.294 / 1.034 / 2.145, X2 0.199 / 0.717 / 1.510).
+Every node with a BEV extractor (`tensorrt_e2e`, and `ml_planner_node` for the 1.5-stage) is composed into the
+pointcloud container, the only place the CUDA concatenator's zero-copy cloud reaches, as ResWorld is today.
 
-The scorer's full report on the same frames (`score/aggregate.json`, devkit c234eb17, version v2):
+The drive path is the same chain for every model, unchanged from `dev/v0.53/e2e-resworld` (`fbff3706`):
 
-| EPDMS | NC | DAC | DDC | TLC | TTC | EP | LK | comfort | EC | ADE (m) |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 0.962 | 0.998 | 0.999 | 0.990 | 1.000 | 0.995 | 0.981 | 0.995 | 1.000 | 0.860 | 0.689 |
+1. the model's candidates on `/planning/generator/resworld/candidate_trajectories`;
+2. `trajectory_modifier`, then `trajectory_optimizer`, with the same parameter files, not one value changed;
+3. the result on `/planning/trajectory_generator/trajectory`.
 
-Each value is the mean over the frames. To score in parallel, run `--shard-index i --num-shards n` and take each
-column's mean over the shards' `per_window.csv` rows. That is the devkit's own aggregation (`aggregate_navsim_results`),
-and here it reproduced the FDE above to the sixth decimal.
+Every model drives `/planning/turn_indicators_cmd`. In the 2-stage setting, the ResWorld node's own trajectory and
+turn indicator are sidelined to `/planning/generator/resworld/detection_only/...` and drive nothing.
 
-To rebuild the car package, run `projects/resworld/scripts/release_resworld.py --checkpoint <ckpt> --version
-<x.y.z.w> --indicator-head <indicator_head.pt> --backbone-dir
-<RELEASE_ROOT>/common/bevfusion-l-awml-2.8.2-jpntaxi --output-dir <dir>`. It exports both graphs, checks them
-against PyTorch and writes the manifest.
+The ML-Planner models also run their own internal optimizer, as on X2. Its parameters are
+`autoware_launch/config/planning/neural_net_planner/ml_planner.param.yaml`: the jpntaxi ML-Planner tuning of
+pilot-auto.xx1 v0.54.0, in weight major version 7's format. The parameters version 7 adds are at the package defaults.
 
-## Node
+## Check on the car after each start
 
-1. Build `e2e-release/1127/resworld-1.4.4.4`.
-2. Put the four node files into the model directory. The default is `~/autoware_data/OnePlanner`, which is where
-   the WebAuto package `OnePlanner` unpacks.
-3. Launch `ros2 launch autoware_tensorrt_e2e e2e_planner_resworld.launch.xml`.
+1. `ros2 node list | grep -i bevfusion`: empty.
+2. `ros2 node list | grep neural_network_based_planner`: the nodes of the table above, plus `trajectory_modifier`
+   and `trajectory_optimizer_node`.
+3. Rates, each about 10 Hz:
+   - `/planning/generator/resworld/candidate_trajectories`
+   - `/planning/trajectory_generator/trajectory`
+   - `/perception/object_recognition/detection/bevfusion/objects`
+   - `/planning/turn_indicators_cmd`
+4. The candidates' generator name: `TensorrtE2eResworld_batch_0` for ResWorld, `MLPlanner_batch_0` for ML-Planner.
+5. ResWorld logs `BEV feature extractor detection head enabled` once its extractor engine is up. The ML-Planner nodes
+   log `Loaded model_path=...`. ResWorld waits for BEV history after a start or a localization jump; repeated
+   `Waiting for the first input from 'bev_feature'` while clouds flow means the cloud is not reaching the node: check
+   the container composition and `/sensing/lidar/concatenated/pointcloud`.
 
-The graph's inputs and outputs are identical to 1.4.4.2's, so the node and launch of the 11-13 car test run
-it unchanged.
+## How it was verified (2026-11-26)
 
-Checked:
+- **Build.** The pilot-auto.xx1 `beta/v0.53` repositories with these two branches built: every planner and
+  post-processing package, on CUDA 13 / TensorRT 10.13 with sm_90 added for the test GPUs. The car is
+  CUDA 12.8 / TensorRT 10.8, and the packages' own architecture lists cover its GPU.
+- **Replay.** Golden-val taxi scene `prd_jt/0ed0b1e4/2025-11-19/11_08_34` (60 s, map 1423) on sim time.
+  - Node level: the planner alone.
+  - Launcher level: this branch's `resworld.launch.xml` with the car's arguments and configuration, through the
+    modifier and optimizer.
 
-- TensorRT 10.8 (the car's version) against ONNX Runtime, on 80 recorded start rows: trajectory max error 5.5e-5 m,
-  turn-indicator logits 1.0e-5, the indicator's argmax agrees on 80 / 80. ONNX Runtime against PyTorch at export:
-  trajectory 7.6e-6 m, logits 3.9e-6.
-- Closed-loop replay battery, against the run 1.4.4.2 came from, at the same step: 13 / 13 criteria pass.
-  - Never launched at a start: 16 / 1068 runs (that run: 51).
-  - False starts while holding: 31 / 471 (that run: 32).
-  - Braking deficit: 1.75 m (that run: 1.89 m).
-  - Turn oscillation: 1.00x of that run's.
+| `e2e_model` | Node level: FDE 2 s / 4 s (m), rate | Launcher level: candidates → modified → final, detections |
+|---|---|---|
+| OnePlanner (1.4.4.4) | 0.213 / 0.560, 8.7 Hz (offline on the same scene: 0.202 / 0.512) | 523 → 523 → 523, 534 detection frames |
+| 1.5-stage B | 0.180 / 0.510, 9.2 Hz | 543 → 452 → 429, 543 detection frames |
+| 2-stage B | 0.179 / 0.471, 10.0 Hz | 597 → 591 → 591, 496 detection frames from the ResWorld node |
+| 2-stage A | 0.210 / 0.591, 10.0 Hz | 597 → 351 → 336, 474 detection frames from the ResWorld node |
+
+No BEVFusion node ran in any of them.
+
+## Known points
+
+- **One replay run of OnePlanner received no cloud at all.** That was the first of three; the other two were normal.
+  A replay feeds the cloud from a bag through the node's standalone fallback subscription. On the car the node sits
+  in the pointcloud container on the zero-copy path that ran on 2026-11-13. If it ever happens on the car, see item 5
+  of the checks.
+- **The replay ran the 2-stage A chain at 5.6 Hz.** One replay job had 16 CPUs for two planner nodes, the modifier and
+  the optimizer; the other models stayed near 10 Hz. Check its rate on the car.
+- **One source change outside the new code.** `autoware_ml_planner` is feat/v0.64/e2e's `ef8d906c16` except for one
+  compile-time guard. v0.53 pins `autoware_internal_msgs` `1856e5b`, whose `CandidateTrajectory` has no
+  `turn_indicators_command`, so the field is set only where it exists. The turn indicator still goes out on its own
+  topic, which is what this stack reads.
+- **Rollback.** Leave `e2e_model` out (or set it to `OnePlanner`): that is today's ResWorld test, with the same node
+  code, chain and parameters.
