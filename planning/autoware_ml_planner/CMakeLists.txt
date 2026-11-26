@@ -42,12 +42,11 @@ find_package(t4scene_generation 0.0.0 EXACT REQUIRED)
 set(ML_PLANNER_SOURCES
   src/ml_planner_core.cpp
   src/ml_planner_node.cpp
+  src/inference/initial_noise.cpp
   src/inference/single_step_inference.cpp
   src/inference/utils.cpp
   src/postprocessing/postprocessing_utils.cpp
   src/postprocessing/road_border_avoidance.cpp
-  src/preprocessing/items/initial_noise.cpp
-  src/preprocessing/items/traffic_signals.cpp
   src/utils/marker_utils.cpp
   src/utils/model_metadata.cpp
   src/utils/object_remap.cpp

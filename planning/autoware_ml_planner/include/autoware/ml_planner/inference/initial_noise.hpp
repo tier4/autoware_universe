@@ -12,21 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNAL_STAMPED_HPP_
-#define AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNAL_STAMPED_HPP_
+#ifndef AUTOWARE__ML_PLANNER__INFERENCE__INITIAL_NOISE_HPP_
+#define AUTOWARE__ML_PLANNER__INFERENCE__INITIAL_NOISE_HPP_
 
-#include <autoware_perception_msgs/msg/traffic_light_group.hpp>
-#include <builtin_interfaces/msg/time.hpp>
+#include <xtensor/xarray.hpp>
 
-namespace autoware::ml_planner::preprocess
+namespace autoware::ml_planner
 {
+xt::xarray<float> create_initial_noise(double noise_scale);
+}  // namespace autoware::ml_planner
 
-struct TrafficSignalStamped
-{
-  builtin_interfaces::msg::Time stamp;
-  autoware_perception_msgs::msg::TrafficLightGroup signal;
-};
-
-}  // namespace autoware::ml_planner::preprocess
-
-#endif  // AUTOWARE__ML_PLANNER__PREPROCESSING__ITEMS__TRAFFIC_SIGNAL_STAMPED_HPP_
+#endif  // AUTOWARE__ML_PLANNER__INFERENCE__INITIAL_NOISE_HPP_

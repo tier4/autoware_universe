@@ -14,7 +14,6 @@
 
 #include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/postprocessing/postprocessing_utils.hpp"
-#include "autoware/ml_planner/preprocessing/items/agent.hpp"
 
 #include <Eigen/Dense>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -65,7 +64,7 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_EmptyAgentData)
   std::vector<float> prediction(
     OUTPUT_SHAPE[0] * OUTPUT_SHAPE[1] * OUTPUT_SHAPE[2] * OUTPUT_SHAPE[3], 0.0f);
 
-  const std::vector<preprocess::SelectedAgent> selected_agents;
+  const std::vector<TrackedObject> selected_agents;
   rclcpp::Time stamp(123, 0);
   Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
 
@@ -87,8 +86,7 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_MorePredictionsTh
     OUTPUT_SHAPE[0] * OUTPUT_SHAPE[1] * OUTPUT_SHAPE[2] * OUTPUT_SHAPE[3], 1.0f);
 
   // Only one current agent is available for the predicted neighbor slots.
-  const std::vector<preprocess::SelectedAgent> selected_agents{
-    {tracked_object_.object_id.uuid, tracked_object_, Eigen::Matrix4d::Identity()}};
+  const std::vector<TrackedObject> selected_agents{tracked_object_};
   rclcpp::Time stamp(123, 0);
   Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
 
@@ -97,7 +95,10 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_MorePredictionsTh
   auto result =
     postprocess::create_predicted_objects(agent_poses, selected_agents, stamp, batch_idx);
 
-  EXPECT_EQ(result.objects.size(), 1);
+  ASSERT_EQ(result.objects.size(), 1);
+  EXPECT_EQ(result.objects.front().object_id, tracked_object_.object_id);
+  EXPECT_FLOAT_EQ(
+    result.objects.front().existence_probability, tracked_object_.existence_probability);
 }
 
 }  // namespace autoware::ml_planner::test

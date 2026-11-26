@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/ml_planner/preprocessing/items/initial_noise.hpp"
+#include "autoware/ml_planner/inference/initial_noise.hpp"
 
 #include "autoware/ml_planner/dimensions.hpp"
 
 #include <algorithm>
 #include <random>
 
-namespace autoware::ml_planner::preprocess
+namespace autoware::ml_planner
 {
 xt::xarray<float> create_initial_noise(const double noise_scale)
 {
@@ -39,4 +39,4 @@ xt::xarray<float> create_initial_noise(const double noise_scale)
   }
   return noise;
 }
-}  // namespace autoware::ml_planner::preprocess
+}  // namespace autoware::ml_planner

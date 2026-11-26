@@ -16,9 +16,9 @@
 
 #include "autoware/ml_planner/constants.hpp"
 #include "autoware/ml_planner/dimensions.hpp"
+#include "autoware/ml_planner/inference/initial_noise.hpp"
 #include "autoware/ml_planner/inference/single_step_inference.hpp"
 #include "autoware/ml_planner/postprocessing/postprocessing_utils.hpp"
-#include "autoware/ml_planner/preprocessing/items/initial_noise.hpp"
 #include "autoware/ml_planner/preprocessing/scene_input_builder.hpp"
 #include "autoware/ml_planner/utils/utils.hpp"
 
@@ -35,6 +35,7 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -251,19 +252,15 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   for (const auto & object : tracked_objects.objects) {
     by_id.emplace(autoware_utils_uuid::to_hex_string(object.object_id), &object);
   }
-  std::vector<preprocess::SelectedAgent> selected;
+  std::vector<TrackedObject> selected;
   selected.reserve(input->selected_track_ids.size());
-  const Eigen::Matrix4d map_to_ego = utils::inverse(input->ego_to_map);
   for (auto track_id : input->selected_track_ids) {
     track_id.erase(std::remove(track_id.begin(), track_id.end(), '-'), track_id.end());
     const auto found = by_id.find(track_id);
     if (found == by_id.end()) {
       return tl::unexpected(std::string{"No source object for selected track " + track_id});
     }
-    const auto & object = *found->second;
-    selected.push_back(
-      {object.object_id.uuid, object,
-       map_to_ego * utils::pose_to_matrix4d(object.kinematics.pose_with_covariance.pose)});
+    selected.push_back(*found->second);
   }
 
   odometry_ = std::move(odometry);
@@ -287,8 +284,7 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   xt::xarray<float> sampled_tensor = xt::xarray<float>::from_shape(sampled_shape);
   const size_t single_sample_size = sampled_tensor.size() / sampled_shape.front();
   for (int64_t b = 0; b < params_.batch_size; b++) {
-    const xt::xarray<float> initial_noise =
-      preprocess::create_initial_noise(params_.noise_scale_list[b]);
+    const xt::xarray<float> initial_noise = create_initial_noise(params_.noise_scale_list[b]);
     std::copy(
       initial_noise.begin(), initial_noise.end(),
       sampled_tensor.begin() + static_cast<std::ptrdiff_t>(b * single_sample_size));
@@ -457,8 +453,9 @@ PlannerOutput MLPlannerCore::create_planner_output(
 autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffic_light_on_route()
   const
 {
+  using autoware_perception_msgs::msg::TrafficLightGroup;
   if (!lane_segment_context_ || !route_ptr_ || !odometry_) {
-    return autoware_perception_msgs::msg::TrafficLightGroup{};
+    return TrafficLightGroup{};
   }
 
   const geometry_msgs::msg::Pose & pose_center = odometry_->pose.pose;
@@ -468,8 +465,28 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
   const double center_z = pose_center.position.z;
   const double center_yaw = utils::yaw_from_quaternion(pose_center.orientation);
 
-  const auto traffic_light_id_map = preprocess::create_traffic_signal_map(
-    traffic_signals_history_.msgs(), frame_time(), params_.traffic_light_group_msg_timeout_seconds);
+  struct StampedSignal
+  {
+    TrafficLightGroup signal;
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+  };
+
+  std::map<lanelet::Id, StampedSignal> signals_by_id;
+  const auto anchor_time = frame_time();
+  for (const auto & msg : traffic_signals_history_.msgs()) {
+    const rclcpp::Time msg_time(msg.stamp);
+    if (
+      msg_time > anchor_time ||
+      (anchor_time - msg_time).seconds() > params_.traffic_light_group_msg_timeout_seconds) {
+      continue;
+    }
+    for (const auto & signal : msg.traffic_light_groups) {
+      auto & latest = signals_by_id[signal.traffic_light_group_id];
+      if (latest.signal.elements.empty() || msg_time > latest.stamp) {
+        latest = {signal, msg_time};
+      }
+    }
+  }
 
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(utils::pose_to_matrix4d(pose_center));
 
@@ -486,12 +503,12 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
     if (traffic_light_id == LaneSegment::TRAFFIC_LIGHT_ID_NONE) {
       continue;
     }
-    const auto signal = traffic_light_id_map.find(traffic_light_id);
-    if (signal != traffic_light_id_map.end()) {
+    const auto signal = signals_by_id.find(traffic_light_id);
+    if (signal != signals_by_id.end()) {
       return signal->second.signal;
     }
 
-    autoware_perception_msgs::msg::TrafficLightGroup result;
+    TrafficLightGroup result;
     result.traffic_light_group_id = traffic_light_id;
     using autoware_perception_msgs::msg::TrafficLightElement;
     TrafficLightElement unknown_element;
@@ -502,7 +519,7 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
     result.elements = {unknown_element};
     return result;
   }
-  return autoware_perception_msgs::msg::TrafficLightGroup{};
+  return TrafficLightGroup{};
 }
 
 int64_t MLPlannerCore::count_valid_elements(

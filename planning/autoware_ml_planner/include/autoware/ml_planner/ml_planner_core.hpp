@@ -24,7 +24,6 @@
 #include "autoware/ml_planner/postprocessing/postprocessing_utils.hpp"
 #include "autoware/ml_planner/postprocessing/road_border_avoidance.hpp"
 #include "autoware/ml_planner/preprocessing/items/map.hpp"
-#include "autoware/ml_planner/preprocessing/items/traffic_signals.hpp"
 #include "autoware/ml_planner/utils/timed_buffer.hpp"
 
 #include <Eigen/Dense>
@@ -34,8 +33,10 @@
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/tracked_object.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
@@ -56,6 +57,7 @@ namespace autoware::ml_planner
 using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_perception_msgs::msg::TrackedObject;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
@@ -273,7 +275,7 @@ private:
   std::unique_ptr<postprocess::RoadBorderAvoidance> road_border_avoidance_{nullptr};
 
   // Postprocessing
-  std::vector<preprocess::SelectedAgent> selected_agents_;
+  std::vector<TrackedObject> selected_agents_;
   postprocess::TurnIndicatorHold turn_indicator_hold_;
 
   Odometry::ConstSharedPtr odometry_;

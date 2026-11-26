@@ -133,7 +133,7 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
 
 PredictedObjects create_predicted_objects(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const std::vector<SelectedAgent> & selected_agents, const rclcpp::Time & stamp,
+  const std::vector<TrackedObject> & selected_agents, const rclcpp::Time & stamp,
   const int64_t batch_index)
 {
   auto trajectory_path_to_pose_path = [](const Trajectory & trajectory, const double object_z)
@@ -154,7 +154,7 @@ PredictedObjects create_predicted_objects(
 
   constexpr double time_step{0.1};
 
-  // selected_agents contains current neighbor information ordered by distance.
+  // selected_agents follows the same neighbor order as the model output.
   for (int64_t neighbor_id = 0; neighbor_id < MAX_NUM_NEIGHBORS; ++neighbor_id) {
     if (static_cast<size_t>(neighbor_id) >= selected_agents.size()) {
       break;
@@ -164,7 +164,7 @@ PredictedObjects create_predicted_objects(
     const auto & neighbor_poses = agent_poses[batch_index][neighbor_id + 1];
 
     PredictedObject object;
-    const TrackedObject & object_info = selected_agents.at(neighbor_id).current_object;
+    const TrackedObject & object_info = selected_agents.at(neighbor_id);
 
     const auto & base_position = object_info.kinematics.pose_with_covariance.pose.position;
     const Trajectory trajectory_points_in_map_reference = get_trajectory_from_poses(
