@@ -30,6 +30,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -127,6 +128,33 @@ struct StopPointFixingParams
  */
 std::optional<size_t> fix_stop_points(
   Trajectory & trajectory, const StopPointFixingParams & params);
+
+/**
+ * @brief Select the turn indicator class from the model's logits, biased by the map.
+ *
+ * The logits are turned into probabilities by softmax. When turn_direction_class is
+ * TURN_INDICATOR_OUTPUT_ENABLE_LEFT or TURN_INDICATOR_OUTPUT_ENABLE_RIGHT, same_direction_offset
+ * is added to the probability of that class and opposite_direction_offset to that of the other
+ * side. The class with the highest resulting value is returned. With both offsets zero, or
+ * without a turn direction, the result is the argmax of the logits.
+ *
+ * @param logits Logits of TURN_INDICATOR_OUTPUT_DIM classes.
+ * @param turn_direction_class Class of the turn direction from the map, or std::nullopt.
+ * @param same_direction_offset Offset added to the probability of the turn direction.
+ * @param opposite_direction_offset Offset added to the probability of the other side.
+ * @return Probabilities before and after the offsets, and the selected class index
+ *         (TURN_INDICATOR_OUTPUT_*).
+ */
+struct TurnIndicatorSelection
+{
+  std::vector<double> raw_probabilities;       ///< softmax of the logits
+  std::vector<double> adjusted_probabilities;  ///< raw_probabilities plus the offsets
+  int64_t selected_class;                      ///< argmax of adjusted_probabilities
+};
+
+TurnIndicatorSelection select_turn_indicator_class(
+  const std::vector<float> & logits, std::optional<int64_t> turn_direction_class,
+  double same_direction_offset, double opposite_direction_offset);
 
 /**
  * @brief Keeps the turn indicator on for a while after the model turns it on.

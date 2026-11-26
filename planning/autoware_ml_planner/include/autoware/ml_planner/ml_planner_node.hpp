@@ -31,7 +31,9 @@
 #include <rclcpp/subscription.hpp>
 #include <rclcpp/timer.hpp>
 
+#include <autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <autoware_internal_debug_msgs/msg/int32_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -228,6 +230,13 @@ private:
   // Road border avoidance debug topics (published when the avoidance runs)
   rclcpp::Publisher<Trajectory>::SharedPtr pub_avoidance_trajectory_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_avoidance_shifted_count_{nullptr};
+  // Turn indicator debug topics (batch 0; class order DISABLE, ENABLE_LEFT, ENABLE_RIGHT)
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
+    pub_turn_indicator_raw_probabilities_{nullptr};
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
+    pub_turn_indicator_adjusted_probabilities_{nullptr};
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Int32Stamped>::SharedPtr
+    pub_turn_indicator_map_turn_direction_{nullptr};
   // Stop point fixing debug topic (published when the fixing is enabled)
   rclcpp::Publisher<Trajectory>::SharedPtr pub_pre_stop_fixing_trajectory_{nullptr};
 

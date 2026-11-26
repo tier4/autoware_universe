@@ -13,6 +13,7 @@
 // limitations under the License.
 
 
+#include "autoware/ml_planner/dimensions.hpp"
 #include "autoware/ml_planner/postprocessing/postprocessing_utils.hpp"
 
 #include <rclcpp/time.hpp>
@@ -20,6 +21,9 @@
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 
 #include <gtest/gtest.h>
+
+#include <optional>
+#include <vector>
 
 namespace autoware::ml_planner::test
 {
@@ -92,6 +96,65 @@ TEST(TurnIndicatorHoldTest, TimeGoingBackEndsTheHold)
   postprocess::TurnIndicatorHold hold;
   EXPECT_EQ(hold.apply(RIGHT, at(10.0), HOLD_SEC), RIGHT);
   EXPECT_EQ(hold.apply(OFF, at(5.0), HOLD_SEC), OFF);
+}
+
+TEST(SelectTurnIndicatorClassTest, ZeroOffsetsKeepArgmax)
+{
+  const std::vector<float> logits{0.5f, 2.0f, 1.0f};
+  EXPECT_EQ(
+    postprocess::select_turn_indicator_class(logits, std::nullopt, 0.0, 0.0).selected_class,
+    TURN_INDICATOR_OUTPUT_ENABLE_LEFT);
+  EXPECT_EQ(
+    postprocess::select_turn_indicator_class(logits, TURN_INDICATOR_OUTPUT_ENABLE_RIGHT, 0.0, 0.0).selected_class,
+    TURN_INDICATOR_OUTPUT_ENABLE_LEFT);
+}
+
+TEST(SelectTurnIndicatorClassTest, NoTurnDirectionIgnoresOffsets)
+{
+  const std::vector<float> logits{3.0f, 1.0f, 1.0f};
+  EXPECT_EQ(
+    postprocess::select_turn_indicator_class(logits, std::nullopt, 1.0, -1.0).selected_class,
+    TURN_INDICATOR_OUTPUT_DISABLE);
+}
+
+TEST(SelectTurnIndicatorClassTest, SameSideOffsetTurnsIndicatorOn)
+{
+  // softmax: about {0.665, 0.090, 0.245}
+  const std::vector<float> logits{2.0f, 0.0f, 1.0f};
+  EXPECT_EQ(
+    postprocess::select_turn_indicator_class(logits, TURN_INDICATOR_OUTPUT_ENABLE_LEFT, 0.3, 0.0).selected_class,
+    TURN_INDICATOR_OUTPUT_DISABLE);
+  EXPECT_EQ(
+    postprocess::select_turn_indicator_class(logits, TURN_INDICATOR_OUTPUT_ENABLE_LEFT, 0.6, 0.0).selected_class,
+    TURN_INDICATOR_OUTPUT_ENABLE_LEFT);
+  EXPECT_EQ(
+    postprocess::select_turn_indicator_class(logits, TURN_INDICATOR_OUTPUT_ENABLE_RIGHT, 0.5, 0.0).selected_class,
+    TURN_INDICATOR_OUTPUT_ENABLE_RIGHT);
+}
+
+TEST(SelectTurnIndicatorClassTest, ReportsProbabilitiesBeforeAndAfterOffsets)
+{
+  const std::vector<float> logits{0.0f, 0.0f, 0.0f};
+  const auto selection = postprocess::select_turn_indicator_class(
+    logits, TURN_INDICATOR_OUTPUT_ENABLE_RIGHT, 0.2, -0.1);
+  ASSERT_EQ(selection.raw_probabilities.size(), 3U);
+  ASSERT_EQ(selection.adjusted_probabilities.size(), 3U);
+  for (size_t i = 0; i < 3; ++i) {
+    EXPECT_NEAR(selection.raw_probabilities[i], 1.0 / 3.0, 1e-9);
+  }
+  EXPECT_NEAR(selection.adjusted_probabilities[0], 1.0 / 3.0, 1e-9);
+  EXPECT_NEAR(selection.adjusted_probabilities[1], 1.0 / 3.0 - 0.1, 1e-9);
+  EXPECT_NEAR(selection.adjusted_probabilities[2], 1.0 / 3.0 + 0.2, 1e-9);
+  EXPECT_EQ(selection.selected_class, TURN_INDICATOR_OUTPUT_ENABLE_RIGHT);
+}
+
+TEST(SelectTurnIndicatorClassTest, OppositeSideOffsetSuppressesOtherSide)
+{
+  // softmax: about {0.245, 0.090, 0.665}
+  const std::vector<float> logits{1.0f, 0.0f, 2.0f};
+  EXPECT_EQ(
+    postprocess::select_turn_indicator_class(logits, TURN_INDICATOR_OUTPUT_ENABLE_LEFT, 0.0, -0.5).selected_class,
+    TURN_INDICATOR_OUTPUT_DISABLE);
 }
 
 }  // namespace autoware::ml_planner::test

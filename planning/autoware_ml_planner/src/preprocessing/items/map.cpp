@@ -597,6 +597,57 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   return selected_indices;
 }
 
+int64_t LaneSegmentContext::get_turn_direction_ahead_on_route(
+  const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+  const double center_y, const double center_z, const double center_yaw,
+  const double lookahead_m) const
+{
+  const std::vector<int64_t> segment_indices = select_route_segment_indices(
+    route, transform_matrix, center_x, center_y, center_z, center_yaw, NUM_SEGMENTS_IN_ROUTE);
+
+  const auto polyline_length = [](const Polyline & polyline, const size_t begin) {
+    double length = 0.0;
+    for (size_t i = begin; i + 1 < polyline.size(); ++i) {
+      length += (polyline[i + 1] - polyline[i]).head<2>().norm();
+    }
+    return length;
+  };
+
+  // Distance along the route from the ego to the start of the current segment.
+  double distance_to_start_m = 0.0;
+  for (size_t k = 0; k < segment_indices.size(); ++k) {
+    if (distance_to_start_m > lookahead_m) {
+      break;
+    }
+    const LaneSegment & segment = lanelet_map_.lane_segments[segment_indices[k]];
+    if (segment.turn_direction != LaneSegment::TURN_DIRECTION_NONE) {
+      return segment.turn_direction;
+    }
+    const Polyline & centerline = segment.centerline;
+    if (centerline.empty()) {
+      continue;
+    }
+    if (k == 0) {
+      // The ego is on the first segment: only the part ahead of its nearest centerline point
+      // counts.
+      const Eigen::Vector2d center(center_x, center_y);
+      size_t nearest = 0;
+      double nearest_distance = std::numeric_limits<double>::max();
+      for (size_t i = 0; i < centerline.size(); ++i) {
+        const double distance = (centerline[i].head<2>() - center).norm();
+        if (distance < nearest_distance) {
+          nearest_distance = distance;
+          nearest = i;
+        }
+      }
+      distance_to_start_m += polyline_length(centerline, nearest);
+    } else {
+      distance_to_start_m += polyline_length(centerline, 0);
+    }
+  }
+  return LaneSegment::TURN_DIRECTION_NONE;
+}
+
 autoware_perception_msgs::msg::TrafficLightGroup
 LaneSegmentContext::get_first_traffic_light_on_route(
   const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,

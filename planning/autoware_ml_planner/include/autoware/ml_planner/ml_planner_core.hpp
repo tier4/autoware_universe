@@ -81,6 +81,16 @@ struct RoadBorderAvoidanceDebug
   int unresolved_points{0};
 };
 
+struct TurnIndicatorDebug
+{
+  /// Turn indicator class of the map turn direction ahead (TURN_INDICATOR_OUTPUT_ENABLE_LEFT or
+  /// _RIGHT), or TURN_INDICATOR_OUTPUT_DISABLE when there is none.
+  int64_t map_turn_direction_class{0};
+  /// Batch 0: softmax of the model's logits, and the same after the turn direction offsets.
+  std::vector<double> raw_probabilities;
+  std::vector<double> adjusted_probabilities;
+};
+
 struct PlannerOutput
 {
   /// The trajectory to publish, or nullopt when this cycle is skipped.
@@ -95,6 +105,7 @@ struct PlannerOutput
   CandidateTrajectories candidate_trajectories;
   PredictedObjects predicted_objects;
   TurnIndicatorsCommand turn_indicators_command;
+  TurnIndicatorDebug turn_indicator_debug;
   std::optional<Trajectory> raw_trajectory;
   TrajectoryOptimizationDebug optimization_debug;
   std::optional<Trajectory> avoidance_adjusted_trajectory;
@@ -120,6 +131,8 @@ struct MLPlannerParams
   postprocess::RoadBorderAvoidanceParams road_border_avoidance;
   postprocess::StopPointFixingParams stop_point_fixing;
   double turn_indicator_hold_duration_sec;
+  double turn_direction_same_side_offset;
+  double turn_direction_opposite_side_offset;
 };
 
 /**
@@ -263,6 +276,15 @@ public:
    */
   int64_t count_valid_elements(
     const TensorMap & input_data_map, const std::string & data_key) const;
+
+  /**
+   * @brief Turn indicator class of the route turn direction just ahead of the ego, read from the
+   *        map.
+   *
+   * @return TURN_INDICATOR_OUTPUT_ENABLE_LEFT or _RIGHT, or std::nullopt when the route ahead has
+   *         no left or right turn direction (or the map, route or ego state is unavailable).
+   */
+  std::optional<int64_t> get_turn_direction_class_ahead() const;
 
   /**
    * @brief Get current route pointer.

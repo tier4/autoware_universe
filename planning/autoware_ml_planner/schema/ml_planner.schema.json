@@ -356,6 +356,23 @@
           "minimum": 0.0,
           "description": "After left or right is turned on, it is kept on at least this long; a DISABLE from the model within it is replaced by the side. Switching to the other side is allowed and starts a new hold [s]"
         },
+        "turn_direction_offset": {
+          "type": "object",
+          "description": "Bias the turn indicator by the turn_direction attribute of the first route lanelet with one within 30 m ahead of the ego. The offsets are added to the softmax probabilities of the model's turn indicator output before the argmax. Zero keeps the model output.",
+          "properties": {
+            "same_side": {
+              "type": "number",
+              "default": 0.0,
+              "description": "Offset added to the probability of the side the lanelet turns to (left or right)"
+            },
+            "opposite_side": {
+              "type": "number",
+              "default": 0.0,
+              "description": "Offset added to the probability of the side opposite to the lanelet's turn direction"
+            }
+          },
+          "required": ["same_side", "opposite_side"]
+        },
         "planning_factor": {
           "type": "object",
           "properties": {

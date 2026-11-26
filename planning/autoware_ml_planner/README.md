@@ -98,6 +98,12 @@ When `road_border_avoidance.enable` is true, the raw model output is checked aga
 
 When `stop_point_fixing.enable` is true, the optimized trajectory is post-processed so that a stopping maneuver ends in a clean stop. The first point at or below `velocity_threshold_mps` after at least `min_deceleration_duration_sec` of continuous deceleration becomes the stop point. A non-decelerating point resets the measured duration. The stop point and all subsequent points are fixed to its pose with zero velocity, acceleration, and heading rate. The trajectory before the fixing is published on `~/debug/stop_point_fixing/unfixed_trajectory`. This prevents the small residual velocities of the optimized solution from making the vehicle creep past the intended stop point.
 
+### Turn direction offset
+
+The model's turn indicator logits are turned into probabilities by softmax and the class with the highest value is selected. The route lane segments ahead of the ego are searched for the first one with a `turn_direction` attribute (`straight`, `left` or `right`) that starts within 30 m along the route. When it is `left` or `right`, `turn_direction_offset.same_side` is added to the probability of that side and `turn_direction_offset.opposite_side` to that of the other side before the selection. With both offsets zero the result is the argmax of the logits, as before. `turn_indicator_hold_duration_sec` applies to the selected command.
+
+Debug topics (batch 0, class order DISABLE, ENABLE_LEFT, ENABLE_RIGHT): `~/debug/turn_indicator/raw_probabilities` and `~/debug/turn_indicator/adjusted_probabilities` (autoware_internal_debug_msgs/msg/Float32MultiArrayStamped; softmax of the logits before and after the offsets) and `~/debug/turn_indicator/map_turn_direction` (autoware_internal_debug_msgs/msg/Int32Stamped; 0 none or straight, 1 left, 2 right). They are published every cycle, also with zero offsets.
+
 ---
 
 ## Parameters

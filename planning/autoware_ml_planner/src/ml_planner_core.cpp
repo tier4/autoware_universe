@@ -381,7 +381,12 @@ PlannerOutput MLPlannerCore::create_planner_output(
   const auto agent_poses =
     postprocess::parse_predictions(denormalized_predictions, ego_to_map_transform);
 
+  // Looked up even with zero offsets so that the debug topic shows it.
+  const std::optional<int64_t> turn_direction_class = get_turn_direction_class_ahead();
+
   PlannerOutput output;
+  output.turn_indicator_debug.map_turn_direction_class =
+    turn_direction_class.value_or(TURN_INDICATOR_OUTPUT_DISABLE);
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
@@ -457,8 +462,14 @@ PlannerOutput MLPlannerCore::create_planner_output(
         })) {
       throw std::runtime_error("turn_indicator_logits contains a non-finite value");
     }
-    const auto selected_class = static_cast<uint8_t>(std::distance(
-      batch_logits.begin(), std::max_element(batch_logits.begin(), batch_logits.end())));
+    const auto selection = postprocess::select_turn_indicator_class(
+      batch_logits, turn_direction_class, params_.turn_direction_same_side_offset,
+      params_.turn_direction_opposite_side_offset);
+    const int64_t selected_class = selection.selected_class;
+    if (i == 0) {
+      output.turn_indicator_debug.raw_probabilities = selection.raw_probabilities;
+      output.turn_indicator_debug.adjusted_probabilities = selection.adjusted_probabilities;
+    }
     TurnIndicatorsCommand turn_indicators_command;
     turn_indicators_command.stamp = timestamp;
     if (selected_class == TURN_INDICATOR_OUTPUT_DISABLE) {
@@ -500,6 +511,27 @@ PlannerOutput MLPlannerCore::create_planner_output(
     postprocess::create_predicted_objects(agent_poses, selected_agents_, timestamp, batch_idx);
 
   return output;
+}
+
+std::optional<int64_t> MLPlannerCore::get_turn_direction_class_ahead() const
+{
+  if (!lane_segment_context_ || !route_ptr_ || ego_history_.empty()) {
+    return std::nullopt;
+  }
+
+  const geometry_msgs::msg::Pose & pose_center = ego_history_.back().pose.pose;
+  const Eigen::Matrix4d map_to_ego_transform = utils::inverse(utils::pose_to_matrix4d(pose_center));
+  const int64_t turn_direction = lane_segment_context_->get_turn_direction_ahead_on_route(
+    *route_ptr_, map_to_ego_transform, pose_center.position.x, pose_center.position.y,
+    pose_center.position.z, utils::yaw_from_quaternion(pose_center.orientation),
+    constants::TURN_DIRECTION_LOOKAHEAD_M);
+  if (turn_direction == preprocess::LaneSegment::TURN_DIRECTION_LEFT) {
+    return TURN_INDICATOR_OUTPUT_ENABLE_LEFT;
+  }
+  if (turn_direction == preprocess::LaneSegment::TURN_DIRECTION_RIGHT) {
+    return TURN_INDICATOR_OUTPUT_ENABLE_RIGHT;
+  }
+  return std::nullopt;
 }
 
 autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffic_light_on_route()

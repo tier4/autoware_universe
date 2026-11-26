@@ -360,6 +360,40 @@ Trajectory get_trajectory_from_poses(
 
 }  // namespace
 
+TurnIndicatorSelection select_turn_indicator_class(
+  const std::vector<float> & logits, const std::optional<int64_t> turn_direction_class,
+  const double same_direction_offset, const double opposite_direction_offset)
+{
+  if (logits.size() != static_cast<size_t>(TURN_INDICATOR_OUTPUT_DIM)) {
+    throw std::invalid_argument("turn indicator logits must have TURN_INDICATOR_OUTPUT_DIM values");
+  }
+  const double max_logit = *std::max_element(logits.begin(), logits.end());
+  std::vector<double> scores(logits.size());
+  double sum = 0.0;
+  for (size_t i = 0; i < logits.size(); ++i) {
+    scores[i] = std::exp(static_cast<double>(logits[i]) - max_logit);
+    sum += scores[i];
+  }
+  for (double & score : scores) {
+    score /= sum;
+  }
+  const std::vector<double> raw_probabilities = scores;
+  if (turn_direction_class) {
+    const int64_t same = *turn_direction_class;
+    if (same != TURN_INDICATOR_OUTPUT_ENABLE_LEFT && same != TURN_INDICATOR_OUTPUT_ENABLE_RIGHT) {
+      throw std::invalid_argument("turn_direction_class must be ENABLE_LEFT or ENABLE_RIGHT");
+    }
+    const int64_t opposite = same == TURN_INDICATOR_OUTPUT_ENABLE_LEFT
+                               ? TURN_INDICATOR_OUTPUT_ENABLE_RIGHT
+                               : TURN_INDICATOR_OUTPUT_ENABLE_LEFT;
+    scores[static_cast<size_t>(same)] += same_direction_offset;
+    scores[static_cast<size_t>(opposite)] += opposite_direction_offset;
+  }
+  const auto selected_class = static_cast<int64_t>(
+    std::distance(scores.begin(), std::max_element(scores.begin(), scores.end())));
+  return TurnIndicatorSelection{raw_probabilities, scores, selected_class};
+}
+
 uint8_t TurnIndicatorHold::apply(
   const uint8_t command, const rclcpp::Time & stamp, const double hold_duration_sec)
 {

@@ -231,6 +231,27 @@ public:
     const std::vector<int64_t> & segment_indices) const;
 
   /**
+   * @brief Get the turn direction of the route just ahead of the ego.
+   *
+   * Walks the route segments from the one the ego is on, and returns the turn_direction of the
+   * first segment with a turn_direction attribute (straight, left or right) that starts within
+   * lookahead_m along the route ahead of the ego. The segment the ego is on starts at 0.
+   *
+   * @param route The lanelet route.
+   * @param transform_matrix Map-to-ego transform, used for the ego-frame range check.
+   * @param center_x X-coordinate of ego center.
+   * @param center_y Y-coordinate of ego center.
+   * @param center_z Z-coordinate of ego center.
+   * @param center_yaw Yaw of ego center [rad].
+   * @param lookahead_m Distance along the route to search [m].
+   * @return LaneSegment::TURN_DIRECTION_*; TURN_DIRECTION_NONE when no such segment is found.
+   */
+  int64_t get_turn_direction_ahead_on_route(
+    const LaneletRoute & route, const Eigen::Matrix4d & transform_matrix, const double center_x,
+    const double center_y, const double center_z, const double center_yaw,
+    const double lookahead_m) const;
+
+  /**
    * @brief Get the first traffic light on the route from ego position forward.
    *
    * @param route The lanelet route.

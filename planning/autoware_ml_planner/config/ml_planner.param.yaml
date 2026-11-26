@@ -67,6 +67,9 @@
       velocity_threshold_mps: 0.3  # stop detection velocity threshold [m/s]
       min_deceleration_duration_sec: 1.0  # required continuous deceleration before fixing [s]
     turn_indicator_hold_duration_sec: 0.0  # keep left or right on at least this long after it turns on; 0 disables [s]
+    turn_direction_offset:  # bias the turn indicator by the turn_direction of the route lanelet ahead (within 30 m); 0 keeps the model output
+      same_side: 0.0      # added to the softmax probability of the side the lanelet turns to
+      opposite_side: 0.0  # added to the softmax probability of the other side
     planning_factor:
       enable_stop: true
       enable_slowdown: false

@@ -50,6 +50,11 @@ constexpr double LANE_SEGMENT_MAX_LENGTH_M = 40.0;
 // linear interpolation. Original points are always kept. A road border piece of
 // POINTS_PER_ROAD_BORDER points is at most (POINTS_PER_ROAD_BORDER - 1) * this long.
 constexpr double ROAD_BORDER_MAX_STEP_M = 2.5;
+// The turn direction read from the map for the turn indicator offsets is that of the first route
+// lane segment with a turn_direction attribute that starts within this distance along the route
+// ahead of the ego. 30 m is the distance before a turn at which a turn signal has to be given in
+// Japan, and the default turn signal search distance of Autoware.
+constexpr double TURN_DIRECTION_LOOKAHEAD_M = 30.0;
 
 }  // namespace autoware::ml_planner::constants
 

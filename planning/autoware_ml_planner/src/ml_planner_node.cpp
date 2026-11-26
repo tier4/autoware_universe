@@ -89,6 +89,15 @@ MLPlanner::MLPlanner(const rclcpp::NodeOptions & options)
     "~/debug/road_border_avoidance/shifted_point_count", 1);
   pub_pre_stop_fixing_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/stop_point_fixing/unfixed_trajectory", 1);
+  pub_turn_indicator_raw_probabilities_ =
+    this->create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
+      "~/debug/turn_indicator/raw_probabilities", 1);
+  pub_turn_indicator_adjusted_probabilities_ =
+    this->create_publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>(
+      "~/debug/turn_indicator/adjusted_probabilities", 1);
+  pub_turn_indicator_map_turn_direction_ =
+    this->create_publisher<autoware_internal_debug_msgs::msg::Int32Stamped>(
+      "~/debug/turn_indicator/map_turn_direction", 1);
 
   set_up_params();
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -274,6 +283,10 @@ void MLPlanner::set_up_params()
 
   params_.turn_indicator_hold_duration_sec =
     this->declare_parameter<double>("turn_indicator_hold_duration_sec", 0.0);
+  params_.turn_direction_same_side_offset =
+    this->declare_parameter<double>("turn_direction_offset.same_side", 0.0);
+  params_.turn_direction_opposite_side_offset =
+    this->declare_parameter<double>("turn_direction_offset.opposite_side", 0.0);
 
   // planning factor params
   planning_factor_params_.enable_stop =
@@ -467,6 +480,11 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
 
   update_param<double>(
     parameters, "turn_indicator_hold_duration_sec", new_params.turn_indicator_hold_duration_sec);
+  update_param<double>(
+    parameters, "turn_direction_offset.same_side", new_params.turn_direction_same_side_offset);
+  update_param<double>(
+    parameters, "turn_direction_offset.opposite_side",
+    new_params.turn_direction_opposite_side_offset);
 
   update_param<bool>(
     parameters, "planning_factor.enable_stop", new_planning_factor_params.enable_stop);
@@ -874,6 +892,21 @@ void MLPlanner::on_timer()
   // they are published either way.
   pub_objects_->publish(planner_output.predicted_objects);
   pub_turn_indicators_->publish(planner_output.turn_indicators_command);
+  {
+    const auto & debug = planner_output.turn_indicator_debug;
+    const auto to_msg = [&](const std::vector<double> & values) {
+      autoware_internal_debug_msgs::msg::Float32MultiArrayStamped msg;
+      msg.stamp = frame_time;
+      msg.data.assign(values.begin(), values.end());
+      return msg;
+    };
+    pub_turn_indicator_raw_probabilities_->publish(to_msg(debug.raw_probabilities));
+    pub_turn_indicator_adjusted_probabilities_->publish(to_msg(debug.adjusted_probabilities));
+    autoware_internal_debug_msgs::msg::Int32Stamped direction_msg;
+    direction_msg.stamp = frame_time;
+    direction_msg.data = static_cast<int32_t>(debug.map_turn_direction_class);
+    pub_turn_indicator_map_turn_direction_->publish(direction_msg);
+  }
 
   const auto & avoidance_debug = planner_output.avoidance_debug;
   if (avoidance_debug.active) {
