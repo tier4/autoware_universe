@@ -15,9 +15,10 @@
   <let name="planner_package" value="$(eval &quot;{'resworld': 'autoware_tensorrt_e2e', 'mlplanner_1p5stage': 'autoware_tensorrt_e2e', 'mlplanner_2stage': 'autoware_ml_planner'}['$(var model)']&quot;)"/>
 
   <arg name="vehicle_info_param_path" default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_info.param.yaml"/>
+  <arg name="model_param_path" default="$(find-pkg-share autoware_tensorrt_e2e)/config/e2e_planner.param.yaml" description="resworld: deployment behaviour"/>
   <arg name="ml_planner_param_path" default="$(find-pkg-share autoware_ml_planner)/config/ml_planner.param.yaml" description="ML-Planner models: autoware_ml_planner's own parameters"/>
   <arg name="build_only" default="false" description="shutdown after the TensorRT engines are built"/>
-  <arg name="target_container" default="" description="resworld: container to compose into (empty: own process)"/>
+  <arg name="target_container" default="" description="resworld, mlplanner_1p5stage: container to compose into (empty: own process); on the vehicle the CUDA concatenator's"/>
 
   <arg name="input_pointcloud" default="/sensing/lidar/concatenated/pointcloud"/>
   <arg name="input_odometry" default="/localization/kinematic_state"/>
@@ -33,13 +34,14 @@
   <arg name="output_trajectory" default="~/output/trajectory"/>
   <arg name="output_trajectories" default="~/output/trajectories"/>
   <arg name="output_turn_indicators" default="~/output/turn_indicators"/>
-  <arg name="output_detected_objects" default="~/output/detected_objects" description="resworld"/>
+  <arg name="output_detected_objects" default="~/output/detected_objects" description="resworld, mlplanner_1p5stage: the extractor graph's detection head"/>
   <arg name="output_predicted_objects" default="~/output/predicted_objects" description="ML-Planner models"/>
   <arg name="output_debug_traffic_signal" default="~/output/debug/traffic_signal" description="ML-Planner models"/>
   <arg name="output_planning_factors" default="/planning/planning_factors/diffusion_planner" description="ML-Planner models"/>
 
   <include file="$(find-pkg-share autoware_tensorrt_e2e)/launch/e2e_planner_resworld.launch.xml" if="$(eval &quot;'$(var model)' == 'resworld'&quot;)">
     <arg name="data_path" value="$(var data_path)"/>
+    <arg name="model_param_path" value="$(var model_param_path)"/>
     <arg name="vehicle_info_param_path" value="$(var vehicle_info_param_path)"/>
     <arg name="build_only" value="$(var build_only)"/>
     <arg name="target_container" value="$(var target_container)"/>
@@ -78,6 +80,8 @@
     <arg name="output_turn_indicators" value="$(var output_turn_indicators)"/>
     <arg name="debug/output_traffic_signal" value="$(var output_debug_traffic_signal)"/>
     <arg name="output_planning_factors" value="$(var output_planning_factors)"/>
+    <arg name="target_container" value="$(var target_container)"/>
+    <arg name="output_detected_objects" value="$(var output_detected_objects)"/>
   </include>
 
   <!-- autoware_ml_planner's node as its ml_planner.launch.xml starts it, with the release directory override. -->
