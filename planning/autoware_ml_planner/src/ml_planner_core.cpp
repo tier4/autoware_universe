@@ -276,20 +276,7 @@ preprocess::TensorMapResult MLPlannerCore::create_input_data(
   }
 
   // Initial Gaussian noise for the sampler embedded in the ONNX graph.
-  std::vector<size_t> sampled_shape;
-  std::transform(
-    INITIAL_NOISE_SHAPE.begin(), INITIAL_NOISE_SHAPE.end(), std::back_inserter(sampled_shape),
-    [](const int64_t dim) { return static_cast<size_t>(dim); });
-  sampled_shape.front() = static_cast<size_t>(params_.batch_size);
-  xt::xarray<float> sampled_tensor = xt::xarray<float>::from_shape(sampled_shape);
-  const size_t single_sample_size = sampled_tensor.size() / sampled_shape.front();
-  for (int64_t b = 0; b < params_.batch_size; b++) {
-    const xt::xarray<float> initial_noise = create_initial_noise(params_.noise_scale_list[b]);
-    std::copy(
-      initial_noise.begin(), initial_noise.end(),
-      sampled_tensor.begin() + static_cast<std::ptrdiff_t>(b * single_sample_size));
-  }
-  input_data_map["initial_noise"] = std::move(sampled_tensor);
+  input_data_map["initial_noise"] = create_initial_noise(params_.noise_scale_list);
 
   return input_data_map;
 }
@@ -462,7 +449,6 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
 
   const double center_x = pose_center.position.x;
   const double center_y = pose_center.position.y;
-  const double center_z = pose_center.position.z;
   const double center_yaw = utils::yaw_from_quaternion(pose_center.orientation);
 
   struct StampedSignal
@@ -496,8 +482,7 @@ autoware_perception_msgs::msg::TrafficLightGroup MLPlannerCore::get_first_traffi
     preferred_lane_ids.push_back(segment.preferred_primitive.id);
   }
   const auto segment_indices = lane_segment_context_->select_route_segment_indices(
-    preferred_lane_ids, map_to_ego_transform, center_x, center_y, center_z, center_yaw,
-    NUM_SEGMENTS_IN_ROUTE);
+    preferred_lane_ids, map_to_ego_transform, center_x, center_y, center_yaw, NUM_SEGMENTS_IN_ROUTE);
   for (const auto & entry : lane_segment_context_->get_traffic_light_ids(segment_indices)) {
     const auto traffic_light_id = entry.first;
     if (traffic_light_id == LaneSegment::TRAFFIC_LIGHT_ID_NONE) {

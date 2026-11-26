@@ -160,7 +160,7 @@ private:
   void on_timer();
 
   void subscribe_scene_inputs();
-  enum class PeriodicInput { Odometry, Objects, Lights, Indicators, Steering, Acceleration, Count };
+  enum class PeriodicInput { Odometry, Objects, Lights, Indicators, Steering, Count };
   template <typename Msg>
   bool ingest_periodic(
     PeriodicInput input, const Msg & msg, const builtin_interfaces::msg::Time & stamp,
@@ -274,8 +274,9 @@ private:
   // The SDK sorts late observations. Keep the first accepted sample at each topic stamp.
   std::array<std::set<int64_t>, static_cast<size_t>(PeriodicInput::Count)> accepted_stamps_;
   std::map<int64_t, TrackedObjects::ConstSharedPtr> tracked_batches_;
+  // Acceleration belongs to the trajectory optimizer rather than the model input.
   std::optional<int64_t> newest_acceleration_ns_;
-  geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr acceleration_;
+  std::optional<double> longitudinal_acceleration_;
   t4scene::EgoShape ego_shape_;
 
   rclcpp::Subscription<Odometry>::SharedPtr sub_current_odometry_;

@@ -17,25 +17,33 @@
 #include "autoware/ml_planner/dimensions.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <random>
 
 namespace autoware::ml_planner
 {
-xt::xarray<float> create_initial_noise(const double noise_scale)
+xt::xarray<float> create_initial_noise(const std::vector<double> & noise_scales)
 {
-  xt::xarray<float> noise = xt::xarray<float>::from_shape(
-    {static_cast<size_t>(MAX_NUM_AGENTS), static_cast<size_t>(OUTPUT_T),
-     static_cast<size_t>(POSE_DIM)});
-  if (noise_scale == 0.0) {
-    std::fill(noise.begin(), noise.end(), 0.0F);
-    return noise;
-  }
+  const std::array<std::size_t, 4> shape{
+    noise_scales.size(), static_cast<std::size_t>(INITIAL_NOISE_SHAPE[1]),
+    static_cast<std::size_t>(INITIAL_NOISE_SHAPE[2]),
+    static_cast<std::size_t>(INITIAL_NOISE_SHAPE[3])};
+  auto noise = xt::xarray<float>::from_shape(shape);
+  const auto sample_size = shape[1] * shape[2] * shape[3];
+  for (std::size_t batch = 0; batch < noise_scales.size(); ++batch) {
+    auto * sample = noise.data() + batch * sample_size;
+    const auto scale = noise_scales[batch];
+    if (scale == 0.0) {
+      std::fill_n(sample, sample_size, 0.0F);
+      continue;
+    }
 
-  std::random_device random_device;
-  std::mt19937 generator(random_device());
-  std::normal_distribution<float> distribution(0.0F, 1.0F);
-  for (float & value : noise) {
-    value = distribution(generator) * static_cast<float>(noise_scale);
+    std::random_device random_device;
+    std::mt19937 generator(random_device());
+    std::normal_distribution<float> distribution(0.0F, 1.0F);
+    std::generate_n(
+      sample, sample_size, [&] { return distribution(generator) * static_cast<float>(scale); });
   }
   return noise;
 }

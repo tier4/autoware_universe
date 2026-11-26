@@ -61,10 +61,6 @@ public:
     }
   }
 
-  void clear() { msgs_.clear(); }
-  [[nodiscard]] bool empty() const { return msgs_.empty(); }
-  [[nodiscard]] const MsgT & back() const { return msgs_.back(); }
-
   /// Chronological messages within the time window.
   [[nodiscard]] const std::deque<MsgT> & msgs() const { return msgs_; }
 

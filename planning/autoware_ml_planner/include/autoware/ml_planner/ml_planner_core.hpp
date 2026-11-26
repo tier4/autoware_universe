@@ -251,13 +251,6 @@ public:
   int64_t count_valid_elements(
     const TensorMap & input_data_map, const std::string & data_key) const;
 
-  /**
-   * @brief Get current route pointer.
-   *
-   * @return Shared pointer to current route
-   */
-  const LaneletRoute::ConstSharedPtr & get_route() const { return route_ptr_; }
-
 private:
   // Parameters
   MLPlannerParams params_;

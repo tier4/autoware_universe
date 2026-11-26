@@ -60,6 +60,14 @@ constexpr int64_t odometry_outage_ns = 4'100'000'000;
 constexpr t4scene::Transform3D map_frame_identity{1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
                                                   0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
 
+constexpr char traffic_light_timeout_error[] =
+  "traffic_light_group_msg_timeout_seconds must be finite and non-negative";
+
+bool is_valid_traffic_light_timeout(double seconds)
+{
+  return std::isfinite(seconds) && seconds >= 0.0;
+}
+
 std::filesystem::path scene_config_path()
 {
   return std::filesystem::path{
@@ -193,6 +201,9 @@ void MLPlanner::set_up_params()
     this->declare_parameter<bool>("remap_unsupported_objects_to_pedestrian", false);
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
+  if (!is_valid_traffic_light_timeout(params_.traffic_light_group_msg_timeout_seconds)) {
+    throw std::invalid_argument(traffic_light_timeout_error);
+  }
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
   params_.noise_scale_list = this->declare_parameter<std::vector<double>>("noise_scale", {1.0});
 
@@ -550,8 +561,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   if (new_params.planning_frequency_hz <= 0.0) {
     return failure("planning_frequency_hz must be greater than zero");
   }
-  if (new_params.traffic_light_group_msg_timeout_seconds < 0.0) {
-    return failure("traffic_light_group_msg_timeout_seconds must be non-negative");
+  if (!is_valid_traffic_light_timeout(new_params.traffic_light_group_msg_timeout_seconds)) {
+    return failure(traffic_light_timeout_error);
   }
 #ifndef AUTOWARE_ML_PLANNER_USE_ACADOS
   if (opt.enable) {
@@ -796,12 +807,24 @@ void MLPlanner::subscribe_scene_inputs()
   sub_acceleration_ = create_subscription<Acceleration>(
     "~/input/acceleration", rclcpp::QoS{1}, [this](Acceleration::ConstSharedPtr msg) {
       const auto received_ns = get_clock()->now().nanoseconds();
-      if (ingest_periodic(PeriodicInput::Acceleration, *msg, msg->header.stamp, received_ns)) {
-        const auto stamp_ns = rclcpp::Time(msg->header.stamp).nanoseconds();
-        if (!newest_acceleration_ns_ || stamp_ns > *newest_acceleration_ns_) {
-          newest_acceleration_ns_ = stamp_ns;
-          acceleration_ = std::move(msg);
-        }
+      const auto & stamp = msg->header.stamp;
+      if (
+        !advance_receipt_time(received_ns) || !has_recent_odometry(received_ns) || stamp.sec < 0 ||
+        stamp.nanosec >= 1'000'000'000U) {
+        return;
+      }
+      const auto stamp_ns = rclcpp::Time(stamp).nanoseconds();
+      if (
+        stamp_ns < rclcpp::Time(odometry_->header.stamp).nanoseconds() - scene_retention_ns_ ||
+        (newest_acceleration_ns_ && stamp_ns <= *newest_acceleration_ns_)) {
+        return;
+      }
+      // The localization acceleration input uses body axes. Keep just the raw longitudinal
+      // component for the optimizer and validate the vector as the Scene generator did.
+      const auto & linear = msg->accel.accel.linear;
+      if (std::isfinite(linear.x) && std::isfinite(linear.y) && std::isfinite(linear.z)) {
+        newest_acceleration_ns_ = stamp_ns;
+        longitudinal_acceleration_ = linear.x;
       }
     });
   sub_route_ = create_subscription<LaneletRoute>(
@@ -925,7 +948,8 @@ void MLPlanner::on_timer()
     return;
   }
 
-  auto acceleration_ptr = std::exchange(acceleration_, nullptr);
+  const double current_acceleration_mps2 =
+    std::exchange(longitudinal_acceleration_, std::nullopt).value_or(0.0);
   auto input_data_result = build_scene_input(current_time.nanoseconds());
   if (!input_data_result) {
     RCLCPP_WARN_THROTTLE(
@@ -1011,9 +1035,6 @@ void MLPlanner::on_timer()
   pub_inference_time_->publish(inference_time_msg);
 
   const double current_steering_angle_rad = input_data_result->steering_angle_rad;
-  const double current_acceleration_mps2 =
-    acceleration_ptr ? acceleration_ptr->accel.accel.linear.x : 0.0;
-
   PlannerOutput planner_output;
   try {
     planner_output = core_->create_planner_output(

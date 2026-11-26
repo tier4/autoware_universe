@@ -17,9 +17,11 @@
 
 #include <xtensor/xarray.hpp>
 
+#include <vector>
+
 namespace autoware::ml_planner
 {
-xt::xarray<float> create_initial_noise(double noise_scale);
+xt::xarray<float> create_initial_noise(const std::vector<double> & noise_scales);
 }  // namespace autoware::ml_planner
 
 #endif  // AUTOWARE__ML_PLANNER__INFERENCE__INITIAL_NOISE_HPP_
