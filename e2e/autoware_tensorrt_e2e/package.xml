@@ -17,6 +17,7 @@
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_lanelet2_utils</depend>
   <depend>autoware_map_msgs</depend>
+  <depend>autoware_ml_planner</depend>
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_planning_factor_interface</depend>
   <depend>autoware_planning_msgs</depend>

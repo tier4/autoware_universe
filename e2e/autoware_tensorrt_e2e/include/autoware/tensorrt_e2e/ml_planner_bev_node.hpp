@@ -1,0 +1,248 @@
+// Copyright 2025 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef AUTOWARE__TENSORRT_E2E__ML_PLANNER_BEV_NODE_HPP_
+#define AUTOWARE__TENSORRT_E2E__ML_PLANNER_BEV_NODE_HPP_
+
+#include "autoware/ml_planner/ml_planner_core.hpp"
+#include "autoware/ml_planner/ml_planner_node.hpp"  // MLPlannerDebugParams, MLPlannerPlanningFactorParams
+#include "autoware/tensorrt_e2e/inference_engine.hpp"
+#include "autoware/tensorrt_e2e/providers/bev_feature_input_provider.hpp"
+#include "autoware/tensorrt_e2e/timestamped_buffer.hpp"
+#include "autoware/ml_planner/utils/planning_factor_utils.hpp"
+
+#include <autoware/lanelet2_utils/conversion.hpp>
+#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
+#include <autoware/vehicle_info_utils/vehicle_info.hpp>
+#include <autoware_utils/ros/polling_subscriber.hpp>
+#include <autoware_utils/ros/update_param.hpp>
+#include <autoware_utils/system/time_keeper.hpp>
+#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
+#include <autoware_utils_system/stop_watch.hpp>
+#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/subscription.hpp>
+#include <rclcpp/timer.hpp>
+
+#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
+#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
+#include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <std_srvs/srv/set_bool.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace autoware::ml_planner
+{
+using autoware_internal_planning_msgs::msg::CandidateTrajectories;
+using autoware_map_msgs::msg::LaneletMapBin;
+using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_planning_msgs::msg::Trajectory;
+using autoware_vehicle_msgs::msg::SteeringReport;
+using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
+using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
+using autoware::vehicle_info_utils::VehicleInfo;
+using autoware_internal_planning_msgs::msg::PlanningFactor;
+using autoware_utils_diagnostics::DiagnosticsInterface;
+using geometry_msgs::msg::Pose;
+using rcl_interfaces::msg::SetParametersResult;
+using unique_identifier_msgs::msg::UUID;
+using visualization_msgs::msg::MarkerArray;
+
+/**
+ * @brief The 1.5-stage ML-Planner node: MLPlanner (autoware_ml_planner) with its model inference
+ * replaced by a TensorRT planner graph that also reads the BEV map of BEVFusion-L, extracted
+ * from the point cloud by the one-stage line's BEV feature provider. Everything else -- inputs,
+ * preprocessing, postprocessing, outputs, parameters -- is MLPlanner's own, unchanged.
+ */
+class MLPlannerBev : public rclcpp::Node
+{
+public:
+  explicit MLPlannerBev(const rclcpp::NodeOptions & options);
+
+private:
+  /**
+   * @brief Initialize and declare node parameters.
+   */
+  void set_up_params();
+
+  /**
+   * @brief Load TensorRT model from model.base_model_directory and the ONNX filename.
+   *
+   * On failure, stores the exception text in model_load_error_ and publishes it on
+   * inference_status before rethrowing.
+   *
+   * @throws std::runtime_error if the model path is invalid or engine setup fails.
+   */
+  void load_model();
+
+  /**
+   * @brief Add model path and backend key-values to inference_status.
+   */
+  void fill_model_key_values();
+
+  /**
+   * @brief Clear inference_status, refill model key-values, set level/message, and publish.
+   */
+  void publish_inference_status(int8_t level, const std::string & message = "");
+
+  /**
+   * @brief Timer callback for periodic processing and publishing.
+   */
+  void on_timer();
+  InferenceResult infer_with_bev(const TensorMap & input_data_map, const rclcpp::Time & now);
+
+  /**
+   * @brief Callback for receiving and processing map data.
+   * @param map_msg The received map message.
+   */
+  void on_map(const HADMapBin::ConstSharedPtr map_msg);
+
+  /**
+   * @brief Publish visualization markers for debugging.
+   * @param input_data_map Input data used for inference.
+   * @param ego_to_map_transform Transform from ego to map frame for visualization.
+   */
+  void publish_debug_markers(
+    const TensorMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform,
+    const rclcpp::Time & timestamp) const;
+
+  /**
+   * @brief Publish the first traffic light on the route (from ego forward) for debug.
+   * @param frame_context Context of the current frame (ego pose).
+   */
+  void publish_first_traffic_light_on_route() const;
+
+  /**
+   * @brief Publish planning factors (stop/slowdown) derived from the trajectory.
+   * @param trajectory The planned trajectory.
+   */
+  void publish_planning_factor(const Trajectory & trajectory);
+
+  /**
+   * @brief Callback for dynamic parameter updates.
+   * @param parameters Updated parameters.
+   * @return Result of parameter update.
+   */
+  SetParametersResult on_parameter(const std::vector<rclcpp::Parameter> & parameters);
+
+  /**
+   * @brief Callback for the start service. While enabled, the ego velocity entries of
+   * the model input (ego_agent_past) are overwritten with 1 m/s so the model plans as if
+   * the vehicle were already moving. The override ends automatically once the measured ego
+   * velocity reaches that value.
+   */
+  void on_start_service(
+    const std_srvs::srv::SetBool::Request::SharedPtr request,
+    const std_srvs::srv::SetBool::Response::SharedPtr response);
+
+  // Core logic instance
+  std::unique_ptr<MLPlannerCore> core_;
+  // The planner graph (the stock inputs + bev_feature) and the BEV map's provider.
+  std::unique_ptr<autoware::tensorrt_e2e::InferenceEngine> engine_;
+  std::unique_ptr<autoware::tensorrt_e2e::BevFeatureInputProvider> bev_;
+  // Odometry of the last seconds: the ego pose at the point cloud's stamp, for the BEV cache.
+  autoware::tensorrt_e2e::TimestampedBuffer<Odometry> odometry_history_;
+
+  // Node parameters
+  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  MLPlannerParams params_;
+  MLPlannerDebugParams debug_params_;
+
+  // Node elements
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+    debug_processing_time_detail_pub_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    debug_processing_time_pub_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_{nullptr};
+  rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
+  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_linestring_marker_{nullptr};
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_marker_{nullptr};
+  rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_{nullptr};
+  rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr
+    pub_traffic_signal_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_inference_time_{nullptr};
+  // Trajectory optimization debug topics (published when the optimizer runs)
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_raw_trajectory_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_optimization_status_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_optimization_time_{nullptr};
+  // Road border avoidance debug topics (published when the avoidance runs)
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_avoidance_trajectory_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_avoidance_shifted_count_{nullptr};
+  // Stop point fixing debug topic (published when the fixing is enabled)
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_pre_stop_fixing_trajectory_{nullptr};
+
+  // Start service: while enabled, ego velocity in the model input is overwritten (1 m/s).
+  // Cleared automatically once the measured ego velocity reaches that value.
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr srv_start_{nullptr};
+  bool start_velocity_override_enabled_{false};
+
+  // Rewrite tracked objects whose class the model does not support into PEDESTRIAN, at the node
+  // boundary. Kept here rather than in MLPlannerParams so that the preprocessing pipeline, which
+  // is shared with offline training-data generation, stays untouched.
+  bool remap_unsupported_objects_to_pedestrian_{false};
+  mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
+
+  template <typename MessageT>
+  using BufferingPollingSubscriber =
+    autoware_utils::InterProcessPollingSubscriber<MessageT, autoware_utils::polling_policy::All>;
+
+  template <typename MessageT>
+  using NewestPollingSubscriber =
+    autoware_utils::InterProcessPollingSubscriber<MessageT, autoware_utils::polling_policy::Newest>;
+
+  BufferingPollingSubscriber<Odometry> sub_current_odometry_{this, "~/input/odometry"};
+  BufferingPollingSubscriber<TrackedObjects> sub_tracked_objects_{this, "~/input/tracked_objects"};
+  BufferingPollingSubscriber<autoware_perception_msgs::msg::TrafficLightGroupArray>
+    sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
+  BufferingPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
+    this, "~/input/turn_indicators"};
+  BufferingPollingSubscriber<SteeringReport> sub_steering_{this, "~/input/steering_status"};
+  NewestPollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped> sub_acceleration_{
+    this, "~/input/acceleration"};
+  NewestPollingSubscriber<LaneletRoute> route_subscriber_{
+    this, "~/input/route", rclcpp::QoS{1}.transient_local()};
+  NewestPollingSubscriber<LaneletMapBin> vector_map_subscriber_{
+    this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
+  rclcpp::Subscription<HADMapBin>::SharedPtr sub_map_;
+  UUID generator_uuid_;
+  VehicleInfo vehicle_info_;
+
+  std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
+  std::optional<std::string> model_load_error_;
+  std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_{nullptr};
+
+  std::unique_ptr<autoware_utils_system::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
+
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface_;
+  MLPlannerPlanningFactorParams planning_factor_params_;
+};
+
+}  // namespace autoware::ml_planner
+#endif  // AUTOWARE__TENSORRT_E2E__ML_PLANNER_BEV_NODE_HPP_

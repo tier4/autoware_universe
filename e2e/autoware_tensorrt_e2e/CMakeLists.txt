@@ -117,6 +117,21 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     EXECUTABLE ${PROJECT_NAME}_node
   )
 
+  # The 1.5-stage ML-Planner node: autoware_ml_planner's node with its planner graph run through
+  # this package's TensorRT engine and BEV feature provider (include/.../ml_planner_bev_node.hpp).
+  ament_auto_add_library(${PROJECT_NAME}_ml_planner_bev_component SHARED
+    src/ml_planner_bev_node.cpp
+  )
+  target_link_libraries(${PROJECT_NAME}_ml_planner_bev_component ${PROJECT_NAME}_component)
+  # The weight major version of autoware_ml_planner (its CMakeLists.txt): the 1.5-stage graph keeps
+  # every input of that version and adds bev_feature.
+  target_compile_definitions(${PROJECT_NAME}_ml_planner_bev_component PRIVATE
+    ML_PLANNER_WEIGHT_MAJOR_VERSION=7)
+  rclcpp_components_register_node(${PROJECT_NAME}_ml_planner_bev_component
+    PLUGIN "autoware::ml_planner::MLPlannerBev"
+    EXECUTABLE ml_planner_bev_node
+  )
+
   install(
     TARGETS ${PROJECT_NAME}_cuda_lib
     DESTINATION lib
