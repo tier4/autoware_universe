@@ -124,7 +124,7 @@ struct TrajectoryOptimizationParams
    * without the goal or the temporal term, so it is free to take the kinks out of the
    * heading. Curvature is then ``tan(steering) / wheelbase`` of that solution, the polyline is
    * retimed under ``max_lateral_acceleration_mps2``, and the second solve is the normal
-   * constrained problem. Its shooting-node guess is the retimed profile.
+   * constrained problem on those resampled points.
    *
    * Disabled by default. The extra cost is one SQP solve per candidate.
    */

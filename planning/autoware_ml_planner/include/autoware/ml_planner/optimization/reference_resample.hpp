@@ -40,10 +40,9 @@ struct PoseSample
  * @brief A polyline reparameterized in time under a lateral-acceleration cap.
  *
  * ``poses[k]`` is where stage ``k`` should sit. ``speed_mps``, ``steering_rad`` and
- * ``acceleration_mps2`` are the feasible profile at that stage and are meant as the
- * initial guess of the following constrained solve, not as a tracked reference.
- * ``curvature_inv_m`` is ``tan(steering) / wheelbase`` of the smoothed solution, one value per
- * sample.
+ * ``acceleration_mps2`` are the feasible profile used to place those poses. The following
+ * constrained solve tracks the poses. ``curvature_inv_m`` is ``tan(steering) / wheelbase``
+ * of the smoothed solution, one value per sample.
  */
 struct ResampledSequence
 {

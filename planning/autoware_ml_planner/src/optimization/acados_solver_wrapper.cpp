@@ -213,7 +213,7 @@ SolverSolution AcadosSolverWrapper::solve(
   const std::array<StageReference, opt_horizon> & references,
   const std::optional<GoalTerminalReference> & goal_terminal_reference,
   const std::array<StageTemporalReference, opt_horizon> * temporal_references,
-  const SolverSolution * warm_start, const SolverSolution * initial_guess)
+  const SolverSolution * warm_start)
 {
   auto x0 = initial_state;
 
@@ -381,13 +381,11 @@ SolverSolution AcadosSolverWrapper::solve(
   ocp_nlp_cost_model_set(
     impl_->config, impl_->dims, impl_->in, static_cast<int>(gen_n), "yref", yref_e.data());
 
-  // Initial guess. A same-cycle seed is already aligned with this horizon. A previous-cycle
-  // warm start is one stage ahead, because time has moved by one step.
+  // Shooting-node guess. A previous-cycle warm start is one stage ahead, because time has
+  // moved by one step. With no warm start the nodes sit at the measured initial state.
   for (size_t stage = 0; stage <= gen_n; ++stage) {
     std::array<double, gen_nx> x_guess = x0;
-    if (initial_guess != nullptr) {
-      x_guess = initial_guess->states[stage];
-    } else if (warm_start != nullptr) {
+    if (warm_start != nullptr) {
       x_guess = warm_start->states[std::min(stage + 1, gen_n)];
     }
     ocp_nlp_out_set(
@@ -395,9 +393,7 @@ SolverSolution AcadosSolverWrapper::solve(
       x_guess.data());
     if (stage < gen_n) {
       std::array<double, gen_nu> u_guess{};
-      if (initial_guess != nullptr) {
-        u_guess = initial_guess->inputs[stage];
-      } else if (warm_start != nullptr) {
+      if (warm_start != nullptr) {
         u_guess = warm_start->inputs[std::min(stage + 1, gen_n - 1)];
       }
       ocp_nlp_out_set(

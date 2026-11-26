@@ -87,16 +87,15 @@ private:
   struct ResampledTracking
   {
     Trajectory trajectory;
-    SolverSolution guess_local;
     double smooth_solve_time_ms{0.0};
   };
 
   /**
    * @brief Smooth the raw poses, estimate curvature there, and retime the polyline.
    *
-   * Does not update the goal latch or the stored warm start. The returned guess is in
-   * the current ego-centered frame and is aligned with this cycle's stage times.
-   * ``smooth_solve_time_ms`` is written even when the smoothing solve fails.
+   * Does not update the goal latch or the stored warm start. The returned trajectory is
+   * the tracking reference of the second solve. ``smooth_solve_time_ms`` is written even
+   * when the smoothing solve fails.
    */
   std::optional<ResampledTracking> smooth_and_resample(
     const Trajectory & raw_trajectory, const std::array<double, opt_nx> & initial_state,

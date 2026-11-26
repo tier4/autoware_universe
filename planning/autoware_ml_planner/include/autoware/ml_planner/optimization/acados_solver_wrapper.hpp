@@ -129,17 +129,13 @@ public:
    *                            corresponding entry of `references`.
    * @param warm_start Previous solution in the same frame, or nullptr for a cold start.
    *                   Applied with a one-stage shift, because it comes from the previous cycle.
-   * @param initial_guess Same-cycle seed, applied without that shift. When non-null it
-   *                      replaces ``warm_start`` as the shooting-node guess. Used by the
-   *                      resampled profile, whose stage ``k`` is already the state at time
-   *                      ``k * dt`` of this cycle.
    */
   SolverSolution solve(
     const std::array<double, opt_nx> & initial_state,
     const std::array<StageReference, opt_horizon> & references,
     const std::optional<GoalTerminalReference> & goal_terminal_reference,
     const std::array<StageTemporalReference, opt_horizon> * temporal_references,
-    const SolverSolution * warm_start, const SolverSolution * initial_guess = nullptr);
+    const SolverSolution * warm_start);
 
 private:
   struct Impl;

@@ -138,16 +138,12 @@ OptimizationResult TrajectoryOptimizer::optimize(
   // replace the tracked poses with the retimed polyline. The goal latch below then
   // sees the retimed endpoint. A failed smoothing solve leaves the raw poses in place.
   Trajectory tracking_trajectory = raw_trajectory;
-  SolverSolution resampled_guess;
-  const SolverSolution * resampled_guess_ptr = nullptr;
   double smooth_solve_time_ms = 0.0;
   if (params_.reference_resample.enable) {
     if (
       auto prepared = smooth_and_resample(
         raw_trajectory, initial_state, base_x, base_y, batch_index, smooth_solve_time_ms)) {
       tracking_trajectory = std::move(prepared->trajectory);
-      resampled_guess = prepared->guess_local;
-      resampled_guess_ptr = &resampled_guess;
     }
   }
 
@@ -258,8 +254,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
   }
 
   SolverSolution solution = solver_->solve(
-    initial_state, references, goal_terminal_reference, temporal_references_ptr, warm_start_ptr,
-    resampled_guess_ptr);
+    initial_state, references, goal_terminal_reference, temporal_references_ptr, warm_start_ptr);
   result.solver_status = solution.status;
   result.solve_time_ms = solution.solve_time_s * 1e3 + smooth_solve_time_ms;
 
@@ -334,7 +329,7 @@ std::optional<TrajectoryOptimizer::ResampledTracking> TrajectoryOptimizer::smoot
   const auto references = stage_references(raw_trajectory, base_x, base_y, initial_state[kPsi]);
   // No goal and no temporal term: this pass only has to follow the pose shape.
   const SolverSolution smooth =
-    solver_->solve(initial_state, references, std::nullopt, nullptr, warm_start_ptr, nullptr);
+    solver_->solve(initial_state, references, std::nullopt, nullptr, warm_start_ptr);
   smooth_solve_time_ms = smooth.solve_time_s * 1e3;
   if (!smooth.success()) {
     return std::nullopt;
@@ -360,7 +355,6 @@ std::optional<TrajectoryOptimizer::ResampledTracking> TrajectoryOptimizer::smoot
   prepared.smooth_solve_time_ms = smooth_solve_time_ms;
   prepared.trajectory.header = raw_trajectory.header;
   prepared.trajectory.points.reserve(opt_horizon);
-  prepared.guess_local.states[0] = initial_state;
   for (size_t index = 1; index <= opt_horizon; ++index) {
     const PoseSample & pose = resampled.poses[index];
     TrajectoryPoint point = raw_trajectory.points[index - 1];
@@ -368,18 +362,7 @@ std::optional<TrajectoryOptimizer::ResampledTracking> TrajectoryOptimizer::smoot
     point.pose.position.y = pose.y;
     point.pose.orientation =
       autoware_utils::create_quaternion_from_yaw(autoware_utils::normalize_radian(pose.yaw));
-    point.longitudinal_velocity_mps = static_cast<float>(resampled.speed_mps[index]);
-    point.front_wheel_angle_rad = static_cast<float>(resampled.steering_rad[index]);
-    point.acceleration_mps2 = static_cast<float>(resampled.acceleration_mps2[index]);
     prepared.trajectory.points.push_back(point);
-
-    prepared.guess_local.states[index] = {
-      pose.x - base_x,
-      pose.y - base_y,
-      pose.yaw,
-      resampled.speed_mps[index],
-      resampled.steering_rad[index],
-      resampled.acceleration_mps2[index]};
   }
   return prepared;
 }
