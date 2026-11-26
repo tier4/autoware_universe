@@ -79,3 +79,13 @@
     adaptive_trajectory_velocity_th: 1.0
     max_pitch_rad: 0.1
     min_pitch_rad: -0.1
+
+    # stopping-scene acceleration bias (off until explicitly enabled)
+    enable_stopping_scene_accel_bias: false
+    stopping_scene_velocity_min: 0.1
+    stopping_scene_velocity_max: 3.0
+    stopping_scene_end_velocity_max: 0.2
+    stopping_scene_bias_min: -0.5
+    stopping_scene_sample_weight: 0.1
+    stopping_scene_command_delay: 0.3
+    stopping_scene_nearest_dist: 10.0
