@@ -140,7 +140,7 @@ OptimizationResult TrajectoryOptimizer::optimize(
   // Optional lateral-acceleration guard. A failed geometry pass leaves the raw poses.
   Trajectory tracking_trajectory = raw_trajectory;
   double geometry_solve_time_ms = 0.0;
-  if (params_.lateral_acceleration_guard.enable) {
+  if (params_.lateral_acceleration_guard) {
     if (
       auto prepared = build_laterally_guarded_reference(
         raw_trajectory, initial_state, base_x, base_y, batch_index, geometry_solve_time_ms)) {

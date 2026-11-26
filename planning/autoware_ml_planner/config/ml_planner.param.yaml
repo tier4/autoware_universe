@@ -42,8 +42,7 @@
       max_sqp_iterations: 50
       # Geometry pass (no a_lat bound), then resample targets under
       # max_lateral_acceleration_mps2, then the ordinary constrained solve.
-      lateral_acceleration_guard:
-        enable: false
+      lateral_acceleration_guard: false
       temporal_consistency:
         # Track this candidate's own previous plan so consecutive outputs stay coherent.
         # Weights below are the values at t = 0 and are scaled down over the horizon by

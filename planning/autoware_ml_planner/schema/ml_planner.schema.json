@@ -231,16 +231,9 @@
               "description": "Maximum SQP iterations per solve"
             },
             "lateral_acceleration_guard": {
-              "type": "object",
-              "description": "Geometry pass with no a_lat bound, then kinematic resample of the target points under max_lateral_acceleration_mps2, then the ordinary constrained solve",
-              "properties": {
-                "enable": {
-                  "type": "boolean",
-                  "default": false,
-                  "description": "Run the lateral-acceleration guard before the constrained solve"
-                }
-              },
-              "required": ["enable"]
+              "type": "boolean",
+              "default": false,
+              "description": "Geometry pass with no a_lat bound, then kinematic resample of the target points under max_lateral_acceleration_mps2, then the ordinary constrained solve"
             },
             "temporal_consistency": {
               "type": "object",

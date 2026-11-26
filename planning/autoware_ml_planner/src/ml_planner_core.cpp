@@ -80,7 +80,7 @@ bool optimization_params_changed(
          lhs.temporal_consistency.decay_time_constant_s !=
            rhs.temporal_consistency.decay_time_constant_s ||
          lhs.temporal_consistency.far_weight_ratio != rhs.temporal_consistency.far_weight_ratio ||
-         lhs.lateral_acceleration_guard.enable != rhs.lateral_acceleration_guard.enable;
+         lhs.lateral_acceleration_guard != rhs.lateral_acceleration_guard;
 }
 #endif
 

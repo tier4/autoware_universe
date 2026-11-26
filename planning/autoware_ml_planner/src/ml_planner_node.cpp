@@ -223,8 +223,8 @@ void MLPlanner::set_up_params()
     this->declare_parameter<double>("trajectory_optimization.max_lateral_acceleration_mps2", 3.0);
   opt.max_sqp_iterations =
     this->declare_parameter<int>("trajectory_optimization.max_sqp_iterations", 50);
-  opt.lateral_acceleration_guard.enable = this->declare_parameter<bool>(
-    "trajectory_optimization.lateral_acceleration_guard.enable", false);
+  opt.lateral_acceleration_guard =
+    this->declare_parameter<bool>("trajectory_optimization.lateral_acceleration_guard", false);
   auto & temporal = opt.temporal_consistency;
   temporal.enable =
     this->declare_parameter<bool>("trajectory_optimization.temporal_consistency.enable", false);
@@ -426,8 +426,8 @@ SetParametersResult MLPlanner::on_parameter(const std::vector<rclcpp::Parameter>
   update_param<int>(
     parameters, "trajectory_optimization.max_sqp_iterations", opt.max_sqp_iterations);
   update_param<bool>(
-    parameters, "trajectory_optimization.lateral_acceleration_guard.enable",
-    opt.lateral_acceleration_guard.enable);
+    parameters, "trajectory_optimization.lateral_acceleration_guard",
+    opt.lateral_acceleration_guard);
   auto & temporal = opt.temporal_consistency;
   update_param<bool>(
     parameters, "trajectory_optimization.temporal_consistency.enable", temporal.enable);

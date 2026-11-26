@@ -128,10 +128,7 @@ struct TrajectoryOptimizationParams
    *
    * Disabled by default. The extra cost is one SQP solve per candidate.
    */
-  struct LateralAccelerationGuardParams
-  {
-    bool enable{false};
-  } lateral_acceleration_guard;
+  bool lateral_acceleration_guard{false};
 };
 
 }  // namespace autoware::ml_planner::optimization
