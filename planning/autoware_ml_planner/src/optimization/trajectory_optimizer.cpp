@@ -120,7 +120,6 @@ OptimizationResult TrajectoryOptimizer::optimize(
 
   const std::array<double, opt_nx> initial_state{0.0, 0.0, yaw0, v0, delta0, a0};
 
-  // A moved route goal drops the latch and every warm start before either solve.
   if (goal_pose) {
     const bool goal_position_changed =
       !observed_goal_pose_ ||
@@ -134,10 +133,28 @@ OptimizationResult TrajectoryOptimizer::optimize(
       }
     }
     observed_goal_pose_ = goal_pose;
+
+    const double ego_to_goal_m = std::hypot(
+      goal_pose->position.x - ego_pose.position.x, goal_pose->position.y - ego_pose.position.y);
+    const bool ego_too_far_from_goal =
+      params_.goal.unlatch_horizon_s > 0.0 &&
+      ego_to_goal_m >
+        params_.goal.unlatch_horizon_s *
+          std::max(std::abs(ego_odometry.twist.twist.linear.x), params_.goal.unlatch_min_speed_mps);
+    if (ego_too_far_from_goal) {
+      latched_goal_pose_.reset();
+    } else {
+      const auto & terminal = raw_trajectory.points[opt_horizon - 1].pose.position;
+      const double distance =
+        std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
+      if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
+        latched_goal_pose_ = goal_pose;
+      } else if (latched_goal_pose_) {
+        latched_goal_pose_ = goal_pose;
+      }
+    }
   }
 
-  // Optional lateral-acceleration guard. A failed geometry pass leaves the raw poses.
-  // Snap below uses this endpoint, so the guard has to run first.
   Trajectory tracking_trajectory = raw_trajectory;
   double geometry_solve_time_ms = 0.0;
   if (params_.lateral_acceleration_guard) {
@@ -152,28 +169,6 @@ OptimizationResult TrajectoryOptimizer::optimize(
   std::array<StageReference, opt_horizon> references =
     stage_references(tracking_trajectory, base_x, base_y, yaw0);
   const double unwrapped_terminal_yaw = references.back().yaw;
-
-  if (goal_pose) {
-    const double ego_to_goal_m = std::hypot(
-      goal_pose->position.x - ego_pose.position.x, goal_pose->position.y - ego_pose.position.y);
-    const bool ego_too_far_from_goal =
-      params_.goal.unlatch_horizon_s > 0.0 &&
-      ego_to_goal_m >
-        params_.goal.unlatch_horizon_s *
-          std::max(std::abs(ego_odometry.twist.twist.linear.x), params_.goal.unlatch_min_speed_mps);
-    if (ego_too_far_from_goal) {
-      latched_goal_pose_.reset();
-    } else {
-      const auto & terminal = tracking_trajectory.points[opt_horizon - 1].pose.position;
-      const double distance =
-        std::hypot(terminal.x - goal_pose->position.x, terminal.y - goal_pose->position.y);
-      if (!latched_goal_pose_ && distance <= params_.goal.snap_distance_m) {
-        latched_goal_pose_ = goal_pose;
-      } else if (latched_goal_pose_) {
-        latched_goal_pose_ = goal_pose;
-      }
-    }
-  }
 
   std::optional<GoalTerminalReference> goal_terminal_reference;
   if (latched_goal_pose_) {
