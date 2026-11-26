@@ -10,7 +10,7 @@ inputs:
   annotations: /perception/object_recognition/tracking/objects
   traffic_lights: /perception/traffic_light_recognition/traffic_signals
   route: /planning/mission_planning/route
-# The node admits each periodic measurement stamp once within its retained history.
+# Each measurement timestamp uses its last eligible receipt.
 observations: {visibility: decision_snapshot, timestamp_order: sorted}
 resampling:
   odometry: {method: interpolate_or_hold_previous, max_delta_ns: 200000000}

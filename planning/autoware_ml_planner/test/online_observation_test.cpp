@@ -152,14 +152,14 @@ TEST_F(OnlineObservationTest, BackfillsMissingMeasurementsAtTheirReceiptCutoff)
   EXPECT_EQ(anchor(), 10);
   EXPECT_FALSE(speed_at(9, 20).has_value());
   EXPECT_EQ(speed_at(9, 21), 9.0);
-  EXPECT_EQ(speed_at(9, 22), 9.0);
+  EXPECT_EQ(speed_at(9, 22), 99.0);
   EXPECT_EQ(speed_at(10, 22), 10.0);
 
   receive_odometry(18, 8, 8.0);
   EXPECT_FALSE(speed_at(8, 22).has_value());
   receive_odometry(23, 11, 11.0);
   EXPECT_EQ(anchor(), 11);
-  EXPECT_EQ(speed_at(9, 23), 9.0);
+  EXPECT_EQ(speed_at(9, 23), 99.0);
 }
 
 TEST_F(OnlineObservationTest, ReappliesTheMainRouteWithItsOriginalStamp)
@@ -204,7 +204,7 @@ TEST_F(OnlineObservationTest, RetainsAccelerationOnlyForTheOptimizer)
   receive_acceleration(21, 9, 2.0);
   receive_acceleration(22, 9, 7.0);
   receive_acceleration(22, 10, 8.0, std::numeric_limits<double>::infinity());
-  EXPECT_EQ(longitudinal_acceleration(), 2.0);
+  EXPECT_EQ(longitudinal_acceleration(), 7.0);
 
   receive_acceleration(23, 10, 3.0);
   EXPECT_EQ(longitudinal_acceleration(), 3.0);

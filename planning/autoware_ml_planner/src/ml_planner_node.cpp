@@ -39,6 +39,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -741,24 +742,21 @@ bool MLPlanner::advance_receipt_time(const int64_t received_ns)
 
 template <typename Msg>
 bool MLPlanner::ingest_periodic(
-  const PeriodicInput input, const Msg & msg, const builtin_interfaces::msg::Time & stamp,
-  const int64_t received_ns)
+  const Msg & msg, const builtin_interfaces::msg::Time & stamp, const int64_t received_ns)
 {
-  if (
-    !advance_receipt_time(received_ns) ||
-    (input != PeriodicInput::Odometry && !has_recent_odometry(received_ns)) || stamp.sec < 0) {
+  if (!advance_receipt_time(received_ns) || stamp.sec < 0 || stamp.nanosec >= 1'000'000'000U) {
     return false;
   }
   const auto stamp_ns = rclcpp::Time(stamp).nanoseconds();
-  auto & stamps = accepted_stamps_.at(static_cast<size_t>(input));
+  const auto odometry_ns = odometry_ ? rclcpp::Time(odometry_->header.stamp).nanoseconds() : 0;
+  const bool advances_odometry =
+    std::is_same_v<Msg, Odometry> && (!odometry_ || stamp_ns > odometry_ns);
   if (
-    (odometry_ &&
-     stamp_ns < rclcpp::Time(odometry_->header.stamp).nanoseconds() - scene_retention_ns_) ||
-    stamps.count(stamp_ns) || !scene_builder_->ingest(msg, received_ns)) {
+    (!advances_odometry && !has_recent_odometry(received_ns)) ||
+    (odometry_ && stamp_ns < odometry_ns - scene_retention_ns_)) {
     return false;
   }
-  stamps.insert(stamp_ns);
-  return true;
+  return scene_builder_->ingest(msg, received_ns);
 }
 
 void MLPlanner::subscribe_scene_inputs()
@@ -768,10 +766,14 @@ void MLPlanner::subscribe_scene_inputs()
     "~/input/odometry", rclcpp::QoS{1}, [this](Odometry::ConstSharedPtr msg) {
       const auto received_ns = get_clock()->now().nanoseconds();
       if (
-        ingest_periodic(PeriodicInput::Odometry, *msg, msg->header.stamp, received_ns) &&
-        (!odometry_ || rclcpp::Time(msg->header.stamp) > rclcpp::Time(odometry_->header.stamp))) {
+        ingest_periodic(*msg, msg->header.stamp, received_ns) &&
+        (!odometry_ || rclcpp::Time(msg->header.stamp) >= rclcpp::Time(odometry_->header.stamp))) {
+        // Keep the latest payload at this stamp. Freshness follows the advancing
+        // measurement clock, so republishing a stale stamp does not renew it.
+        if (!odometry_ || rclcpp::Time(msg->header.stamp) > rclcpp::Time(odometry_->header.stamp)) {
+          odometry_received_ns_ = received_ns;
+        }
         odometry_ = std::move(msg);
-        odometry_received_ns_ = received_ns;
       }
     });
   sub_tracked_objects_ = create_subscription<TrackedObjects>(
@@ -781,27 +783,27 @@ void MLPlanner::subscribe_scene_inputs()
         msg = std::make_shared<const TrackedObjects>(
           utils::remap_unsupported_objects_to_pedestrian(*msg));
       }
-      if (ingest_periodic(PeriodicInput::Objects, *msg, msg->header.stamp, received_ns)) {
-        tracked_batches_.emplace(rclcpp::Time(msg->header.stamp).nanoseconds(), msg);
+      if (ingest_periodic(*msg, msg->header.stamp, received_ns)) {
+        tracked_batches_.insert_or_assign(rclcpp::Time(msg->header.stamp).nanoseconds(), msg);
       }
     });
   using TrafficSignals = autoware_perception_msgs::msg::TrafficLightGroupArray;
   sub_traffic_signals_ = create_subscription<TrafficSignals>(
     "~/input/traffic_signals", rclcpp::QoS{10}, [this](TrafficSignals::ConstSharedPtr msg) {
       const auto received_ns = get_clock()->now().nanoseconds();
-      if (ingest_periodic(PeriodicInput::Lights, *msg, msg->stamp, received_ns)) {
+      if (ingest_periodic(*msg, msg->stamp, received_ns)) {
         core_->update_traffic_signal_debug(*msg);
       }
     });
   sub_turn_indicators_ = create_subscription<TurnIndicatorsReport>(
     "~/input/turn_indicators", rclcpp::QoS{1}, [this](TurnIndicatorsReport::ConstSharedPtr msg) {
       const auto received_ns = get_clock()->now().nanoseconds();
-      ingest_periodic(PeriodicInput::Indicators, *msg, msg->stamp, received_ns);
+      ingest_periodic(*msg, msg->stamp, received_ns);
     });
   sub_steering_ = create_subscription<SteeringReport>(
     "~/input/steering_status", rclcpp::QoS{1}, [this](SteeringReport::ConstSharedPtr msg) {
       const auto received_ns = get_clock()->now().nanoseconds();
-      ingest_periodic(PeriodicInput::Steering, *msg, msg->stamp, received_ns);
+      ingest_periodic(*msg, msg->stamp, received_ns);
     });
   using Acceleration = geometry_msgs::msg::AccelWithCovarianceStamped;
   sub_acceleration_ = create_subscription<Acceleration>(
@@ -816,7 +818,7 @@ void MLPlanner::subscribe_scene_inputs()
       const auto stamp_ns = rclcpp::Time(stamp).nanoseconds();
       if (
         stamp_ns < rclcpp::Time(odometry_->header.stamp).nanoseconds() - scene_retention_ns_ ||
-        (newest_acceleration_ns_ && stamp_ns <= *newest_acceleration_ns_)) {
+        (newest_acceleration_ns_ && stamp_ns < *newest_acceleration_ns_)) {
         return;
       }
       // The localization acceleration input uses body axes. Keep just the raw longitudinal
@@ -855,9 +857,6 @@ void MLPlanner::discard_scene_history()
   const auto odometry_ns = rclcpp::Time(odometry_->header.stamp).nanoseconds();
   const auto cutoff_ns = odometry_ns - scene_retention_ns_;
   scene_builder_->discard_before(cutoff_ns);
-  for (auto & stamps : accepted_stamps_) {
-    stamps.erase(stamps.begin(), stamps.lower_bound(cutoff_ns));
-  }
   tracked_batches_.erase(tracked_batches_.begin(), tracked_batches_.lower_bound(cutoff_ns));
 }
 

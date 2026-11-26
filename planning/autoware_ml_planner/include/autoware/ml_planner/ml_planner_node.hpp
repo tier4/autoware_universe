@@ -45,12 +45,10 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -160,11 +158,9 @@ private:
   void on_timer();
 
   void subscribe_scene_inputs();
-  enum class PeriodicInput { Odometry, Objects, Lights, Indicators, Steering, Count };
   template <typename Msg>
   bool ingest_periodic(
-    PeriodicInput input, const Msg & msg, const builtin_interfaces::msg::Time & stamp,
-    int64_t received_ns);
+    const Msg & msg, const builtin_interfaces::msg::Time & stamp, int64_t received_ns);
   bool advance_receipt_time(int64_t received_ns);
   bool has_recent_odometry(int64_t received_ns) const;
   void discard_scene_history();
@@ -271,8 +267,6 @@ private:
   Odometry::ConstSharedPtr odometry_;
   int64_t odometry_received_ns_{};
   int64_t latest_receipt_ns_{};
-  // The SDK sorts late observations. Keep the first accepted sample at each topic stamp.
-  std::array<std::set<int64_t>, static_cast<size_t>(PeriodicInput::Count)> accepted_stamps_;
   std::map<int64_t, TrackedObjects::ConstSharedPtr> tracked_batches_;
   // Acceleration belongs to the trajectory optimizer rather than the model input.
   std::optional<int64_t> newest_acceleration_ns_;
