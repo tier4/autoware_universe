@@ -408,6 +408,43 @@ validator:
           default_value: .NAN
           description: Ego acceleration threshold to determine RSS collision (m/s^2, negative)
           read_only: false
+    road_following:
+      ego_footprint_margin:
+        lateral:
+          type: double
+          default_value: .NAN
+          description: lateral margin added to both sides of the ego footprint for the road following test. A negative value shrinks the footprint [m]
+          read_only: false
+        front:
+          type: double
+          default_value: .NAN
+          description: front margin added to the ego footprint for the road following test [m]
+          read_only: false
+        rear:
+          type: double
+          default_value: .NAN
+          description: rear margin added to the ego footprint for the road following test [m]
+          read_only: false
+      max_lateral_deviation:
+        type: double
+        default_value: .NAN
+        description: maximum distance from the base link to the lane centerline for road following [m]
+        read_only: false
+      max_heading_deviation:
+        type: double
+        default_value: .NAN
+        description: maximum angle between the ego heading and the lane centerline tangent for road following [rad]
+        read_only: false
+      window_distance:
+        type: double
+        default_value: .NAN
+        description: the road following window covers the trajectory points up to this arc length from the first point, or up to window_time, whichever is longer [m]
+        read_only: false
+      window_time:
+        type: double
+        default_value: .NAN
+        description: the road following window covers the trajectory points up to this time from the first point, or up to window_distance, whichever is longer [s]
+        read_only: false
 
   crosswalk:
     object_types:
