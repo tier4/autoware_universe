@@ -26,6 +26,7 @@
 
 #include <boost/geometry.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <map>
@@ -63,7 +64,10 @@ GoalSelectorNode::GoalSelectorNode(const rclcpp::NodeOptions & options)
 {
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
   goal_footprint_margin_ = declare_parameter<double>("goal_footprint_margin");
+  traffic_signal_timeout_ = declare_parameter<double>("traffic_signal_timeout");
+  trigger_height_tolerance_ = declare_parameter<double>("trigger_height_tolerance", 2.0);
   load_triggers();
+  validate_fallback_goals();
 
   const auto durable_qos = rclcpp::QoS(1).transient_local();
   sub_route_state_ = create_subscription<RouteState>(
@@ -73,6 +77,9 @@ GoalSelectorNode::GoalSelectorNode(const rclcpp::NodeOptions & options)
     "~/input/route", durable_qos, [this](const LaneletRoute::ConstSharedPtr msg) { route_ = msg; });
   sub_objects_ = create_subscription<PredictedObjects>(
     "~/input/objects", 1, [this](const PredictedObjects::ConstSharedPtr msg) { on_objects(msg); });
+  sub_traffic_signals_ = create_subscription<TrafficLightGroupArray>(
+    "~/input/traffic_signals", 1,
+    [this](const TrafficLightGroupArray::ConstSharedPtr msg) { on_traffic_signals(msg); });
   pub_debug_marker_ = create_publisher<MarkerArray>("~/debug/marker", 1);
 
   const auto clear_route_service =
@@ -107,6 +114,11 @@ void GoalSelectorNode::load_triggers()
       RCLCPP_WARN(
         get_logger(), "goal '%s' has no lane_ids; it cannot be sent as a route", name.c_str());
     }
+    // A negative value means that the goal has no traffic signal assigned.
+    const auto group_id = declare_parameter<int64_t>(name + ".traffic_light_group_id", -1);
+    if (group_id >= 0) {
+      candidate.traffic_light_group_id = group_id;
+    }
     goals.emplace(name, candidate);
   }
 
@@ -125,7 +137,45 @@ void GoalSelectorNode::load_triggers()
       }
       trigger.goal_candidates.push_back(goal->second);
     }
+    if (!trigger.goal_candidates.empty()) {
+      trigger.z = trigger.goal_candidates.front().pose.position.z;
+    }
+
+    const auto fallback_name = declare_parameter<std::string>(name + ".fallback_goal", "");
+    if (!fallback_name.empty()) {
+      const auto goal = goals.find(fallback_name);
+      if (goal == goals.end()) {
+        throw std::runtime_error(
+          "Unknown fallback goal '" + fallback_name + "' in trigger '" + name + "'.");
+      }
+      trigger.fallback_goal = goal->second;
+    }
     triggers_.push_back(std::move(trigger));
+  }
+}
+
+void GoalSelectorNode::validate_fallback_goals() const
+{
+  // The fallback goal has to lie inside the area of another trigger. Arriving there then selects
+  // the goal candidates of that trigger.
+  for (const auto & trigger : triggers_) {
+    if (!trigger.fallback_goal) {
+      continue;
+    }
+    const auto * arrival_trigger = find_trigger(trigger.fallback_goal->pose.position);
+    if (!arrival_trigger) {
+      RCLCPP_WARN(
+        get_logger(),
+        "fallback goal '%s' of trigger '%s' is outside every trigger area, so no goal is selected "
+        "after arriving there",
+        trigger.fallback_goal->name.c_str(), trigger.name.c_str());
+    } else if (arrival_trigger == &trigger) {
+      RCLCPP_WARN(
+        get_logger(),
+        "fallback goal '%s' of trigger '%s' is inside the area of the same trigger, so the "
+        "fallback would be repeated",
+        trigger.fallback_goal->name.c_str(), trigger.name.c_str());
+    }
   }
 }
 
@@ -149,17 +199,66 @@ void GoalSelectorNode::on_objects(const PredictedObjects::ConstSharedPtr msg)
   set_next_goal();
 }
 
+void GoalSelectorNode::on_traffic_signals(const TrafficLightGroupArray::ConstSharedPtr msg)
+{
+  traffic_signals_ = msg;
+  traffic_signals_received_time_ = now();
+
+  // Retry while all goal candidates are blocked, since the signal may have changed.
+  set_next_goal();
+}
+
+bool GoalSelectorNode::is_signal_red(const int64_t traffic_light_group_id) const
+{
+  using autoware_perception_msgs::msg::TrafficLightElement;
+
+  if (!traffic_signals_) {
+    return false;
+  }
+  // Stale information is treated as not red, so that stopping the publisher turns the signal off.
+  if ((now() - traffic_signals_received_time_).seconds() > traffic_signal_timeout_) {
+    return false;
+  }
+
+  for (const auto & group : traffic_signals_->traffic_light_groups) {
+    if (group.traffic_light_group_id != traffic_light_group_id) {
+      continue;
+    }
+    for (const auto & element : group.elements) {
+      if (
+        element.color == TrafficLightElement::RED &&
+        element.status == TrafficLightElement::SOLID_ON) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+GoalState GoalSelectorNode::judge_goal(const GoalCandidate & candidate) const
+{
+  if (!is_goal_vacant(candidate.pose, *objects_, vehicle_info_, goal_footprint_margin_)) {
+    return GoalState::OCCUPIED;
+  }
+  if (candidate.traffic_light_group_id && is_signal_red(*candidate.traffic_light_group_id)) {
+    return GoalState::RED_SIGNAL;
+  }
+  return GoalState::AVAILABLE;
+}
+
 void GoalSelectorNode::publish_debug_marker()
 {
-  std::map<std::string, bool> vacancies;
+  std::map<std::string, GoalState> states;
   for (const auto & trigger : triggers_) {
     for (const auto & candidate : trigger.goal_candidates) {
-      vacancies[candidate.name] =
-        is_goal_vacant(candidate.pose, *objects_, vehicle_info_, goal_footprint_margin_);
+      states[candidate.name] = judge_goal(candidate);
+    }
+    if (trigger.fallback_goal) {
+      states[trigger.fallback_goal->name] = judge_goal(*trigger.fallback_goal);
     }
   }
   pub_debug_marker_->publish(
-    create_debug_marker_array(triggers_, vacancies, vehicle_info_, goal_footprint_margin_, now()));
+    create_debug_marker_array(triggers_, states, vehicle_info_, goal_footprint_margin_, now()));
 }
 
 void GoalSelectorNode::set_next_goal()
@@ -175,9 +274,17 @@ void GoalSelectorNode::set_next_goal()
 
   const auto * goal = select_goal(*trigger);
   if (!goal) {
+    goal = select_fallback_goal(*trigger);
+    if (goal) {
+      RCLCPP_INFO(
+        get_logger(), "All goal candidates of trigger '%s' are blocked. Go to fallback goal '%s'.",
+        trigger->name.c_str(), goal->name.c_str());
+    }
+  }
+  if (!goal) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000, "All goal candidates of trigger '%s' are blocked.",
-      trigger->name.c_str());
+      get_logger(), *get_clock(), 5000, "All goal candidates of trigger '%s' are blocked%s.",
+      trigger->name.c_str(), trigger->fallback_goal ? ", and so is the fallback goal" : "");
     return;
   }
 
@@ -194,7 +301,13 @@ void GoalSelectorNode::set_next_goal()
 const Trigger * GoalSelectorNode::find_trigger(const geometry_msgs::msg::Point & position) const
 {
   for (const auto & trigger : triggers_) {
-    if (std::hypot(position.x - trigger.x, position.y - trigger.y) <= trigger.radius) {
+    const bool is_inside_area =
+      std::hypot(position.x - trigger.x, position.y - trigger.y) <= trigger.radius;
+    // A negative tolerance ignores the elevation. Otherwise a trigger on another floor that
+    // shares the same x and y is not matched.
+    const bool is_same_floor = trigger_height_tolerance_ < 0.0 ||
+                               std::abs(position.z - trigger.z) <= trigger_height_tolerance_;
+    if (is_inside_area && is_same_floor) {
       return &trigger;
     }
   }
@@ -204,9 +317,17 @@ const Trigger * GoalSelectorNode::find_trigger(const geometry_msgs::msg::Point &
 const GoalCandidate * GoalSelectorNode::select_goal(const Trigger & trigger) const
 {
   for (const auto & candidate : trigger.goal_candidates) {
-    if (is_goal_vacant(candidate.pose, *objects_, vehicle_info_, goal_footprint_margin_)) {
+    if (judge_goal(candidate) == GoalState::AVAILABLE) {
       return &candidate;
     }
+  }
+  return nullptr;
+}
+
+const GoalCandidate * GoalSelectorNode::select_fallback_goal(const Trigger & trigger) const
+{
+  if (trigger.fallback_goal && judge_goal(*trigger.fallback_goal) == GoalState::AVAILABLE) {
+    return &*trigger.fallback_goal;
   }
   return nullptr;
 }
@@ -214,8 +335,7 @@ const GoalCandidate * GoalSelectorNode::select_goal(const Trigger & trigger) con
 void GoalSelectorNode::send_route(const GoalCandidate & goal)
 {
   if (!clear_route_client_->service_is_ready() || !set_lanelet_route_client_->service_is_ready()) {
-    RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), 5000, "route services are not ready");
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000, "route services are not ready");
     return;
   }
 

@@ -70,13 +70,31 @@ Marker create_trigger_area(const Trigger & trigger, const int32_t id, const rclc
   return marker;
 }
 
+// green: available, red: occupied by an object, orange: blocked by a red signal
+std_msgs::msg::ColorRGBA create_state_color(const GoalState state)
+{
+  switch (state) {
+    case GoalState::AVAILABLE:
+      return create_marker_color(0.2, 1.0, 0.2, 0.999);
+    case GoalState::RED_SIGNAL:
+      return create_marker_color(1.0, 0.6, 0.0, 0.999);
+    case GoalState::OCCUPIED:
+    default:
+      return create_marker_color(1.0, 0.2, 0.2, 0.999);
+  }
+}
+
+std::string create_candidate_label(const GoalCandidate & candidate, const GoalState state)
+{
+  return state == GoalState::RED_SIGNAL ? candidate.name + " (red signal)" : candidate.name;
+}
+
 Marker create_candidate_area(
-  const GoalCandidate & candidate, const int32_t id, const bool is_vacant,
+  const GoalCandidate & candidate, const int32_t id, const GoalState state,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double margin,
   const rclcpp::Time & stamp)
 {
-  const auto color = is_vacant ? create_marker_color(0.2, 1.0, 0.2, 0.999)
-                               : create_marker_color(1.0, 0.2, 0.2, 0.999);
+  const auto color = create_state_color(state);
   auto marker = create_default_marker(
     "map", stamp, "goal_candidate", id, Marker::LINE_STRIP,
     create_marker_scale(line_width, 0.0, 0.0), color);
@@ -107,7 +125,7 @@ geometry_msgs::msg::Point create_label_position(
 }  // namespace
 
 MarkerArray create_debug_marker_array(
-  const std::vector<Trigger> & triggers, const std::map<std::string, bool> & vacancies,
+  const std::vector<Trigger> & triggers, const std::map<std::string, GoalState> & states,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double margin,
   const rclcpp::Time & stamp)
 {
@@ -123,11 +141,25 @@ MarkerArray create_debug_marker_array(
 
     for (size_t j = 0; j < trigger.goal_candidates.size(); ++j) {
       const auto & candidate = trigger.goal_candidates.at(j);
-      markers.markers.push_back(create_candidate_area(
-        candidate, candidate_id, vacancies.at(candidate.name), vehicle_info, margin, stamp));
+      const auto state = states.at(candidate.name);
+      markers.markers.push_back(
+        create_candidate_area(candidate, candidate_id, state, vehicle_info, margin, stamp));
       markers.markers.push_back(create_text_marker(
-        "goal_candidate_label", candidate_id, candidate.name,
+        "goal_candidate_label", candidate_id, create_candidate_label(candidate, state),
         create_label_position(candidate, j, vehicle_info, margin), stamp));
+      ++candidate_id;
+    }
+
+    if (trigger.fallback_goal) {
+      const auto & fallback = *trigger.fallback_goal;
+      const auto state = states.at(fallback.name);
+      markers.markers.push_back(
+        create_candidate_area(fallback, candidate_id, state, vehicle_info, margin, stamp));
+      markers.markers.push_back(create_text_marker(
+        "goal_candidate_label", candidate_id,
+        create_candidate_label(fallback, state) + " (fallback)",
+        create_label_position(fallback, trigger.goal_candidates.size(), vehicle_info, margin),
+        stamp));
       ++candidate_id;
     }
   }

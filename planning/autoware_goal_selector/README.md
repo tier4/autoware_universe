@@ -19,9 +19,7 @@ that is not overlapped by any perceived object and sends that candidate's lanele
 3. The selected candidate's lane sequence is sent once per arrival.
 
 The node clears the current route first, because `set_lanelet_route` is rejected while the state is
-`ARRIVED`. Since the ego is stopped, the route can be cleared safely.
-
-## Interfaces
+`ARRIVED`. Since the ego is stopped, the route can be cleared safely.## Interfaces
 
 ### Subscriptions
 
@@ -65,6 +63,11 @@ staggered, so that candidates standing side by side stay readable.
 
 The trigger has no elevation in the parameter file, so its circle is drawn at the elevation of its
 first goal candidate.
+
+The trigger areas are circles on the xy plane. When two floors share the same xy, the trigger of
+the other floor must not match, so a trigger matches a route goal only if the goal elevation differs
+from the elevation of the trigger's first goal candidate by at most `trigger_height_tolerance`.
+Set a negative value to ignore the elevation.
 
 ## Assumptions / Known limits
 

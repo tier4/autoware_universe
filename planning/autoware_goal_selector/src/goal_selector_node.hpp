@@ -21,6 +21,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/route_state.hpp>
 #include <autoware_planning_msgs/srv/clear_route.hpp>
@@ -46,28 +47,38 @@ private:
   using PredictedObjects = autoware_perception_msgs::msg::PredictedObjects;
   using RouteState = autoware_planning_msgs::msg::RouteState;
   using SetLaneletRoute = autoware_planning_msgs::srv::SetLaneletRoute;
+  using TrafficLightGroupArray = autoware_perception_msgs::msg::TrafficLightGroupArray;
 
   geometry_msgs::msg::Pose declare_pose(const std::string & name);
   void load_triggers();
+  void validate_fallback_goals() const;
 
   void on_route_state(const RouteState::ConstSharedPtr msg);
   void on_objects(const PredictedObjects::ConstSharedPtr msg);
+  void on_traffic_signals(const TrafficLightGroupArray::ConstSharedPtr msg);
+  bool is_signal_red(const int64_t traffic_light_group_id) const;
+  GoalState judge_goal(const GoalCandidate & candidate) const;
   void publish_debug_marker();
   void set_next_goal();
   const Trigger * find_trigger(const geometry_msgs::msg::Point & position) const;
   const GoalCandidate * select_goal(const Trigger & trigger) const;
+  const GoalCandidate * select_fallback_goal(const Trigger & trigger) const;
   void send_route(const GoalCandidate & goal);
   void on_route_cleared(rclcpp::Client<ClearRoute>::SharedFuture future);
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
 
   // Parameter
-  double goal_footprint_margin_;  // [m]
+  double goal_footprint_margin_;     // [m]
+  double traffic_signal_timeout_;    // [s]
+  double trigger_height_tolerance_;  // [m]
   std::vector<Trigger> triggers_;
 
   // State
   LaneletRoute::ConstSharedPtr route_;
   PredictedObjects::ConstSharedPtr objects_;
+  TrafficLightGroupArray::ConstSharedPtr traffic_signals_;
+  rclcpp::Time traffic_signals_received_time_{0, 0, RCL_ROS_TIME};
   bool is_arrived_{false};
   bool is_next_goal_set_{false};
   bool route_request_in_flight_{false};
@@ -76,6 +87,7 @@ private:
   rclcpp::Subscription<RouteState>::SharedPtr sub_route_state_;
   rclcpp::Subscription<LaneletRoute>::SharedPtr sub_route_;
   rclcpp::Subscription<PredictedObjects>::SharedPtr sub_objects_;
+  rclcpp::Subscription<TrafficLightGroupArray>::SharedPtr sub_traffic_signals_;
 
   // Publisher
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;

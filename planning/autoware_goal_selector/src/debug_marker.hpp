@@ -29,10 +29,10 @@
 namespace autoware::goal_selector
 {
 
-/// @brief Create markers of the trigger areas and of the goal candidates colored by the vacancy
+/// @brief Create markers of the trigger areas and of the goal candidates colored by the state
 /// judged for each goal name.
 visualization_msgs::msg::MarkerArray create_debug_marker_array(
-  const std::vector<Trigger> & triggers, const std::map<std::string, bool> & vacancies,
+  const std::vector<Trigger> & triggers, const std::map<std::string, GoalState> & states,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double margin,
   const rclcpp::Time & stamp);
 

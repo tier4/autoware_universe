@@ -11,9 +11,20 @@
           "description": "uniform inflation of the vehicle footprint placed at the goal",
           "default": "0.3",
           "minimum": 0.0
+        },
+        "traffic_signal_timeout": {
+          "type": "number",
+          "description": "a traffic signal that has not been updated for this time [s] is treated as not red",
+          "default": "2.0",
+          "minimum": 0.0
+        },
+        "trigger_height_tolerance": {
+          "type": "number",
+          "description": "a trigger is matched only if the goal elevation differs from the elevation of its first goal candidate by at most this value [m]. A negative value ignores the elevation",
+          "default": "2.0"
         }
       },
-      "required": ["goal_footprint_margin"]
+      "required": ["goal_footprint_margin", "traffic_signal_timeout"]
     }
   },
   "properties": {
