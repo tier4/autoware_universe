@@ -108,6 +108,7 @@ component_management:
         - control/autoware_mpc_lateral_controller/**
         - control/autoware_operation_mode_transition_manager/**
         - control/autoware_pid_longitudinal_controller/**
+        - control/autoware_predicted_trajectory_validator/**
         # - control/autoware_pure_pursuit/**
         - control/autoware_shift_decider/**
         # - control/autoware_smart_mpc_trajectory_follower/**

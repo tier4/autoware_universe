@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>autoware_predicted_trajectory_validator</name>
+  <version>0.50.0</version>
+  <description>ros node validating the effect of the control predicted trajectory on the surroundings</description>
+  <maintainer email="hayate.sugahara@tier4.jp">Hayate Sugahara</maintainer>
+
+  <license>Apache License 2.0</license>
+
+  <author email="hayate.sugahara@tier4.jp">Hayate Sugahara</author>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>autoware_cmake</buildtool_depend>
+  <build_depend>rosidl_default_generators</build_depend>
+
+  <depend>autoware_adapi_specs</depend>
+  <depend>autoware_boundary_departure_checker</depend>
+  <depend>autoware_internal_control_msgs</depend>
+  <depend>autoware_internal_debug_msgs</depend>
+  <depend>autoware_lanelet2_utils</depend>
+  <depend>autoware_map_msgs</depend>
+  <depend>autoware_motion_utils</depend>
+  <depend>autoware_perception_msgs</depend>
+  <depend>autoware_planning_msgs</depend>
+  <depend>autoware_utils</depend>
+  <depend>autoware_utils_debug</depend>
+  <depend>autoware_utils_geometry</depend>
+  <depend>autoware_vehicle_info_utils</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>diagnostic_updater</depend>
+  <depend>eigen</depend>
+  <depend>generate_parameter_library</depend>
+  <depend>geometry_msgs</depend>
+  <depend>lanelet2_core</depend>
+  <depend>libboost-dev</depend>
+  <depend>libpcl-all-dev</depend>
+  <depend>nav_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
+  <depend>visualization_msgs</depend>
+
+  <test_depend>ament_cmake_ros</test_depend>
+  <test_depend>ament_index_cpp</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>autoware_lint_common</test_depend>
+  <test_depend>autoware_test_utils</test_depend>
+  <test_depend>tf2_geometry_msgs</test_depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
