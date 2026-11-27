@@ -25,6 +25,8 @@
 #include <rclcpp/logging.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
+#include <pcl/point_types.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -108,7 +110,7 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
     const auto & p = params_.obstacle_tracking;
     obstacle_tracker_ = std::make_unique<utils::obstacle_stop::ObstacleTracker>(
       p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
-      p.grace_period, params_.objects.stopped_velocity_th);
+      params_.objects.stopped_velocity_th, p.object_missed_count_th, p.pcd_missed_count_th);
   }
 
   {
@@ -172,7 +174,7 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
     const auto & p = params_.obstacle_tracking;
     obstacle_tracker_->set_params(
       p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
-      p.grace_period, params_.objects.stopped_velocity_th);
+      params_.objects.stopped_velocity_th, p.object_missed_count_th, p.pcd_missed_count_th);
   }
 
   {
@@ -253,9 +255,12 @@ ProcessingResult ObstacleStop::process(
 
   if (!enabled_ || traj_points.size() < 2) return ProcessingResult::Unchanged;
 
-  const auto current_time = rclcpp::Time(input.current_odometry->header.stamp, get_clock()->get_clock_type());
+  const auto odometry_stamp =
+    rclcpp::Time(input.current_odometry->header.stamp, get_clock()->get_clock_type());
+  const auto current_time = odometry_stamp.nanoseconds() == 0 ? get_clock()->now() : odometry_stamp;
   if (!last_frame_time_ || *last_frame_time_ != current_time) {
     objects_cache_.reset();
+    pointcloud_cache_.reset();
     last_frame_time_ = current_time;
   }
 
@@ -505,8 +510,7 @@ void ObstacleStop::detect_objects(const TrajectoryModifierData & input)
     objects_cache_ = ObjectCache{input.predicted_objects, *input.predicted_objects, {}};
     object_filter_->filter_objects(objects_cache_->filtered_objects);
     const auto now = last_frame_time_ ? *last_frame_time_ : get_clock()->now();
-    const auto stamp =
-      rclcpp::Time(input.predicted_objects->header.stamp, now.get_clock_type());
+    const auto stamp = rclcpp::Time(input.predicted_objects->header.stamp, now.get_clock_type());
     obstacle_tracker_->update_objects(
       objects_cache_->filtered_objects, objects_cache_->tracked_objects, stamp, now);
   }
@@ -544,28 +548,74 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::check_pointcloud", *get_time_keeper());
   if (!params_.use_pointcloud || !input.obstacle_pointcloud) return std::nullopt;
 
-  PointCloud::Ptr filtered_pointcloud(new PointCloud);
-  pcl::fromROSMsg(*input.obstacle_pointcloud, *filtered_pointcloud);
+  const auto is_new_pcd =
+    !pointcloud_cache_ || pointcloud_cache_->pointcloud_ptr != input.obstacle_pointcloud;
+  const auto stamp =
+    rclcpp::Time(input.obstacle_pointcloud->header.stamp, get_clock()->get_clock_type());
 
-  {
-    geometry_msgs::msg::TransformStamped transform_stamped;
-    try {
-      transform_stamped = context_->tf_buffer.lookupTransform(
-        "map", input.obstacle_pointcloud->header.frame_id, tf2::TimePointZero);
-    } catch (tf2::TransformException & e) {
-      RCLCPP_WARN(get_node_ptr()->get_logger(), "no transform found for pointcloud: %s", e.what());
-      return std::nullopt;
+  if (is_new_pcd) {
+    pointcloud_cache_ = PointCloudCache{input.obstacle_pointcloud};
+    pcl::fromROSMsg(*input.obstacle_pointcloud, *pointcloud_cache_->filtered_pointcloud);
+    // filter pointcloud by type and range
+    {
+      const auto range = params_.objects.pointcloud_detection_range;
+      const auto min_z = params_.objects.pointcloud_min_height;
+      const auto max_z =
+        context_->vehicle_info.vehicle_height_m + params_.objects.pointcloud_height_buffer;
+      pointcloud_filter_->filter_pointcloud(
+        pointcloud_cache_->filtered_pointcloud, -range, range, -range, range, min_z, max_z);
     }
 
-    Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.transform).cast<float>();
-    for (auto & p : filtered_pointcloud->points) {
-      const Eigen::Vector3f q = isometry * Eigen::Vector3f(p.x, p.y, p.z);
-      p.x = q.x();
-      p.y = q.y();
-      p.z = q.z();
+    {
+      geometry_msgs::msg::TransformStamped transform_stamped;
+      try {
+        transform_stamped = context_->tf_buffer.lookupTransform(
+          "map", input.obstacle_pointcloud->header.frame_id, stamp);
+      } catch (tf2::TransformException & e) {
+        RCLCPP_WARN(
+          get_node_ptr()->get_logger(), "no transform found for pointcloud: %s", e.what());
+        pointcloud_cache_.reset();
+        return std::nullopt;
+      }
+
+      Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.transform).cast<float>();
+      for (auto & p : pointcloud_cache_->filtered_pointcloud->points) {
+        const Eigen::Vector3f q = isometry * Eigen::Vector3f(p.x, p.y, p.z);
+        p.x = q.x();
+        p.y = q.y();
+        p.z = q.z();
+      }
     }
+
+    if (input.predicted_objects && !input.predicted_objects->objects.empty()) {
+      const auto objects_stamp =
+        rclcpp::Time(input.predicted_objects->header.stamp, get_clock()->get_clock_type());
+      const auto dt =
+        objects_stamp.nanoseconds() == 0
+          ? 0.0
+          : std::min((stamp - objects_stamp).seconds(), params_.obstacle_tracking.off_time_buffer);
+      autoware_utils_debug::ScopedTimeTrack stt(
+        "ObstacleStop::filter_pointcloud_by_object", *get_time_keeper());
+      pointcloud_filter_->filter_pointcloud_by_object(
+        pointcloud_cache_->filtered_pointcloud, *input.predicted_objects, dt,
+        params_.objects.stopped_velocity_th);
+    }
+
+    const auto now = last_frame_time_ ? *last_frame_time_ : get_clock()->now();
+    obstacle_tracker_->update_points(
+      pointcloud_cache_->filtered_pointcloud, pointcloud_cache_->active_points, stamp, now);
   }
 
+  {
+    const auto filtered_pointcloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+    pcl::toROSMsg(*pointcloud_cache_->filtered_pointcloud, *filtered_pointcloud_msg);
+    filtered_pointcloud_msg->header.stamp = input.obstacle_pointcloud->header.stamp;
+    filtered_pointcloud_msg->header.frame_id = "map";
+    debug_data_.filtered_points = filtered_pointcloud_msg;
+  }
+
+  PointCloud::Ptr target_points(new PointCloud);
+  target_points->points = pointcloud_cache_->active_points->points;
   {
     autoware_utils_debug::ScopedTimeTrack stt(
       "ObstacleStop::filter_pointcloud", *get_time_keeper());
@@ -573,39 +623,16 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
     constexpr double buffer = 1.0;
     const auto [min_x, max_x] = std::minmax(bbox.min_corner().x(), bbox.max_corner().x());
     const auto [min_y, max_y] = std::minmax(bbox.min_corner().y(), bbox.max_corner().y());
-    const auto ego_z = input.current_odometry->pose.pose.position.z;
-    const auto min_z = ego_z + params_.objects.pointcloud_min_height;
-    const auto max_z =
-      ego_z + context_->vehicle_info.vehicle_height_m + params_.objects.pointcloud_height_buffer;
-    pointcloud_filter_->filter_pointcloud(
-      filtered_pointcloud, min_x - buffer, max_x + buffer, min_y - buffer, max_y + buffer, min_z,
-      max_z);
+    pointcloud_filter_->crop_pointcloud(
+      target_points, min_x - buffer, max_x + buffer, min_y - buffer, max_y + buffer);
   }
-
-  {
-    const auto filtered_pointcloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
-    pcl::toROSMsg(*filtered_pointcloud, *filtered_pointcloud_msg);
-    filtered_pointcloud_msg->header.stamp = input.obstacle_pointcloud->header.stamp;
-    filtered_pointcloud_msg->header.frame_id = "map";
-    debug_data_.filtered_points = filtered_pointcloud_msg;
-  }
-
-  if (input.predicted_objects && !input.predicted_objects->objects.empty()) {
-    autoware_utils_debug::ScopedTimeTrack stt(
-      "ObstacleStop::filter_pointcloud_by_object", *get_time_keeper());
-    pointcloud_filter_->filter_pointcloud_by_object(filtered_pointcloud, *input.predicted_objects);
-  }
-
-  PointCloud::Ptr active_points(new PointCloud);
-  const auto now = get_clock()->now();
-  obstacle_tracker_->update_points(filtered_pointcloud, active_points, now, now);
 
   std::optional<CollisionPoint> collision_point;
   {
     autoware_utils_debug::ScopedTimeTrack stt(
       "ObstacleStop::get_nearest_pcd_collision", *get_time_keeper());
     collision_point = get_nearest_pcd_collision(
-      debug_data_.trajectory_shape, active_points, lateral_margin_map_,
+      debug_data_.trajectory_shape, target_points, lateral_margin_map_,
       params_.objects.low_velocity_th, debug_data_.target_pcd_points);
   }
 

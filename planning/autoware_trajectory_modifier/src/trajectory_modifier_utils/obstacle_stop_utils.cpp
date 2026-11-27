@@ -409,9 +409,11 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
   return CollisionPoint(target_source_index, nearest_collision_point, min_arc_length, 0.0);
 }
 
-namespace {
+namespace
+{
 
-const autoware_perception_msgs::msg::PredictedPath * get_highest_confidence_path(const PredictedObject & object)
+const autoware_perception_msgs::msg::PredictedPath * get_highest_confidence_path(
+  const PredictedObject & object)
 {
   const autoware_perception_msgs::msg::PredictedPath * best_path = nullptr;
   for (const auto & path : object.kinematics.predicted_paths) {
@@ -433,11 +435,13 @@ geometry_msgs::msg::Pose extrapolate_object_pose_from_kinematics(
   return autoware_utils::calc_offset_pose(initial_pose, dist, 0, 0);
 }
 
-geometry_msgs::msg::Pose get_predicted_object_pose(const PredictedObject & object, const double t, const double stopped_vel_th)
+geometry_msgs::msg::Pose get_predicted_object_pose(
+  const PredictedObject & object, const double t, const double stopped_vel_th)
 {
   if (t <= 0.0) return object.kinematics.initial_pose_with_covariance.pose;
   const auto & linear = object.kinematics.initial_twist_with_covariance.twist.linear;
-  if (std::hypot(linear.x, linear.y) < stopped_vel_th) return object.kinematics.initial_pose_with_covariance.pose;
+  if (std::hypot(linear.x, linear.y) < stopped_vel_th)
+    return object.kinematics.initial_pose_with_covariance.pose;
   const auto best_path = get_highest_confidence_path(object);
   if (!best_path) return extrapolate_object_pose_from_kinematics(object, t);
   const auto interpolated = calcInterpolatedPose(*best_path, t);
@@ -692,12 +696,27 @@ void PointCloudFilter::filter_pointcloud(
     pointcloud->end());
 }
 
+void PointCloudFilter::crop_pointcloud(
+  PointCloud::Ptr & pointcloud, const double min_x, const double max_x, const double min_y,
+  const double max_y)
+{
+  if (pointcloud->empty()) return;
+
+  auto is_within_range = [&](const auto & point) {
+    return point.x >= min_x && point.x <= max_x && point.y >= min_y && point.y <= max_y;
+  };
+
+  pointcloud->erase(
+    std::remove_if(
+      pointcloud->begin(), pointcloud->end(),
+      [&](const auto & point) { return !is_within_range(point); }),
+    pointcloud->end());
+}
 namespace
 {
-Polygon2d get_object_polygon(const PredictedObject & object, const double margin)
+Polygon2d get_object_polygon(
+  const geometry_msgs::msg::Pose & pose, const Shape & shape, const double margin)
 {
-  const auto & shape = object.shape;
-  const auto & pose = object.kinematics.initial_pose_with_covariance.pose;
   if (shape.type != Shape::POLYGON) {
     auto s = shape;
     s.dimensions.x += 2.0 * margin;
@@ -711,14 +730,15 @@ Polygon2d get_object_polygon(const PredictedObject & object, const double margin
 }  // namespace
 
 void PointCloudFilter::filter_pointcloud_by_object(
-  PointCloud::Ptr & pointcloud, const PredictedObjects & objects)
+  PointCloud::Ptr & pointcloud, const PredictedObjects & objects, const double dt,
+  const double stopped_vel_th)
 {
   if (pointcloud->empty() || objects.objects.empty()) return;
 
   constexpr double margin = 0.1;
 
   for (const auto & obj : objects.objects) {
-    const auto obj_pose = obj.kinematics.initial_pose_with_covariance.pose;
+    const auto obj_pose = get_predicted_object_pose(obj, dt, stopped_vel_th);
     std::optional<autoware_utils_geometry::Polygon2d> obj_polygon;
     const auto x_th = obj.shape.dimensions.x / 2.0 + margin;
     const auto y_th = obj.shape.dimensions.y / 2.0 + margin;
@@ -731,7 +751,7 @@ void PointCloudFilter::filter_pointcloud_by_object(
           if (std::abs(rel_p.x()) > x_th || std::abs(rel_p.y()) > y_th) {
             return false;
           }
-          if (!obj_polygon) obj_polygon = get_object_polygon(obj, margin);
+          if (!obj_polygon) obj_polygon = get_object_polygon(obj_pose, obj.shape, margin);
           return !boost::geometry::disjoint(p, *obj_polygon);
         }),
       pointcloud->end());
@@ -838,7 +858,8 @@ void ObjectFilter::filter_by_target_area(
       [&](auto & obj) {
         const auto & object = obj.object;
         const auto lat_margin = get_lateral_margin(lateral_margin_map, to_object_type(object));
-        const auto object_polygon = get_object_polygon(object, safety_buffer_);
+        const auto & obj_pose = object.kinematics.initial_pose_with_covariance.pose;
+        const auto object_polygon = get_object_polygon(obj_pose, object.shape, safety_buffer_);
         const auto result = query_overlapping_footprint(
           trajectory_shape, object_polygon, lat_margin, traj_low_velocity_th_);
         if (!result) return true;
@@ -857,6 +878,11 @@ void ObstacleTracker::update_objects(
   const PredictedObjects & objects, TargetObjects & persistent_objects, const rclcpp::Time & stamp,
   const rclcpp::Time & now)
 {
+  if (!verify_stamp(last_object_stamp_, stamp)) {
+    last_object_stamp_.reset();
+    persistent_objects_map_.clear();
+  }
+
   auto get_closest_object_uuid =
     [&](const PredictedObject & object) -> std::optional<boost::uuids::uuid> {
     std::optional<boost::uuids::uuid> closest_uuid = std::nullopt;
@@ -874,7 +900,8 @@ void ObstacleTracker::update_objects(
       if (existing_obj_label != obj_label) continue;
       const auto stamp_gap = (stamp - existing_object.last_stamp).seconds();
       if (stamp_gap > off_time_buffer_) continue;
-      const auto propagated_pose = get_predicted_object_pose(existing_object.object, stamp_gap, stopped_vel_th_);
+      const auto propagated_pose =
+        get_predicted_object_pose(existing_object.object, stamp_gap, stopped_vel_th_);
       const auto distance = autoware_utils::calc_distance2d(
         object.kinematics.initial_pose_with_covariance.pose.position, propagated_pose.position);
       if (distance > min_distance) continue;
@@ -883,8 +910,9 @@ void ObstacleTracker::update_objects(
         std::abs(object.shape.dimensions.x - object.shape.dimensions.y) < 0.1;
       const auto yaw_diff =
         is_symmetric ? 0.0
-                     : std::abs(autoware_utils_geometry::calc_yaw_deviation(
-                         object.kinematics.initial_pose_with_covariance.pose, propagated_pose));
+                     : std::abs(
+                         autoware_utils_geometry::calc_yaw_deviation(
+                           object.kinematics.initial_pose_with_covariance.pose, propagated_pose));
       if (yaw_diff > object_yaw_th_) continue;
       min_distance = distance;
       closest_uuid = uuid;
@@ -902,22 +930,15 @@ void ObstacleTracker::update_objects(
         continue;
       }
       auto & closest_object = persistent_objects_map_.at(closest_uuid.value());
-      closest_object.last_arrival = now;
-      closest_object.last_stamp = stamp;
-      closest_object.missed_count = 0;
-      closest_object.object = object;
-      const auto duration = (now - closest_object.first_arrival).seconds();
-      closest_object.is_active = duration >= on_time_buffer_;
+      closest_object.on_hit(object, now, stamp, on_time_buffer_);
     }
     last_object_stamp_ = stamp;
   }
 
   // A returning detection refreshes last_arrival before this check, so the track survives.
   for (auto it = persistent_objects_map_.begin(); it != persistent_objects_map_.end();) {
-    if (is_new_stamp && it->second.last_stamp != stamp) it->second.missed_count++;
-    const auto idle_time = (now - it->second.last_arrival).seconds();
-    const bool is_erase = idle_time > off_time_buffer_ || (!it->second.is_active && it->second.missed_count > 1);
-    if (is_erase)
+    if (is_new_stamp && it->second.last_stamp < stamp) it->second.on_miss();
+    if (it->second.is_erase(now, off_time_buffer_, object_missed_count_th_))
       it = persistent_objects_map_.erase(it);
     else
       it++;
@@ -925,25 +946,29 @@ void ObstacleTracker::update_objects(
 
   for (const auto & [uuid, entry] : persistent_objects_map_) {
     if (entry.is_active) {
-      persistent_objects.emplace_back(
-        propagate_predicted_object(
-          entry.object, std::max(0.0, (now - entry.last_stamp).seconds()), stopped_vel_th_));
+      persistent_objects.emplace_back(propagate_predicted_object(
+        entry.object, std::max(0.0, (now - entry.last_stamp).seconds()), stopped_vel_th_));
     }
   }
 }
 
 void ObstacleTracker::update_points(
-  const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points,
-  const rclcpp::Time & /* stamp */, const rclcpp::Time & now)
+  const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points, const rclcpp::Time & stamp,
+  const rclcpp::Time & now)
 {
+  if (!verify_stamp(last_pcd_stamp_, stamp)) {
+    last_pcd_stamp_.reset();
+    persistent_point_map_.clear();
+  }
+
   auto get_closest_point_uuid =
     [&](const PointXYZCPE & point) -> std::optional<boost::uuids::uuid> {
     std::optional<boost::uuids::uuid> closest_uuid = std::nullopt;
     if (persistent_point_map_.empty()) return std::nullopt;
     double min_distance = pcd_distance_th_ + std::numeric_limits<double>::epsilon();
     for (const auto & [uuid, existing_point] : persistent_point_map_) {
-      const auto reach = existing_point.is_active ? off_time_buffer_ : grace_period_;
-      if ((now - existing_point.last_stamp).seconds() > reach) continue;
+      const auto stamp_gap = (stamp - existing_point.last_stamp).seconds();
+      if (stamp_gap > off_time_buffer_) continue;
       const auto distance = autoware_utils::calc_distance2d(point, existing_point.point);
       if (distance > min_distance) continue;
       min_distance = distance;
@@ -952,26 +977,24 @@ void ObstacleTracker::update_points(
     return closest_uuid;
   };
 
-  for (const auto & point : points->points) {
-    const auto closest_uuid = get_closest_point_uuid(point);
-    if (!closest_uuid) {
-      persistent_point_map_.emplace(id_generator_(), PersistentPoint(point, now));
-      continue;
+  const bool is_new_stamp = !last_pcd_stamp_ || stamp > *last_pcd_stamp_;
+  if (is_new_stamp) {
+    for (const auto & point : points->points) {
+      const auto closest_uuid = get_closest_point_uuid(point);
+      if (!closest_uuid) {
+        persistent_point_map_.emplace(id_generator_(), PersistentPoint(point, now, stamp));
+        continue;
+      }
+      auto & closest_point = persistent_point_map_.at(closest_uuid.value());
+      closest_point.on_hit(point, now, stamp, on_time_buffer_);
     }
-    auto & closest_point = persistent_point_map_.at(closest_uuid.value());
-    closest_point.last_arrival = now;
-    closest_point.last_stamp = now;
-    closest_point.point = point;
-    const auto duration = (now - closest_point.first_arrival).seconds();
-    closest_point.is_active = duration >= on_time_buffer_;
+    last_pcd_stamp_ = stamp;
   }
 
   // A returning point refreshes last_arrival before this check, so the track survives.
   for (auto it = persistent_point_map_.begin(); it != persistent_point_map_.end();) {
-    const auto idle_time = (now - it->second.last_arrival).seconds();
-    const bool is_erase =
-      !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
-    if (is_erase)
+    if (is_new_stamp && it->second.last_stamp < stamp) it->second.on_miss();
+    if (it->second.is_erase(now, off_time_buffer_, pcd_missed_count_th_))
       it = persistent_point_map_.erase(it);
     else
       it++;

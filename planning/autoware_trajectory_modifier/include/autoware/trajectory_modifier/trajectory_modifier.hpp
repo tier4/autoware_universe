@@ -20,9 +20,9 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_plugin_base.hpp"
 
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
-#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
+#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>

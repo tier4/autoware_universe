@@ -566,12 +566,18 @@ struct PointCloudFilter
     PointCloud::Ptr & pointcloud, const double min_x, const double max_x, const double min_y,
     const double max_y, const double min_z, const double max_z);
 
+  void crop_pointcloud(
+    PointCloud::Ptr & pointcloud, const double min_x, const double max_x, const double min_y,
+    const double max_y);
+
   /**
    * @brief Remove points that lie inside predicted object footprints (expanded by a small margin).
    * @param[in,out] pointcloud Cloud to strip in place.
    * @param objects Predicted obstacles whose shapes define removal regions.
    */
-  void filter_pointcloud_by_object(PointCloud::Ptr & pointcloud, const PredictedObjects & objects);
+  void filter_pointcloud_by_object(
+    PointCloud::Ptr & pointcloud, const PredictedObjects & objects, const double dt,
+    const double stopped_vel_th);
 
 private:
   std::unordered_set<ObjectType> pcd_types_;
@@ -587,20 +593,22 @@ struct ObstacleTracker
    * @param object_distance_th Max 2D distance to match a new detection to an existing object track.
    * @param object_yaw_th Max yaw difference to match object detections [rad].
    * @param pcd_distance_th Max 2D distance to match a point to an existing point track.
-   * @param grace_period Seconds to keep inactive tracks before deletion.
    * @param stopped_vel_th Planar speed below which a track is not propagated [m/s].
+   * @param object_missed_count_th Number of missed detections to drop unconfirmed object track.
+   * @param pcd_missed_count_th Number of missed detections to drop unconfirmed pcd track.
    */
   ObstacleTracker(
     const double on_time_buffer, const double off_time_buffer, const double object_distance_th,
-    const double object_yaw_th, const double pcd_distance_th, const double grace_period,
-    const double stopped_vel_th)
+    const double object_yaw_th, const double pcd_distance_th, const double stopped_vel_th,
+    const size_t object_missed_count_th, const size_t pcd_missed_count_th)
   : on_time_buffer_(on_time_buffer),
     off_time_buffer_(off_time_buffer),
     object_distance_th_(object_distance_th),
     object_yaw_th_(object_yaw_th),
     pcd_distance_th_(pcd_distance_th),
-    grace_period_(grace_period),
-    stopped_vel_th_(stopped_vel_th)
+    stopped_vel_th_(stopped_vel_th),
+    object_missed_count_th_(object_missed_count_th),
+    pcd_missed_count_th_(pcd_missed_count_th)
   {
   }
 
@@ -609,16 +617,17 @@ struct ObstacleTracker
    */
   void set_params(
     const double on_time_buffer, const double off_time_buffer, const double object_distance_th,
-    const double object_yaw_th, const double pcd_distance_th, const double grace_period,
-    const double stopped_vel_th)
+    const double object_yaw_th, const double pcd_distance_th, const double stopped_vel_th,
+    const size_t object_missed_count_th, const size_t pcd_missed_count_th)
   {
     on_time_buffer_ = on_time_buffer;
     off_time_buffer_ = off_time_buffer;
     object_distance_th_ = object_distance_th;
     object_yaw_th_ = object_yaw_th;
     pcd_distance_th_ = pcd_distance_th;
-    grace_period_ = grace_period;
     stopped_vel_th_ = stopped_vel_th;
+    object_missed_count_th_ = object_missed_count_th;
+    pcd_missed_count_th_ = pcd_missed_count_th;
   }
 
   /**
@@ -637,16 +646,16 @@ struct ObstacleTracker
   /**
    * @brief Update tracked points
    * @details Use input pointcloud to update the tracked points history and remove obsolete points,
-   * based on the on_time_buffer and off_time_buffer. Point tracks stay on the module clock, so
-   * stamp is accepted and ignored.
+   * based on the on_time_buffer and off_time_buffer. A repeated or older cloud stamp does not
+   * associate. Activation and erasing use the module clock.
    * @param points Input pointcloud
    * @param persistent_points Output persistent points
-   * @param stamp Unused until point tracks follow the cloud stamp.
+   * @param stamp Cloud stamp of this message. Association uses stamp - last_stamp.
    * @param now Module time of this call. Activation and erasing use this clock.
    */
   void update_points(
-    const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points,
-    const rclcpp::Time & stamp, const rclcpp::Time & now);
+    const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points, const rclcpp::Time & stamp,
+    const rclcpp::Time & now);
 
 private:
   double on_time_buffer_;
@@ -654,8 +663,14 @@ private:
   double object_distance_th_;
   double object_yaw_th_;
   double pcd_distance_th_;
-  double grace_period_;
   double stopped_vel_th_;
+  size_t object_missed_count_th_;
+  size_t pcd_missed_count_th_;
+
+  bool verify_stamp(const std::optional<rclcpp::Time> & last, const rclcpp::Time & current) const
+  {
+    return !last || (*last - current).seconds() < off_time_buffer_;
+  }
 
   struct PersistentObstacle
   {
@@ -672,6 +687,23 @@ private:
     : first_arrival(now), last_arrival(now), last_stamp(stamp)
     {
     }
+
+    void on_hit(const rclcpp::Time & now, const rclcpp::Time & stamp, const double on_time_buffer)
+    {
+      last_arrival = now;
+      last_stamp = stamp;
+      missed_count = 0;
+      is_active = (now - first_arrival).seconds() >= on_time_buffer;
+    }
+
+    void on_miss() { missed_count++; }
+
+    bool is_erase(
+      const rclcpp::Time & now, const double off_time_buffer, const size_t missed_count_th) const
+    {
+      const auto idle_time = (now - last_arrival).seconds();
+      return idle_time > off_time_buffer || (!is_active && missed_count > missed_count_th);
+    }
   };
 
   struct PersistentObject : public PersistentObstacle
@@ -683,6 +715,14 @@ private:
     : PersistentObstacle(now, stamp), object(object)
     {
     }
+
+    void on_hit(
+      const PredictedObject & object, const rclcpp::Time & now, const rclcpp::Time & stamp,
+      const double on_time_buffer)
+    {
+      PersistentObstacle::on_hit(now, stamp, on_time_buffer);
+      this->object = object;
+    }
   };
   std::unordered_map<boost::uuids::uuid, PersistentObject, boost::hash<boost::uuids::uuid>>
     persistent_objects_map_;
@@ -692,13 +732,23 @@ private:
   struct PersistentPoint : public PersistentObstacle
   {
     PointXYZCPE point;
-    explicit PersistentPoint(const PointXYZCPE & point, const rclcpp::Time & now)
-    : PersistentObstacle(now, now), point(point)
+    PersistentPoint(const PointXYZCPE & point, const rclcpp::Time & now, const rclcpp::Time & stamp)
+    : PersistentObstacle(now, stamp), point(point)
     {
+    }
+
+    void on_hit(
+      const PointXYZCPE & point, const rclcpp::Time & now, const rclcpp::Time & stamp,
+      const double on_time_buffer)
+    {
+      PersistentObstacle::on_hit(now, stamp, on_time_buffer);
+      this->point = point;
     }
   };
   std::unordered_map<boost::uuids::uuid, PersistentPoint, boost::hash<boost::uuids::uuid>>
     persistent_point_map_;
+  // Perception stamp of the last pointcloud message that was allowed to associate.
+  std::optional<rclcpp::Time> last_pcd_stamp_;
 
   boost::uuids::random_generator id_generator_;
 };

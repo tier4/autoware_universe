@@ -21,11 +21,16 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <memory>
 #include <vector>
 
 namespace
 {
 using autoware::trajectory_modifier::utils::obstacle_stop::ObstacleTracker;
+using autoware::trajectory_modifier::utils::obstacle_stop::PointCloud;
+using autoware::trajectory_modifier::utils::obstacle_stop::PointCloudFilter;
+using autoware::trajectory_modifier::utils::obstacle_stop::PointXYZCPE;
 using autoware::trajectory_modifier::utils::obstacle_stop::TargetObjects;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
@@ -93,9 +98,37 @@ PredictedPath make_path(const std::vector<double> & xs, const double time_step)
 }
 
 ObstacleTracker make_tracker(
-  const double on_time = 0.5, const double off_time = 0.7, const double grace = 0.2)
+  const double on_time = 0.5, const double off_time = 0.7, const size_t object_misses = 1,
+  const size_t point_misses = 1)
 {
-  return ObstacleTracker(on_time, off_time, 1.0, 0.1745, 1.0, grace, 0.3);
+  return ObstacleTracker(on_time, off_time, 1.0, 0.1745, 1.0, 0.3, object_misses, point_misses);
+}
+
+PointCloud::Ptr make_point_cloud(const std::vector<double> & xs)
+{
+  auto cloud = std::make_shared<PointCloud>();
+  for (const double x : xs) {
+    PointXYZCPE point;
+    point.x = static_cast<float>(x);
+    cloud->push_back(point);
+  }
+  return cloud;
+}
+
+void update_points(
+  ObstacleTracker & tracker, const PointCloud::Ptr & points, PointCloud::Ptr & output,
+  const rclcpp::Time & stamp, const rclcpp::Time & now)
+{
+  output->clear();
+  tracker.update_points(points, output, stamp, now);
+}
+
+bool cloud_has_x(const PointCloud & cloud, const double x)
+{
+  for (const auto & point : cloud) {
+    if (std::abs(point.x - static_cast<float>(x)) < 1e-3F) return true;
+  }
+  return false;
 }
 
 void confirm_stopped_car(ObstacleTracker & tracker, TargetObjects & output)
@@ -121,18 +154,15 @@ TEST(ObstacleTracker, SteadyTenHzConfirmsAfterOnTimeBuffer)
   EXPECT_EQ(output.size(), 1U);
 }
 
-TEST(ObstacleTracker, UnmatchedInactiveTrackDiesAfterGracePeriod)
+TEST(ObstacleTracker, UnmatchedInactiveTrackSurvivesOneMiss)
 {
   auto tracker = make_tracker();
   TargetObjects output;
   const auto car = make_objects(0.0, 0.0);
   const auto none = PredictedObjects{};
 
-  // Aging uses a strict `>` and runs after association. An unmatched idle of exactly
-  // grace_period_ keeps the unconfirmed track, so sightings spaced by 200 ms still
-  // share first_arrival and confirm once the span reaches on_time_buffer_.
-  // The empty cycles keep the previous perception stamp. They advance the module clock
-  // without becoming a new observation.
+  // A repeated stamp is not a miss. The empty cycle keeps the previous perception stamp
+  // and only advances the module clock, so sightings 200 ms apart still share first_arrival.
   update(tracker, car, output, time_ms(0), time_ms(0));
   update(tracker, none, output, time_ms(0), time_ms(200));
   update(tracker, car, output, time_ms(200), time_ms(200));
@@ -141,13 +171,30 @@ TEST(ObstacleTracker, UnmatchedInactiveTrackDiesAfterGracePeriod)
   update(tracker, car, output, time_ms(600), time_ms(600));
   EXPECT_EQ(output.size(), 1U);
 
-  // 300 ms is past grace_period_, so the empty update erases the track. The sighting
-  // at 300 ms starts a new clock, and the unmatched 400 ms gap to 700 ms erases that one too.
-  auto restarted = make_tracker();
-  update(restarted, car, output, time_ms(0), time_ms(0));
-  update(restarted, none, output, time_ms(0), time_ms(300));
-  update(restarted, car, output, time_ms(300), time_ms(300));
-  update(restarted, none, output, time_ms(300), time_ms(700));
+  // One newer message that omits the object leaves missed_count at 1. A repeated stamp does
+  // not add another miss, and the following sighting still matches and confirms.
+  auto missed_once = make_tracker();
+  update(missed_once, car, output, time_ms(0), time_ms(0));
+  update(missed_once, none, output, time_ms(100), time_ms(100));
+  update(missed_once, none, output, time_ms(100), time_ms(200));
+  update(missed_once, car, output, time_ms(200), time_ms(200));
+  EXPECT_TRUE(output.empty());
+  update(missed_once, car, output, time_ms(500), time_ms(500));
+  EXPECT_EQ(output.size(), 1U);
+
+  // The second missed message deletes the unconfirmed track, so the next sighting starts over.
+  auto missed_twice = make_tracker();
+  update(missed_twice, car, output, time_ms(0), time_ms(0));
+  update(missed_twice, none, output, time_ms(100), time_ms(100));
+  update(missed_twice, none, output, time_ms(200), time_ms(200));
+  update(missed_twice, car, output, time_ms(300), time_ms(300));
+  EXPECT_TRUE(output.empty());
+
+  // A repeated stamp still erases the track once idle time passes off_time_buffer_.
+  auto silent = make_tracker();
+  update(silent, car, output, time_ms(0), time_ms(0));
+  update(silent, none, output, time_ms(0), time_ms(800));
+  update(silent, car, output, time_ms(900), time_ms(900));
   EXPECT_TRUE(output.empty());
 }
 
@@ -292,7 +339,7 @@ TEST(ObstacleTracker, FiveHzBoundaryStillConfirms)
 
 TEST(ObstacleTracker, PropagatesOutputToModuleTime)
 {
-  auto tracker = make_tracker(0.5, 2.0, 0.2);
+  auto tracker = make_tracker(0.5, 2.0);
   TargetObjects output;
   confirm_stopped_car(tracker, output);
 
@@ -306,7 +353,7 @@ TEST(ObstacleTracker, PropagatesOutputToModuleTime)
     output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 4.0, 1e-3);
 
   // dt = 0.25 s falls between the 0.5 s samples. The next path point is the pose at 0.75 s.
-  auto off_grid = make_tracker(0.5, 2.0, 0.2);
+  auto off_grid = make_tracker(0.5, 2.0);
   confirm_stopped_car(off_grid, output);
   auto mid = make_car(0.0, 10.0);
   mid.kinematics.predicted_paths.push_back(make_path({0.0, 4.0, 6.0}, 0.5));
@@ -321,7 +368,7 @@ TEST(ObstacleTracker, PropagatesOutputToModuleTime)
   EXPECT_NEAR(mid_path.path[1].position.x, 5.0, 1e-3);
   EXPECT_DOUBLE_EQ(rclcpp::Duration(mid_path.time_step).seconds(), 0.5);
 
-  auto coasting = make_tracker(0.5, 2.0, 0.2);
+  auto coasting = make_tracker(0.5, 2.0);
   confirm_stopped_car(coasting, output);
   update(coasting, make_objects(0.0, 10.0), output, time_ms(600), time_ms(600));
   update(coasting, PredictedObjects{}, output, time_ms(600), time_ms(800));
@@ -329,7 +376,7 @@ TEST(ObstacleTracker, PropagatesOutputToModuleTime)
   EXPECT_NEAR(
     output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 2.0, 1e-3);
 
-  auto held = make_tracker(0.5, 2.0, 0.2);
+  auto held = make_tracker(0.5, 2.0);
   confirm_stopped_car(held, output);
   auto short_path = make_car(0.0, 10.0);
   short_path.kinematics.predicted_paths.push_back(make_path({0.0, 4.0}, 0.3));
@@ -340,7 +387,7 @@ TEST(ObstacleTracker, PropagatesOutputToModuleTime)
     output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 4.0, 1e-3);
 
   // The stored car is already at x=5; a module time before its stamp must not move it.
-  auto clamped = make_tracker(0.5, 2.0, 0.2);
+  auto clamped = make_tracker(0.5, 2.0);
   for (int64_t ms = 0; ms <= 500; ms += 100) {
     update(clamped, make_objects(5.0, 10.0), output, time_ms(ms), time_ms(ms));
   }
@@ -350,7 +397,7 @@ TEST(ObstacleTracker, PropagatesOutputToModuleTime)
     output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 5.0, 1e-3);
 
   // A near-zero velocity keeps the measured pose even when its predicted path drifts.
-  auto parked = make_tracker(0.5, 2.0, 0.2);
+  auto parked = make_tracker(0.5, 2.0);
   confirm_stopped_car(parked, output);
   auto slow = make_car(0.0, 0.2);
   slow.kinematics.predicted_paths.push_back(make_path({0.0, 4.0, 6.0}, 0.5));
@@ -359,4 +406,150 @@ TEST(ObstacleTracker, PropagatesOutputToModuleTime)
   ASSERT_EQ(output.size(), 1U);
   EXPECT_NEAR(
     output.front().object.kinematics.initial_pose_with_covariance.pose.position.x, 0.0, 1e-3);
+}
+
+TEST(ObstacleTracker, ReplayedPointStampDoesNotConfirm)
+{
+  auto tracker = make_tracker();
+  auto output = std::make_shared<PointCloud>();
+  const auto cloud = make_point_cloud({0.0});
+
+  update_points(tracker, cloud, output, time_ms(0), time_ms(0));
+  update_points(tracker, cloud, output, time_ms(0), time_ms(600));
+  EXPECT_TRUE(output->empty());
+}
+
+TEST(ObstacleTracker, PointMissCountsOnlyOnANewStamp)
+{
+  auto tracker = make_tracker();
+  auto output = std::make_shared<PointCloud>();
+  const auto cloud = make_point_cloud({0.0});
+  const auto none = std::make_shared<PointCloud>();
+
+  // One newer cloud that omits the point leaves the count at 1. Replaying that stamp
+  // does not add another miss, so the following cloud still matches and confirms.
+  update_points(tracker, cloud, output, time_ms(0), time_ms(0));
+  update_points(tracker, none, output, time_ms(100), time_ms(100));
+  update_points(tracker, none, output, time_ms(100), time_ms(400));
+  update_points(tracker, cloud, output, time_ms(500), time_ms(500));
+  EXPECT_EQ(output->size(), 1U);
+
+  // The second missed cloud deletes the unconfirmed point.
+  auto missed_twice = make_tracker();
+  update_points(missed_twice, cloud, output, time_ms(0), time_ms(0));
+  update_points(missed_twice, none, output, time_ms(100), time_ms(100));
+  update_points(missed_twice, none, output, time_ms(200), time_ms(200));
+  update_points(missed_twice, cloud, output, time_ms(300), time_ms(300));
+  EXPECT_TRUE(output->empty());
+}
+
+TEST(ObstacleTracker, PointMissToleranceIsConfigured)
+{
+  auto output = std::make_shared<PointCloud>();
+  const auto cloud = make_point_cloud({0.0});
+  const auto none = std::make_shared<PointCloud>();
+
+  // Threshold 0 deletes on the first missed cloud, so the later sighting starts over.
+  auto strict = make_tracker(0.5, 0.7, 1, 0);
+  update_points(strict, cloud, output, time_ms(0), time_ms(0));
+  update_points(strict, none, output, time_ms(100), time_ms(100));
+  update_points(strict, cloud, output, time_ms(500), time_ms(500));
+  EXPECT_TRUE(output->empty());
+
+  // Threshold 1 keeps that same single miss, and the sighting at 500 ms confirms.
+  auto tolerant = make_tracker(0.5, 0.7, 1, 1);
+  update_points(tolerant, cloud, output, time_ms(0), time_ms(0));
+  update_points(tolerant, none, output, time_ms(100), time_ms(100));
+  update_points(tolerant, cloud, output, time_ms(500), time_ms(500));
+  EXPECT_EQ(output->size(), 1U);
+}
+
+TEST(ObstacleTracker, ObjectMissToleranceIsConfigured)
+{
+  TargetObjects output;
+  const auto car = make_objects(0.0, 0.0);
+  const auto none = PredictedObjects{};
+
+  // Threshold 0 deletes on the first missed message.
+  auto strict = make_tracker(0.5, 0.7, 0, 1);
+  update(strict, car, output, time_ms(0), time_ms(0));
+  update(strict, none, output, time_ms(100), time_ms(100));
+  update(strict, car, output, time_ms(500), time_ms(500));
+  EXPECT_TRUE(output.empty());
+
+  // Threshold 2 keeps two missed messages, so the sighting at 500 ms still confirms.
+  auto tolerant = make_tracker(0.5, 0.7, 2, 1);
+  update(tolerant, car, output, time_ms(0), time_ms(0));
+  update(tolerant, none, output, time_ms(100), time_ms(100));
+  update(tolerant, none, output, time_ms(200), time_ms(200));
+  update(tolerant, car, output, time_ms(500), time_ms(500));
+  EXPECT_EQ(output.size(), 1U);
+}
+
+TEST(ObstacleTracker, BackwardStampJumpResetsTracks)
+{
+  TargetObjects output;
+  const auto car = make_objects(0.0, 0.0);
+
+  // 0.1 s is inside off_time_buffer_, so the step back keeps the active track.
+  auto objects = make_tracker();
+  confirm_stopped_car(objects, output);
+  ASSERT_EQ(output.size(), 1U);
+  update(objects, car, output, time_ms(400), time_ms(500));
+  EXPECT_EQ(output.size(), 1U);
+  update(objects, car, output, time_ms(600), time_ms(600));
+  EXPECT_EQ(output.size(), 1U);
+
+  // 100 s behind the last stamp clears the map. The sighting starts unconfirmed.
+  auto jumped = make_tracker();
+  for (int64_t ms = 199500; ms <= 200000; ms += 100) {
+    update(jumped, car, output, time_ms(ms), time_ms(ms));
+  }
+  ASSERT_EQ(output.size(), 1U);
+  update(jumped, car, output, time_ms(100000), time_ms(200000));
+  EXPECT_TRUE(output.empty());
+
+  auto points = make_tracker();
+  auto cloud = make_point_cloud({0.0});
+  auto point_output = std::make_shared<PointCloud>();
+  for (int64_t ms = 199500; ms <= 200000; ms += 100) {
+    update_points(points, cloud, point_output, time_ms(ms), time_ms(ms));
+  }
+  ASSERT_EQ(point_output->size(), 1U);
+  update_points(points, cloud, point_output, time_ms(199900), time_ms(200000));
+  EXPECT_EQ(point_output->size(), 1U);
+  update_points(points, cloud, point_output, time_ms(100000), time_ms(200000));
+  EXPECT_TRUE(point_output->empty());
+}
+
+TEST(PointCloudFilter, MaskFollowsPredictedPoseAndStaysBounded)
+{
+  PointCloudFilter filter({});
+  const auto moving = make_objects(make_car(0.0, 10.0));
+
+  // dt = 0.5 s moves the car to x = 5 and removes the point there, not the measured pose.
+  auto ahead = make_point_cloud({0.0, 5.0});
+  filter.filter_pointcloud_by_object(ahead, moving, 0.5, 0.3);
+  EXPECT_TRUE(cloud_has_x(*ahead, 0.0));
+  EXPECT_FALSE(cloud_has_x(*ahead, 5.0));
+
+  // A non-positive dt stays on the measured pose.
+  auto measured = make_point_cloud({0.0, 5.0});
+  filter.filter_pointcloud_by_object(measured, moving, 0.0, 0.3);
+  EXPECT_FALSE(cloud_has_x(*measured, 0.0));
+  EXPECT_TRUE(cloud_has_x(*measured, 5.0));
+
+  auto negative = make_point_cloud({0.0, 5.0});
+  filter.filter_pointcloud_by_object(negative, moving, -1.0, 0.3);
+  EXPECT_FALSE(cloud_has_x(*negative, 0.0));
+  EXPECT_TRUE(cloud_has_x(*negative, 5.0));
+
+  // Past the path horizon the mask holds the last predicted pose instead of coasting on.
+  auto bounded_car = make_car(0.0, 10.0);
+  bounded_car.kinematics.predicted_paths.push_back(make_path({0.0, 4.0}, 0.5));
+  auto bounded = make_point_cloud({0.0, 4.0, 20.0});
+  filter.filter_pointcloud_by_object(bounded, make_objects(bounded_car), 10.0, 0.3);
+  EXPECT_TRUE(cloud_has_x(*bounded, 0.0));
+  EXPECT_FALSE(cloud_has_x(*bounded, 4.0));
+  EXPECT_TRUE(cloud_has_x(*bounded, 20.0));
 }
