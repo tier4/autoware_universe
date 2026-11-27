@@ -188,6 +188,15 @@ private:
   bool m_enable_brake_keeping_before_stop;
   double m_brake_keeping_acc;
 
+  enum class BrakeKeepingState { NORMAL = 0, TERMINAL_CLIP, STOP_AND_GO };
+  BrakeKeepingState m_brake_keeping_state{BrakeKeepingState::NORMAL};
+
+  struct BrakeKeepingParams {
+    double terminal_clip_dist_th{1.0}; // Distance threshold to enter TERMINAL_CLIP state [m]
+    double abort_dist_th{2.0};         // Distance threshold to return to NORMAL state [m]
+  };
+  BrakeKeepingParams m_brake_keeping_params;
+
   // smooth stop
   SmoothStop m_smooth_stop;
 
@@ -257,6 +266,7 @@ private:
   DebugValues m_debug_values;
 
   std::optional<bool> m_prev_keep_stopped_condition{std::nullopt};
+  bool m_is_stopped_with_delay{false};
 
   std::shared_ptr<rclcpp::Time> m_last_running_time{std::make_shared<rclcpp::Time>(clock_->now())};
 
@@ -389,12 +399,12 @@ private:
   double applySlopeCompensation(const double acc, const double pitch, const Shift shift) const;
 
   /**
-   * @brief keep target motion acceleration negative before stop
-   * @param [in] traj reference trajectory
-   * @param [in] motion delay compensated target motion
+   * @brief limit target acceleration near the stop point to prevent brake chattering
+   * @param [in] control_data data for control calculation
+   * @param [in] target_motion target motion before applying brake keeping
    */
   Motion keepBrakeBeforeStop(
-    const ControlData & control_data, const Motion & target_motion, const size_t nearest_idx) const;
+    const ControlData & control_data, const Motion & target_motion);
 
   /**
    * @brief interpolate trajectory point that is nearest to vehicle
