@@ -367,10 +367,16 @@
                   "default": 1,
                   "minimum": 0
                 },
-                "grace_period": {
-                  "type": "number",
-                  "description": "Grace period for object tracking [s]",
-                  "default": 0.2,
+                "object_missed_count_th": {
+                  "type": "integer",
+                  "description": "Number of missed detections to drop unconfirmed object track",
+                  "default": 1,
+                  "minimum": 0
+                },
+                "pcd_missed_count_th": {
+                  "type": "integer",
+                  "description": "Number of missed detections to drop unconfirmed pcd track",
+                  "default": 1,
                   "minimum": 0
                 }
               },
@@ -452,6 +458,13 @@
                   "description": "Minimum height of pointcloud [m]",
                   "default": 0.2,
                   "minimum": 0.0
+                },
+                "pointcloud_detection_range": {
+                  "type": "number",
+                  "description": "Maximum range to detect obstacles from pointcloud [m]",
+                  "default": 50.0,
+                  "minimum": 0.0,
+                  "maximum": 100.0
                 },
                 "lateral_margin": {
                   "type": "object",

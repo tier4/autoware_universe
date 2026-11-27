@@ -46,6 +46,7 @@ using autoware_utils_geometry::Polygon2d;
 using sensor_msgs::msg::PointCloud2;
 using utils::obstacle_stop::CollisionPoint;
 using utils::obstacle_stop::DebugData;
+using utils::obstacle_stop::PointCloud;
 using utils::obstacle_stop::TargetObject;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
@@ -86,6 +87,24 @@ private:
   std::unique_ptr<utils::obstacle_stop::ObjectFilter> object_filter_;
 
   std::unique_ptr<utils::obstacle_stop::ObstacleTracker> obstacle_tracker_;
+
+  std::optional<rclcpp::Time> last_frame_time_;
+
+  struct ObjectCache
+  {
+    PredictedObjects::ConstSharedPtr objects_ptr;
+    PredictedObjects filtered_objects;
+    utils::obstacle_stop::TargetObjects tracked_objects;
+  };
+  std::optional<ObjectCache> objects_cache_;
+
+  struct PointCloudCache
+  {
+    PointCloud2::ConstSharedPtr pointcloud_ptr;
+    PointCloud::Ptr filtered_pointcloud{new PointCloud};
+    PointCloud::Ptr active_points{new PointCloud};
+  };
+  std::optional<PointCloudCache> pointcloud_cache_;
 
   struct CruiseReport
   {
@@ -129,6 +148,8 @@ private:
   bool set_stop_point(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
   void publish_debug_string(bool is_safe) const;
+  void publish_filtered_pointcloud(
+    const PointCloud::Ptr & points, const rclcpp::Time & stamp) const;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin

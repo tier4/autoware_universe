@@ -242,12 +242,19 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
-      grace_period:
-        type: double
-        default_value: 0.2
-        description: Grace period for object tracking [s]
+      object_missed_count_th:
+        type: int
+        default_value: 1
+        description: Number of missed detections to drop unconfirmed object track
         validation:
-          bounds<>: [0.0, 1.0]
+          bounds<>: [0, 10]
+        read_only: false
+      pcd_missed_count_th:
+        type: int
+        default_value: 1
+        description: Number of missed detections to drop unconfirmed pcd track
+        validation:
+          bounds<>: [0, 10]
         read_only: false
 
     objects:
@@ -295,6 +302,13 @@ trajectory_modifier_params:
         description: Minimum height of pointcloud [m]
         validation:
           bounds<>: [0.0, 10.0]
+        read_only: false
+      pointcloud_detection_range:
+        type: double
+        default_value: 50.0
+        description: Maximum range to detect obstacles from pointcloud [m]
+        validation:
+          bounds<>: [0.0, 100.0]
         read_only: false
       lateral_margin: &base_lateral_margin
         base:

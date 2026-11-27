@@ -163,31 +163,98 @@ option(BUILD_VELOCITY_LIMIT_SIMULATION_TESTS
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_ros REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
-  file(GLOB_RECURSE TEST_SOURCES tests/*.cpp)
-  if(NOT BUILD_VELOCITY_LIMIT_SIMULATION_TESTS)
-    list(REMOVE_ITEM TEST_SOURCES
-      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_velocity_limit_simulation.cpp"
-      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_velocity_limit_plugin_simulation.cpp"
-    )
-  endif()
-  ament_add_ros_isolated_gtest(test_autoware_trajectory_modifier
-    ${TEST_SOURCES}
-  )
-  target_link_libraries(test_autoware_trajectory_modifier
-    autoware_trajectory_modifier_component
-    autoware_trajectory_optimizer_plugins
+  set(_tm_plugin_libs
     autoware_trajectory_modifier_plugins
+    autoware_trajectory_modifier_utils
+  )
+  set(_tm_optimizer_libs
+    autoware_trajectory_optimizer_plugins
     autoware_trajectory_modifier_utils
     acados_interface_time_seq
   )
 
+  ament_add_ros_isolated_gtest(test_obstacle_stop
+    tests/test_obstacle_stop_integration.cpp
+    tests/test_obstacle_stop_utils.cpp
+    tests/test_obstacle_tracker.cpp
+  )
+  target_link_libraries(test_obstacle_stop ${_tm_plugin_libs})
+
+  ament_add_ros_isolated_gtest(test_surround_obstacle_stop
+    tests/test_surround_obstacle_stop_integration.cpp
+  )
+  target_link_libraries(test_surround_obstacle_stop ${_tm_plugin_libs})
+
+  ament_add_ros_isolated_gtest(test_detection_area_stop
+    tests/test_detection_area_stop_integration.cpp
+    tests/test_detection_area_utils.cpp
+  )
+  target_link_libraries(test_detection_area_stop ${_tm_plugin_libs})
+
+  ament_add_ros_isolated_gtest(test_velocity_limits
+    tests/test_external_velocity_limit.cpp
+    tests/test_fixed_profile.cpp
+    tests/test_map_velocity_limits.cpp
+    tests/test_velocity_limits.cpp
+    tests/test_velocity_limits_recorded_profiles.cpp
+    tests/test_velocity_modifier_integration.cpp
+  )
+  target_link_libraries(test_velocity_limits ${_tm_plugin_libs})
+
+  ament_add_ros_isolated_gtest(test_stop_plugins
+    tests/test_stop_point_fixer_integration.cpp
+    tests/test_traffic_light_stop_integration.cpp
+    tests/test_model_planning_factor_id_integration.cpp
+    tests/test_planning_factor_utils.cpp
+  )
+  target_link_libraries(test_stop_plugins ${_tm_plugin_libs})
+
+  ament_add_ros_isolated_gtest(test_trajectory_modifier
+    tests/test_trajectory_modifier_integration.cpp
+    tests/test_trajectory_modifier_plugin_base.cpp
+    tests/test_trajectory_modifier_utils.cpp
+    tests/test_utils.cpp
+  )
+  target_link_libraries(test_trajectory_modifier
+    autoware_trajectory_modifier_component
+    ${_tm_plugin_libs}
+  )
+
+  ament_add_gtest(test_optimizer_utils
+    tests/test_continuous_jerk_smoother.cpp
+    tests/test_trajectory_extender_utils.cpp
+    tests/test_trajectory_mpt_optimizer_utils.cpp
+    tests/test_trajectory_point_fixer_utils.cpp
+    tests/test_trajectory_spline_smoother_utils.cpp
+    tests/test_trajectory_velocity_optimizer_utils.cpp
+  )
+  target_link_libraries(test_optimizer_utils ${_tm_optimizer_libs})
+
+  ament_add_ros_isolated_gtest(test_time_sequence_raw
+    tests/test_time_sequence_raw_optimizer.cpp
+    tests/test_time_sequence_raw_optimizer_stop_policy.cpp
+    tests/test_road_border_avoidance.cpp
+    tests/test_stamped_ego_buffer.cpp
+  )
+  target_link_libraries(test_time_sequence_raw ${_tm_optimizer_libs})
+
   if(BUILD_VELOCITY_LIMIT_SIMULATION_TESTS)
+    ament_add_ros_isolated_gtest(test_velocity_limit_simulation
+      tests/test_velocity_limit_simulation.cpp
+      tests/test_velocity_limit_plugin_simulation.cpp
+    )
+    target_link_libraries(test_velocity_limit_simulation
+      ${_tm_plugin_libs}
+      ${_tm_optimizer_libs}
+    )
     # Closed-loop simulations write CSV data here (overridden at run time by the
     # VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR environment variable); the plot test renders it.
     set(VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/velocity_limit_simulation")
-    target_compile_definitions(test_autoware_trajectory_modifier PRIVATE
+    target_compile_definitions(test_velocity_limit_simulation PRIVATE
       VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR="${VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR}"
     )
     add_test(NAME plot_velocity_limit_simulation
@@ -195,7 +262,7 @@ if(BUILD_TESTING)
         ${VELOCITY_LIMIT_SIMULATION_OUTPUT_DIR}
     )
     set_tests_properties(plot_velocity_limit_simulation PROPERTIES
-      DEPENDS test_autoware_trajectory_modifier
+      DEPENDS test_velocity_limit_simulation
     )
   endif()
 endif()

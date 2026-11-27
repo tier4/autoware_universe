@@ -271,8 +271,14 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
   }
 
   if (data.predicted_objects_ptr && !data.predicted_objects_ptr->objects.empty()) {
+    const auto cloud_stamp = rclcpp::Time(pointcloud->header.stamp, get_clock()->get_clock_type());
+    const auto objects_stamp =
+      rclcpp::Time(data.predicted_objects_ptr->header.stamp, cloud_stamp.get_clock_type());
+    const auto dt = objects_stamp.nanoseconds() == 0
+                      ? 0.0
+                      : std::min((cloud_stamp - objects_stamp).seconds(), params_.off_time_buffer);
     pointcloud_filter_->filter_pointcloud_by_object(
-      filtered_pointcloud, *data.predicted_objects_ptr);
+      filtered_pointcloud, *data.predicted_objects_ptr, dt, params_.objects.stopped_velocity_th);
   }
 
   return get_nearest_pcd_collision(
