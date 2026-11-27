@@ -956,6 +956,8 @@ void ObstacleTracker::update_points(
   const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points, const rclcpp::Time & stamp,
   const rclcpp::Time & now)
 {
+  persistent_points->clear();
+
   if (!verify_stamp(last_pcd_stamp_, stamp)) {
     last_pcd_stamp_.reset();
     persistent_point_map_.clear();

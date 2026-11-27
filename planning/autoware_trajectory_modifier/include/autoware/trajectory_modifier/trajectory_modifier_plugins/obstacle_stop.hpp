@@ -148,6 +148,8 @@ private:
   bool set_stop_point(TrajectoryPoints & traj_points, const TrajectoryModifierData & input);
 
   void publish_debug_string(bool is_safe) const;
+  void publish_filtered_pointcloud(
+    const PointCloud::Ptr & points, const rclcpp::Time & stamp) const;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin

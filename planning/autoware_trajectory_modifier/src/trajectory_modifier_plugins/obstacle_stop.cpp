@@ -604,14 +604,10 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
     const auto now = last_frame_time_ ? *last_frame_time_ : get_clock()->now();
     obstacle_tracker_->update_points(
       pointcloud_cache_->filtered_pointcloud, pointcloud_cache_->active_points, stamp, now);
-  }
 
-  {
-    const auto filtered_pointcloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
-    pcl::toROSMsg(*pointcloud_cache_->filtered_pointcloud, *filtered_pointcloud_msg);
-    filtered_pointcloud_msg->header.stamp = input.obstacle_pointcloud->header.stamp;
-    filtered_pointcloud_msg->header.frame_id = "map";
-    debug_data_.filtered_points = filtered_pointcloud_msg;
+    if (pub_filtered_pointcloud_->get_subscription_count() > 0) {
+      publish_filtered_pointcloud(pointcloud_cache_->filtered_pointcloud, stamp);
+    }
   }
 
   PointCloud::Ptr target_points(new PointCloud);
@@ -642,7 +638,7 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
 void ObstacleStop::publish_debug_string(bool is_safe) const
 {
   const auto filtered_pcd_size =
-    debug_data_.filtered_points ? debug_data_.filtered_points->data.size() : 0;
+    pointcloud_cache_ ? pointcloud_cache_->filtered_pointcloud->size() : 0;
   std::ostringstream ss;
   ss << std::fixed << std::setprecision(2) << std::boolalpha;
   ss << "OBSTACLE STOP MODIFIER: "
@@ -676,10 +672,21 @@ void ObstacleStop::publish_debug_string(bool is_safe) const
   pub_debug_text_->publish(string_stamp);
 }
 
+void ObstacleStop::publish_filtered_pointcloud(
+  const PointCloud::Ptr & points, const rclcpp::Time & stamp) const
+{
+  autoware_utils_debug::ScopedTimeTrack st(
+    "ObstacleStop::publish_filtered_pointcloud", *get_time_keeper());
+  const auto filtered_pointcloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+  pcl::toROSMsg(*points, *filtered_pointcloud_msg);
+  filtered_pointcloud_msg->header.stamp = stamp;
+  filtered_pointcloud_msg->header.frame_id = "map";
+  pub_filtered_pointcloud_->publish(*filtered_pointcloud_msg);
+}
+
 void ObstacleStop::publish_debug_data(const std::string & ns) const
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::publish_debug_data", *get_time_keeper());
-  if (debug_data_.filtered_points) pub_filtered_pointcloud_->publish(*debug_data_.filtered_points);
 
   MarkerArray marker_array;
   const auto ego_z = debug_data_.ego_z;

@@ -574,6 +574,9 @@ struct PointCloudFilter
    * @brief Remove points that lie inside predicted object footprints (expanded by a small margin).
    * @param[in,out] pointcloud Cloud to strip in place.
    * @param objects Predicted obstacles whose shapes define removal regions.
+   * @param dt Seconds to move each object before masking. Non-positive values keep the measured
+   * pose.
+   * @param stopped_vel_th Planar speed below which an object is masked at its measured pose [m/s].
    */
   void filter_pointcloud_by_object(
     PointCloud::Ptr & pointcloud, const PredictedObjects & objects, const double dt,
