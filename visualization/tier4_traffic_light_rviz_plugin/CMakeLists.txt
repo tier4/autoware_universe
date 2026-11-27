@@ -12,6 +12,7 @@ add_definitions(-DQT_NO_KEYWORDS)
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/traffic_light_publish_panel.cpp
+  src/traffic_light_route_override_panel.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
